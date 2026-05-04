@@ -1,5 +1,7 @@
 # Boundary Controller Helm Chart
 
+Production-oriented Helm chart for HashiCorp Boundary controllers on Kubernetes. Boundary controllers are the control-plane component of Boundary — they manage authentication, authorization, sessions, and worker registration. Because controller state lives in PostgreSQL, the controller Deployment is stateless and can run multiple replicas behind a load balancer.
+
 This chart packages the Kubernetes resources required to run one or more Boundary controller replicas backed by a PostgreSQL database. It is intended for operator-managed Boundary deployments where you control the control plane infrastructure.
 
 The chart is deliberately narrow in scope:
@@ -14,9 +16,9 @@ The chart does not manage worker resources, Boundary scopes, HCP Boundary connec
 
 ## Contents
 
-- [Overview](#overview)
 - [What The Chart Deploys](#what-the-chart-deploys)
 - [Prerequisites](#prerequisites)
+- [Security Model](#security-model)
 - [Installation](#installation)
 - [Configuration Model](#configuration-model)
 - [Required Controller Configuration](#required-controller-configuration)
@@ -24,16 +26,9 @@ The chart does not manage worker resources, Boundary scopes, HCP Boundary connec
 - [Common Deployment Patterns](#common-deployment-patterns)
 - [Configuration Reference](#configuration-reference)
 - [Operations](#operations)
-- [Security Model](#security-model)
 - [Repository Layout](#repository-layout)
 - [Known Limitations](#known-limitations)
 - [Contributing](#contributing)
-
-## Overview
-
-Boundary controllers are the control-plane component of Boundary. They manage authentication, authorization, sessions, and worker registration. Because controller state lives in PostgreSQL, the controller Deployment itself is stateless and can run multiple replicas behind a load balancer.
-
-This chart packages that deployment model into a reusable Helm release with opinionated defaults for production use.
 
 ## What The Chart Deploys
 
@@ -66,6 +61,24 @@ Before installing the chart, make sure the following are in place:
 Additional requirements for multi-replica setups:
 
 - `public_cluster_addr` set in `controller.config` so workers can reach each controller replica
+
+## Security Model
+
+The chart runs controller containers with restricted Kubernetes security settings:
+
+- Runs as non-root (`runAsUser: 100`, `runAsGroup: 1000`)
+- Drops all Linux capabilities
+- Disables privilege escalation
+- Sets `SKIP_SETCAP=1` to avoid capability modification at startup
+- Enforces `RuntimeDefault` seccomp profile
+- Sets `fsGroup: 1000` so mounted volumes are accessible by the container user
+
+Operational implications:
+
+- `disable_mlock = true` should remain set in the controller configuration when using this deployment model.
+- Sensitive values are not stored in the ConfigMap. They are sourced from an existing Kubernetes Secret via `valueFrom.secretKeyRef` in all containers. That Secret can be populated manually or synced from Vault using the Vault Secrets Operator or External Secrets Operator.
+- The cluster and ops Services default to `ClusterIP` and are not exposed externally.
+- Secret validation at render time (`controller.secretRefs.validateExisting=true`) catches missing credentials before any resources are created.
 
 ## Installation
 
@@ -423,28 +436,6 @@ controller:
       service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
 ```
 
-### Database migration on upgrade
-
-Pass `--set controller.database.migrate.enabled=true` on the upgrade command to run `boundary database migrate` as a `pre-upgrade` hook before the Deployment rolls over. Do not set this in your values file — it should be a one-time flag on the upgrade command:
-
-```bash
-helm upgrade boundary-controller . \
-  --namespace boundary \
-  -f my-values.yaml \
-  --set controller.database.migrate.enabled=true
-```
-
-### Bootstrap admin on upgrade
-
-By default the bootstrap admin job runs only on install. To re-run it on a specific upgrade (for example when rotating admin credentials), pass `--set` on the upgrade command rather than editing your values file:
-
-```bash
-helm upgrade boundary-controller . \
-  --namespace boundary \
-  -f my-values.yaml \
-  --set controller.bootstrapAdmin.runOnUpgrade=true
-```
-
 ### Disable bootstrap admin
 
 If you manage admin accounts externally, disable the bootstrap job:
@@ -579,9 +570,33 @@ helm upgrade boundary-controller . \
   -f my-values.yaml
 ```
 
+### Re-run bootstrap admin
+
+By default the bootstrap admin job runs only on install. To re-run it on a specific upgrade — for example when rotating admin credentials — pass `--set` on the upgrade command. Do not add this to your values file; it is a one-time flag:
+
+```bash
+helm upgrade boundary-controller . \
+  --namespace boundary \
+  -f my-values.yaml \
+  --set controller.bootstrapAdmin.runOnUpgrade=true
+```
+
 ### Upgrade with database migration
 
-Pass `--set controller.database.migrate.enabled=true` directly on the upgrade command. Do not set this in your values file — it is a one-time flag that runs the migration job as a `pre-upgrade` hook for a single release:
+`boundary database migrate` uses PostgreSQL advisory locks to get exclusive access during schema changes. It cannot acquire that lock while active controllers are still connected to the database and heartbeating. Scale the Deployment to zero replicas first, then run the migration upgrade.
+
+**Step 1 — scale controllers to zero:**
+
+```bash
+helm upgrade boundary-controller . \
+  --namespace boundary \
+  -f my-values.yaml \
+  --set controller.replicas=0
+```
+
+**Step 2 — run the migration and bring controllers back up:**
+
+Pass `--set controller.database.migrate.enabled=true` on the upgrade command. Do not set this in your values file — it is a one-time flag. Helm runs the `pre-upgrade` migration job first, then rolls out the Deployment using the replica count from your values file, bringing the controllers back up automatically.
 
 ```bash
 helm upgrade boundary-controller . \
@@ -608,24 +623,6 @@ Hook jobs have `ttlSecondsAfterFinished: 3600` set, so Kubernetes will automatic
 ```bash
 kubectl delete jobs -n boundary -l app.kubernetes.io/instance=boundary-controller
 ```
-
-## Security Model
-
-The chart runs controller containers with restricted Kubernetes security settings:
-
-- Runs as non-root (`runAsUser: 100`, `runAsGroup: 1000`)
-- Drops all Linux capabilities
-- Disables privilege escalation
-- Sets `SKIP_SETCAP=1` to avoid capability modification at startup
-- Enforces `RuntimeDefault` seccomp profile
-- Sets `fsGroup: 1000` so mounted volumes are accessible by the container user
-
-Operational implications:
-
-- `disable_mlock = true` should remain set in the controller configuration when using this deployment model.
-- Sensitive values are not stored in the ConfigMap. They are sourced from an existing Kubernetes Secret via `valueFrom.secretKeyRef` in all containers. That Secret can be populated manually or synced from Vault using the Vault Secrets Operator or External Secrets Operator.
-- The cluster and ops Services default to `ClusterIP` and are not exposed externally.
-- Secret validation at render time (`controller.secretRefs.validateExisting=true`) catches missing credentials before any resources are created.
 
 ## Repository Layout
 
