@@ -676,5 +676,3 @@ When submitting changes, include:
 - A clear description of the behavior or documentation change
 - Validation notes with the commands you ran
 - Any chart value changes that affect install or upgrade workflows
-
-

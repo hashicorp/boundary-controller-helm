@@ -7,7 +7,7 @@ fullnameOverride: ""
 # Boundary image configuration
 image:
   repository: hashicorp/boundary-enterprise
-  tag: "0.19-ent"
+  tag: "0.20-ent"
   pullPolicy: IfNotPresent
 
 # Image pull secrets
