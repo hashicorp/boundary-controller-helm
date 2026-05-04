@@ -1,0 +1,105 @@
+{{- if .Release.IsInstall }}
+{{- include "boundary.controller.validateSecretRefs" . -}}
+{{- include "boundary.controller.validateConfig" . -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "boundary.controller.serviceName" . }}-init-db
+  labels:
+    {{- include "boundary.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller-init
+  annotations:
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    # "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        {{- include "boundary.labels" . | nindent 8 }}
+        app.kubernetes.io/component: controller-init
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      serviceAccountName: {{ include "boundary.controller.serviceAccountName" . }}
+      restartPolicy: OnFailure
+      containers:
+        - name: init-db
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          env:
+            - name: SKIP_SETCAP
+              value: "1"
+            - name: BOUNDARY_PG_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.databaseUrl }}
+            - name: BOUNDARY_LICENSE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.license }}
+            {{- if eq (include "boundary.controller.usesEnvAeadKms" . | trim) "true" }}
+            - name: BOUNDARY_KMS_ROOT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.kmsRoot }}
+            - name: BOUNDARY_KMS_WORKER_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.kmsWorkerAuth }}
+            - name: BOUNDARY_KMS_RECOVERY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.kmsRecovery }}
+            {{- end }}
+          command:
+            - "sh"
+            - "-c"
+            - |
+              OUTPUT_FILE=/tmp/output.log
+              boundary database init -skip-initial-authenticated-user-role-creation -skip-auth-method-creation -skip-host-resources-creation -skip-scopes-creation -skip-target-creation -config /etc/boundary/controller.hcl >"$OUTPUT_FILE" 2>&1
+              EXIT_CODE=$?
+
+              if [ $EXIT_CODE -eq 0 ]; then
+                cat "$OUTPUT_FILE"
+                exit 0
+              elif grep -q "already been initialized\|already initialized" "$OUTPUT_FILE"; then
+                cat "$OUTPUT_FILE"
+                exit 0
+              else
+                cat "$OUTPUT_FILE"
+                exit 1
+              fi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/boundary
+              readOnly: true
+            {{- if .Values.tls.enabled  }}
+            - name: tls-certs
+              mountPath: {{ .Values.tls.mountPath }}
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "boundary.controller.configMapName" . }}
+        {{- if .Values.tls.enabled }}
+        - name: tls-certs
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+        {{- end }}            
+{{- end }}

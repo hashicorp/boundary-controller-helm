@@ -1,0 +1,17 @@
+Boundary controller chart has been installed successfully.
+
+Controller:
+- Replicas: {{ .Values.controller.replicas }}
+- Service: {{ include "boundary.controller.serviceName" . }}
+
+To complete setup:
+1. Wait for the controller LoadBalancer to get an external address:
+   kubectl get svc -n {{ .Release.Namespace }}
+
+2. Access Boundary UI at: http://<CONTROLLER_LB>:9200
+
+3. Ensure the controller secret exists:
+   - Secret name: {{ include "boundary.controller.secretName" . }}
+   - Required keys: {{ .Values.controller.secretRefs.keys.databaseUrl }}, {{ .Values.controller.secretRefs.keys.license }}{{- if .Values.controller.bootstrapAdmin.enabled }}, {{ .Values.controller.secretRefs.keys.adminUsername }}, {{ .Values.controller.secretRefs.keys.adminPassword }}{{- end }}{{- if eq (include "boundary.controller.usesEnvAeadKms" . | trim) "true" }}, {{ .Values.controller.secretRefs.keys.kmsRoot }}, {{ .Values.controller.secretRefs.keys.kmsWorkerAuth }}, {{ .Values.controller.secretRefs.keys.kmsRecovery }}{{- end }}
+
+For more information, visit https://www.boundaryproject.io/

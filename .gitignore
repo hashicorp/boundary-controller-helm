@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Local values override files — never commit environment-specific secrets
+my-values.yaml
+*-values.yaml
+override-values.yaml
+local-values.yaml
+
+# Helm chart build artifacts
+*.tgz
+charts/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
