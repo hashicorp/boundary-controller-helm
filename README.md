@@ -4,7 +4,7 @@ Production-oriented Helm chart for HashiCorp Boundary controllers on Kubernetes.
 
 This chart packages the Kubernetes resources required to run one or more Boundary controller replicas backed by a PostgreSQL database. It is intended for operator-managed Boundary deployments where you control the control plane infrastructure.
 
-The chart is deliberately narrow in scope:
+The chart scope focuses on:
 
 - Multi-replica controller Deployment with rolling update support
 - Kubernetes-native resource model using Deployment, Services, ConfigMap, ServiceAccount, and PodDisruptionBudget
@@ -18,7 +18,9 @@ The chart does not manage worker resources, Boundary scopes, HCP Boundary connec
 
 - [What The Chart Deploys](#what-the-chart-deploys)
 - [Prerequisites](#prerequisites)
-- [Version Compatibility](#version-compatibility)
+  - [Version Requirements](#version-requirements)
+  - [Required Resources](#required-resources)
+- [Security Model](#security-model)
 - [Installation](#installation)
 - [Configuration Model](#configuration-model)
 - [Required Controller Configuration](#required-controller-configuration)
@@ -30,7 +32,6 @@ The chart does not manage worker resources, Boundary scopes, HCP Boundary connec
 - [Monitoring and Observability](#monitoring-and-observability)
 - [Backup and Disaster Recovery](#backup-and-disaster-recovery)
 - [Troubleshooting](#troubleshooting)
-- [Security Model](#security-model)
 - [Repository Layout](#repository-layout)
 - [Known Limitations](#known-limitations)
 - [Frequently Asked Questions](#frequently-asked-questions)
@@ -51,38 +52,45 @@ An optional ServiceAccount is created when `serviceAccount.create=true`.
 
 ## Prerequisites
 
-Before installing the chart, make sure the following are in place:
+### Version Requirements
 
-- A Kubernetes cluster running Kubernetes 1.24 or later
-- Helm 3.1 or later
-- A PostgreSQL database reachable from the cluster, with a database user that has permission to create tables
-- A Kubernetes Secret in the release namespace containing the database URL and enterprise license (and optionally admin credentials). This Secret can be created manually, or synced from Vault using the [Vault Secrets Operator](https://developer.hashicorp.com/vault/docs/platform/k8s/vso) or the [External Secrets Operator](https://external-secrets.io) with a Vault backend
-- A Boundary controller configuration file in HCL format
-- A KMS configuration chosen in advance:
-  - Vault Transit engine via the `transit` KMS provider stanza (suitable when Vault is already part of your infrastructure)
-  - Cloud KMS provider stanza: `awskms` (AWS), `gcpckms` (GCP), or `azurekeyvault` (Azure)
-  - AEAD keys via environment variables (dev and testing only — not supported by this chart's validation)
-- A Kubernetes TLS Secret containing `tls.crt` and `tls.key` when TLS is enabled (the default)
+| Component | Minimum Version | Notes |
+|-----------|-----------------|-------|
+| Kubernetes | 1.24 | |
+| Helm | 3.1 | |
+| Boundary Enterprise | 0.19.x | License required |
+| PostgreSQL | 15 | [PostgreSQL support policy](https://developer.hashicorp.com/boundary/docs/enterprise/supported-versions#postgresql-support-policy) |
 
-Additional requirements for multi-replica setups:
+### Required Resources
 
-- `public_cluster_addr` set in `controller.config` so workers can reach each controller replica
+Ensure the following exist before installing:
 
-## Version Compatibility
+- **Kubernetes Secret** in the release namespace containing the database URL credentials and Boundary Enterprise license (add admin credentials when `controller.bootstrapAdmin.enabled=true`). Create it manually or sync it using the [Vault Secrets Operator](https://developer.hashicorp.com/vault/docs/platform/k8s/vso) or the [External Secrets Operator](https://external-secrets.io).
+- **PostgreSQL database** reachable from the cluster, with a user that has permission to create tables.
+- **KMS provider** — choose one: Vault Transit (`transit` stanza, requires Vault 1.11+), AWS KMS (`awskms`), GCP Cloud KMS (`gcpckms`), or Azure Key Vault (`azurekeyvault`). Cloud KMS providers require IAM/RBAC permissions granting the controller access to the key.
+- **Kubernetes TLS Secret** containing `tls.crt` and `tls.key` when `tls.enabled=true` (the default).
 
-This chart has been tested with the following versions:
+For multi-replica deployments, `public_cluster_addr` must be set in `controller.config` so workers can reach each replica.
 
-| Chart Version | Boundary Version | Kubernetes Versions | Helm Version |
-|---------------|------------------|---------------------|--------------|
-| 1.0.x         | 0.21.x           | 1.24 And above      | 3.1+         |
+> Always test upgrades in a non-production environment before applying to production.
 
-**Notes:**
-- Boundary Enterprise license is required for all versions
-- PostgreSQL 15+ is recommended for optimal performance
-- Cloud KMS providers (AWS KMS, GCP Cloud KMS, Azure Key Vault) require appropriate IAM/RBAC permissions
-- Vault Transit engine requires Vault 1.11+ for optimal compatibility
+## Security Model
 
-Always test upgrades in a non-production environment before applying to production.
+The chart runs controller containers with restricted Kubernetes security settings:
+
+- Runs as non-root (`runAsUser: 100`, `runAsGroup: 1000`)
+- Drops all Linux capabilities
+- Disables privilege escalation
+- Sets `SKIP_SETCAP=1` to avoid capability modification at startup
+- Enforces `RuntimeDefault` seccomp profile
+- Sets `fsGroup: 1000` so mounted volumes are accessible by the container user
+
+Operational implications:
+
+- `disable_mlock = true` should remain set in the controller configuration when using this deployment model.
+- Sensitive values are not stored in the ConfigMap. They are sourced from an existing Kubernetes Secret via `valueFrom.secretKeyRef` in all containers. That Secret can be populated manually or synced from Vault using the Vault Secrets Operator or External Secrets Operator.
+- The cluster and ops Services default to `ClusterIP` and are not exposed externally.
+- Secret validation at render time (`controller.secretRefs.validateExisting=true`) catches missing credentials before any resources are created.
 
 ## Installation
 
@@ -90,7 +98,7 @@ Use this flow when you want to deploy a Boundary controller with this chart.
 
 ### 1. Create the Kubernetes Secret
 
-Create the Secret that the chart reads sensitive values from. At minimum it must contain the database URL and enterprise license. Add admin credentials when `controller.bootstrapAdmin.enabled=true` (the default).
+Create the Secret that the chart reads sensitive values from. At minimum it must contain the database credentials and enterprise license. Add admin credentials when `controller.bootstrapAdmin.enabled=true` (the default).
 
 ```bash
 kubectl create secret generic boundary-controller-secrets \
@@ -114,13 +122,7 @@ kubectl create secret tls boundary-controller-tls \
 
 ### 3. Add the controller configuration to your values file
 
-Put the Boundary controller HCL directly in `controller.config` inside your values file. The embedded default uses `awskms` for KMS. Update the KMS key IDs and region to match your environment before installing.
-
-Review at minimum:
-
-- KMS stanza: update `region` and `kms_key_id` values for root, recovery, and worker-auth purposes
-- `public_cluster_addr`: set to the DNS name or address workers will use to reach the cluster Service
-- `controller.name` and `controller.description`: update to match your environment
+Set `controller.config` in your values file with your Boundary HCL. The embedded default uses `awskms` — you must update KMS key IDs, region, and `public_cluster_addr` before installing. See [Required Controller Configuration](#required-controller-configuration) for the minimum structure, required fields, and a complete example.
 
 ### 4. Review chart values
 
@@ -134,68 +136,14 @@ Check `values.yaml` before installing, especially:
 - `serviceAccount.create` and `serviceAccount.name`
 - `controller.resources`
 
-If you want overrides, create a separate values file such as `my-values.yaml`.
+For all available values see the [Configuration Reference](#configuration-reference). For cloud-specific examples (AWS, GCP, Azure) see [Common Deployment Patterns](#common-deployment-patterns).
 
-Example:
+If you need Kubernetes infrastructure overrides, create a separate `my-values.yaml`. Example for AWS with IRSA and NLB:
 
 ```yaml
+# my-values.yaml — Kubernetes infrastructure overrides.
+# Include controller.config with your HCL from step 3.
 controller:
-  config: |
-    disable_mlock = true
-
-    listener "tcp" {
-      address     = "0.0.0.0:9200"
-      purpose     = "api"
-      tls_disable = false
-      tls_cert_file = "/etc/boundary/tls/tls.crt"
-      tls_key_file  = "/etc/boundary/tls/tls.key"
-    }
-
-    listener "tcp" {
-      address     = "0.0.0.0:9201"
-      purpose     = "cluster"
-      tls_disable = false
-      tls_cert_file = "/etc/boundary/tls/tls.crt"
-      tls_key_file  = "/etc/boundary/tls/tls.key"
-    }
-
-    listener "tcp" {
-      address     = "0.0.0.0:9203"
-      purpose     = "ops"
-      tls_disable = false
-      tls_cert_file = "/etc/boundary/tls/tls.crt"
-      tls_key_file  = "/etc/boundary/tls/tls.key"
-    }
-
-    controller {
-      name        = "boundary-controller"
-      description = "Boundary Controller running in Kubernetes"
-      public_cluster_addr = "boundary-cluster:9201"
-      license     = "env://BOUNDARY_LICENSE"
-      database {
-        url = "env://BOUNDARY_PG_URL"
-      }
-      graceful_shutdown_wait_duration = "10s"
-    }
-
-    kms "awskms" {
-      purpose    = "root"
-      region     = "us-east-1"
-      kms_key_id = "alias/boundary-root"
-    }
-
-    kms "awskms" {
-      purpose    = "recovery"
-      region     = "us-east-1"
-      kms_key_id = "alias/boundary-recovery"
-    }
-
-    kms "awskms" {
-      purpose    = "worker-auth"
-      region     = "us-east-1"
-      kms_key_id = "alias/boundary-worker-auth"
-    }
-
   secretRefs:
     secretName: "boundary-controller-secrets"
 
@@ -223,8 +171,7 @@ Install using the default values:
 
 ```bash
 helm install boundary-controller . \
-  --namespace boundary \
-  --create-namespace
+  --namespace boundary
 ```
 
 Install with an additional values file:
@@ -232,7 +179,6 @@ Install with an additional values file:
 ```bash
 helm install boundary-controller . \
   --namespace boundary \
-  --create-namespace \
   -f my-values.yaml
 ```
 
@@ -1388,24 +1334,6 @@ kubectl get events -n boundary --sort-by='.lastTimestamp'
 2. Check Boundary documentation: https://developer.hashicorp.com/boundary/docs
 3. Review chart issues: (link to your repository issues)
 4. Contact HashiCorp support (for Enterprise customers)
-
-## Security Model
-
-The chart runs controller containers with restricted Kubernetes security settings:
-
-- Runs as non-root (`runAsUser: 100`, `runAsGroup: 1000`)
-- Drops all Linux capabilities
-- Disables privilege escalation
-- Sets `SKIP_SETCAP=1` to avoid capability modification at startup
-- Enforces `RuntimeDefault` seccomp profile
-- Sets `fsGroup: 1000` so mounted volumes are accessible by the container user
-
-Operational implications:
-
-- `disable_mlock = true` should remain set in the controller configuration when using this deployment model.
-- Sensitive values are not stored in the ConfigMap. They are sourced from an existing Kubernetes Secret via `valueFrom.secretKeyRef` in all containers. That Secret can be populated manually or synced from Vault using the Vault Secrets Operator or External Secrets Operator.
-- The cluster and ops Services default to `ClusterIP` and are not exposed externally.
-- Secret validation at render time (`controller.secretRefs.validateExisting=true`) catches missing credentials before any resources are created.
 
 ## Repository Layout
 
