@@ -32,8 +32,7 @@ The chart does not manage worker resources, Boundary scopes, HCP Boundary connec
   - [Upgrading](#upgrading)
   - [Rollback](#rollback)
   - [Uninstall](#uninstall)
-- [Monitoring and Observability](#monitoring-and-observability)
-- [Backup and Disaster Recovery](#backup-and-disaster-recovery)
+- [Monitoring](#monitoring)
 - [Troubleshooting](#troubleshooting)
 - [Known Limitations](#known-limitations)
 - [Frequently Asked Questions](#frequently-asked-questions)
@@ -669,33 +668,24 @@ Hook jobs have `ttlSecondsAfterFinished: 3600` set, so Kubernetes will automatic
 kubectl delete jobs -n boundary -l app.kubernetes.io/instance=boundary-controller
 ```
 
-## Monitoring and Observability
+## Monitoring
 
-### Health and Metrics Endpoints
+### Health
 
-The ops listener (port 9203) on the cluster Service exposes health endpoints used by Kubernetes probes:
-
-- **Health Check**: `GET /health` - Returns controller health status
-- **Liveness Probe**: Configured to check `/health` on the ops port
-- **Readiness Probe**: Configured to check `/health` on the ops port
-
-**Note**: Boundary does not currently expose Prometheus metrics by default. The `/metrics` endpoint availability depends on your Boundary version and configuration.
-
-### Accessing Health Endpoints
-
-The ops listener is exposed on the internal cluster Service (ClusterIP):
+The ops listener (port 9203) on the internal cluster Service (`ClusterIP`) exposes the `/health` endpoint used by the Kubernetes liveness and readiness probes. It is not reachable externally. Use `kubectl port-forward` to access it manually:
 
 ```bash
-# Port-forward to access health endpoint
 kubectl port-forward -n boundary svc/boundary-cluster 9203:9203
-
-# Check health status
 curl -k https://localhost:9203/health
 ```
 
-### Prometheus Integration (if metrics are enabled)
+See [Monitor health](https://developer.hashicorp.com/boundary/docs/monitor/health) for the full response schema and shutdown grace period configuration.
 
-If your Boundary version supports metrics, create a ServiceMonitor targeting the cluster Service:
+### Metrics
+
+Boundary controllers expose Prometheus-compatible metrics on the ops listener. See [Monitor metrics](https://developer.hashicorp.com/boundary/docs/monitor/metrics) for the full list of available metrics and labeling conventions, and the [Visualize metrics with Prometheus](https://developer.hashicorp.com/boundary/tutorials/self-managed-deployment/prometheus-metrics) tutorial for an end-to-end setup.
+
+If you use the Prometheus Operator, create a ServiceMonitor targeting the cluster Service:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -717,78 +707,43 @@ spec:
     interval: 30s
 ```
 
-**Note**: The selector must match the cluster Service labels. The chart uses `app.kubernetes.io/name: boundary` (from Chart.yaml).
+### Event Logging
 
-### Logging Best Practices
-
-**Structured Logging:**
-
-Configure Boundary to output structured logs (JSON format) in your `controller.config`:
+Boundary uses a structured [CloudEvents](https://cloudevents.io)-based event system for observability, auditing, and error reporting. This replaces traditional log levels. Configure event sinks in the `events` block of `controller.config`:
 
 ```hcl
-controller {
-  name        = "boundary-controller"
-  description = "Boundary Controller running in Kubernetes"
-  log_level   = "info"
-  log_format  = "json"
-  # ... rest of config
+events {
+  audit_enabled        = true
+  observations_enabled = true
+  sysevents_enabled    = true
+
+  sink "stderr" {
+    name        = "all-events"
+    description = "All events to stderr"
+    event_types = ["*"]
+    format      = "cloudevents-json"
+  }
+
+  sink "file" {
+    name        = "audit-sink"
+    description = "Audit events to file"
+    event_types = ["audit"]
+    format      = "cloudevents-json"
+    file {
+      path      = "/var/log/boundary"
+      file_name = "audit.log"
+    }
+  }
 }
 ```
 
-**Log Aggregation:**
+For full sink configuration options and event filtering, see the official docs:
 
-Use a log aggregation solution to collect logs from all replicas:
-
-- **Kubernetes native**: Use `kubectl logs` with label selectors
-- **ELK Stack**: Filebeat → Elasticsearch → Kibana
-- **Loki**: Promtail → Loki → Grafana
-- **Cloud solutions**: CloudWatch Logs, Stackdriver, Azure Monitor
-
-**Example log queries:**
-
-```bash
-# View logs from all controller pods
-kubectl logs -n boundary -l app.kubernetes.io/name=boundary,app.kubernetes.io/component=controller --tail=100 -f
-
-# View logs from a specific pod
-kubectl logs -n boundary deployment/boundary --tail=100 -f
-
-# View logs from all containers in the deployment
-kubectl logs -n boundary deployment/boundary --all-containers=true --tail=100
-```
-
-### Monitoring Recommendations
-
-**Pod-Level Monitoring:**
-
-1. **Pod Availability**: Monitor that available replicas match desired replicas
-   ```bash
-   kubectl get deployment boundary -n boundary
-   ```
-
-2. **Pod Resource Usage**: Track CPU and memory utilization
-   ```bash
-   kubectl top pods -n boundary -l app.kubernetes.io/name=boundary
-   ```
-
-3. **Pod Restarts**: Alert on frequent pod restarts
-   ```bash
-   kubectl get pods -n boundary -l app.kubernetes.io/name=boundary
-   ```
-
-**Application-Level Monitoring:**
-
-1. **Health Endpoint**: Monitor `/health` endpoint availability on the ops listener
-2. **Database Connectivity**: Check controller logs for database connection errors
-3. **KMS Access**: Monitor logs for KMS authentication failures
-4. **Certificate Expiration**: Alert 30 days before TLS cert expiry
-
-**Kubernetes Events:**
-
-Monitor Kubernetes events for issues:
-```bash
-kubectl get events -n boundary --sort-by='.lastTimestamp' --field-selector involvedObject.kind=Pod
-```
+- [Filter events](https://developer.hashicorp.com/boundary/docs/monitor/events/filter-events)
+- [Common sink parameters](https://developer.hashicorp.com/boundary/docs/monitor/events/common)
+- [File sink](https://developer.hashicorp.com/boundary/docs/monitor/events/file)
+- [Stderr sink](https://developer.hashicorp.com/boundary/docs/monitor/events/stderr)
+- [Event filtering tutorial](https://developer.hashicorp.com/boundary/tutorials/self-managed-deployment/event-logging)
 
 ### Alerting Recommendations
 
@@ -796,45 +751,12 @@ Set up alerts for:
 
 1. **Pod Availability**: Alert if available replicas < desired replicas
 2. **Pod Restarts**: Alert on pods restarting more than 3 times in 10 minutes
-3. **Database Connectivity**: Alert on database connection failures in logs
-4. **KMS Access Issues**: Alert on KMS authentication failures in logs
+3. **Database Connectivity**: Alert on database connection failures in event logs
+4. **KMS Access Issues**: Alert on KMS authentication failures in event logs
 5. **Resource Exhaustion**: Alert on high CPU/memory usage (>80% of limits)
 6. **Certificate Expiration**: Alert 30 days before TLS cert expiry
 7. **Failed Hook Jobs**: Alert if database init or migration jobs fail
 
-## Backup and Disaster Recovery
-
-### What to Back Up
-
-**Critical Components:**
-
-1. **PostgreSQL Database**: Contains all Boundary state (users, targets, sessions, etc.)
-2. **KMS Keys**: Root, recovery, and worker-auth keys (managed by your KMS provider)
-3. **Kubernetes Secrets**: Database credentials, license, admin credentials
-4. **Controller Configuration**: The `controller.config` HCL (stored in your values file)
-5. **TLS Certificates**: If not using automated certificate management
-
-**Not Required:**
-- Controller pods (stateless, recreated from chart)
-- ConfigMaps (generated from values file)
-
-### PostgreSQL Backup Strategies
-
-**Automated Backups:**
-
-```bash
-# Using pg_dump for logical backup
-kubectl exec -n boundary deployment/postgres -- \
-  pg_dump -U boundary boundary > boundary-backup-$(date +%Y%m%d).sql
-
-# Using pg_basebackup for physical backup
-kubectl exec -n boundary deployment/postgres -- \
-  pg_basebackup -D /backup -F tar -z -P
-```
-
-**Continuous Archiving:**
-- Enable PostgreSQL WAL archiving for point-in-time recovery
-- Use cloud-native backup solutions (AWS RDS automated backups, GCP Cloud SQL backups, Azure Database for PostgreSQL backups)
 ## Frequently Asked Questions
 
 ### Why doesn't the chart integrate with cert-manager?
