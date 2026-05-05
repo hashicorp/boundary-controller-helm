@@ -3,7 +3,7 @@ name: boundary-controller
 description: A Helm chart for HashiCorp Boundary controller deployment
 type: application
 version: 0.1.0
-appVersion: "0.19.0"
+appVersion: "0.20.0"
 keywords:
   - boundary
   - hashicorp

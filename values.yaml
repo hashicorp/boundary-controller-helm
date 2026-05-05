@@ -7,7 +7,7 @@ fullnameOverride: ""
 # Boundary image configuration
 image:
   repository: hashicorp/boundary-enterprise
-  tag: "0.19-ent"
+  tag: "0.20-ent"
   pullPolicy: IfNotPresent
 
 # Image pull secrets
@@ -116,10 +116,10 @@ controller:
     }
 
     events {
-      audit_enabled = false
+      audit_enabled = true
       observations_enabled = true
       sysevents_enabled = true
-      telemetry_enabled = false
+      telemetry_enabled = true
       sink "stderr" {
         name = "default"
         event_types = ["*"]
