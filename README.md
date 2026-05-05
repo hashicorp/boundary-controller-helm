@@ -29,10 +29,12 @@ The chart does not manage worker resources, Boundary scopes, HCP Boundary connec
 - [High Availability](#high-availability)
 - [Configuration Reference](#configuration-reference)
 - [Operations](#operations)
+  - [Upgrading](#upgrading)
+  - [Rollback](#rollback)
+  - [Uninstall](#uninstall)
 - [Monitoring and Observability](#monitoring-and-observability)
 - [Backup and Disaster Recovery](#backup-and-disaster-recovery)
 - [Troubleshooting](#troubleshooting)
-- [Repository Layout](#repository-layout)
 - [Known Limitations](#known-limitations)
 - [Frequently Asked Questions](#frequently-asked-questions)
 - [Contributing](#contributing)
@@ -188,7 +190,7 @@ helm install boundary-controller . \
 kubectl get pods -n boundary
 kubectl get svc -n boundary
 kubectl get jobs -n boundary
-kubectl logs -n boundary deployment/boundary
+kubectl logs deployment/boundary -n boundary
 ```
 
 Confirm that:
@@ -576,14 +578,6 @@ Before upgrading the chart or Boundary version:
 6. **Verify KMS access**: Ensure KMS keys are accessible and permissions are current
 7. **Check resource capacity**: Ensure cluster has capacity for rolling update surge
 
-#### Upgrade with a new image tag
-
-```bash
-helm upgrade boundary-controller . \
-  --namespace boundary \
-  --reuse-values \
-  --set image.tag=0.19.1-ent
-```
 
 #### Upgrade with a new values file
 
@@ -599,20 +593,11 @@ helm upgrade boundary-controller . \
   -f my-values.yaml
 ```
 
-#### Re-run bootstrap admin
-
-By default the bootstrap admin job runs only on install. To re-run it on a specific upgrade — for example when rotating admin credentials — pass `--set` on the upgrade command. Do not add this to your values file; it is a one-time flag:
-
-```bash
-helm upgrade boundary-controller . \
-  --namespace boundary \
-  -f my-values.yaml \
-  --set controller.bootstrapAdmin.runOnUpgrade=true
-```
-
 #### Upgrade with database migration
 
 `boundary database migrate` uses PostgreSQL advisory locks to get exclusive access during schema changes. It cannot acquire that lock while active controllers are still connected to the database and heartbeating. Scale the Deployment to zero replicas first, then run the migration upgrade.
+
+> **Back up the database before running a migration.** Migrations are not automatically reversed on Helm rollback. If a migration fails or produces unexpected results, restoring from backup is the recovery path.
 
 **Step 1 — scale controllers to zero:**
 
@@ -634,15 +619,6 @@ helm upgrade boundary-controller . \
   --set controller.database.migrate.enabled=true
 ```
 
-#### Handling Breaking Changes
-
-When release notes indicate breaking changes:
-
-1. **Configuration changes**: Update `controller.config` in your values file
-2. **Secret key changes**: Update Secret keys if the chart changes expected key names
-3. **API changes**: Update client applications if Boundary API changes
-4. **KMS changes**: Verify KMS configuration remains compatible
-
 #### Post-Upgrade Verification
 
 After upgrading:
@@ -656,9 +632,6 @@ kubectl rollout status deployment/boundary -n boundary
 
 # Check controller logs for errors
 kubectl logs -n boundary deployment/boundary --tail=100
-
-# Verify API connectivity
-curl -k https://<EXTERNAL_IP>:9200/v1/health
 
 # Check hook job completion
 kubectl get jobs -n boundary
@@ -1334,39 +1307,6 @@ kubectl get events -n boundary --sort-by='.lastTimestamp'
 2. Check Boundary documentation: https://developer.hashicorp.com/boundary/docs
 3. Review chart issues: (link to your repository issues)
 4. Contact HashiCorp support (for Enterprise customers)
-
-## Repository Layout
-
-```text
-.
-├── Chart.yaml
-├── README.md
-├── values.yaml
-└── templates/
-    ├── _helpers.tpl
-    ├── NOTES.txt
-    ├── bootstrap-admin-job.yaml
-    ├── configmap.yaml
-    ├── db-init-job.yaml
-    ├── db-migrate-job.yaml
-    ├── deployment.yaml
-    ├── pdb.yaml
-    ├── service.yaml
-    └── serviceaccount.yaml
-```
-
-Key files:
-
-- `values.yaml`: default chart values
-- `templates/deployment.yaml`: multi-replica controller Deployment
-- `templates/service.yaml`: API (LoadBalancer) and cluster/ops (ClusterIP) Services
-- `templates/configmap.yaml`: mounted controller HCL configuration
-- `templates/db-init-job.yaml`: pre-install database initialization hook
-- `templates/db-migrate-job.yaml`: pre-upgrade database migration hook
-- `templates/bootstrap-admin-job.yaml`: post-install admin bootstrap hook
-- `templates/pdb.yaml`: PodDisruptionBudget
-- `templates/serviceaccount.yaml`: optional ServiceAccount
-- `templates/_helpers.tpl`: shared template helpers and validation functions
 
 ## Known Limitations
 
