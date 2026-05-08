@@ -1,8 +1,9 @@
 name: Lint Pipeline
-
 on:
-  push:
+  pull_request:
     branches: [main, yash/ci-cd, controller-helm-0.1.0-version]
+  push:
+    branches: [yash/ci-cd]
 
 permissions:
   contents: read
