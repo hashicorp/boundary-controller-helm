@@ -114,14 +114,17 @@ setup-helm-unittest:
 
 setup-helm:
 	@echo "Installing Helm..."
-	@curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+	@curl -fsSL -o /tmp/get-helm-3.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+	@chmod +x /tmp/get-helm-3.sh
+	@/tmp/get-helm-3.sh
 	@helm version
 	@echo "✅ Helm installed"
 
 setup-kubeconform:
 	@echo "Installing Kubeconform..."
-	@curl -L https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
-	@sudo mv kubeconform /usr/local/bin/
+	@curl -fsSL -o /tmp/kubeconform.tar.gz https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+	@tar -xzf /tmp/kubeconform.tar.gz -C /tmp
+	@sudo mv /tmp/kubeconform /usr/local/bin/
 	@kubeconform -v
 	@echo "✅ Kubeconform installed"
 
@@ -131,13 +134,15 @@ setup-trivy:
 	@wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
 	@echo "deb https://aquasecurity.github.io/trivy-repo/deb $$(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
 	@sudo apt-get update
-	sudo apt-get install -y trivy
+	@sudo apt-get install -y trivy
 	@trivy --version
 	@echo "✅ Trivy installed"
 
 setup-kubescape:
 	@echo "Installing Kubescape..."
-	@curl -s https://raw.githubusercontent.com/kubescape/kubescape/master/install.sh | /bin/bash
+	@curl -fsSL -o /tmp/kubescape-install.sh https://raw.githubusercontent.com/kubescape/kubescape/master/install.sh
+	@chmod +x /tmp/kubescape-install.sh
+	@/tmp/kubescape-install.sh
 	@export PATH=$$PATH:$$HOME/.kubescape/bin && \
 		sudo cp $$HOME/.kubescape/bin/kubescape /usr/local/bin/ && \
 		kubescape version
@@ -204,7 +209,11 @@ kubescape-scan:
 		--format json \
 		--output kubescape-output.json \
 		--exceptions ./kubescape-exceptions.json \
-		--verbose || true
+		--verbose; KUBESCAPE_EXIT=$$?; \
+	if [ $$KUBESCAPE_EXIT -ne 0 ] && [ ! -f kubescape-output.json ]; then \
+		echo "❌ Kubescape failed to run (exit code: $$KUBESCAPE_EXIT)"; \
+		exit $$KUBESCAPE_EXIT; \
+	fi
 	@echo ""
 	@echo "================================"
 	@echo "Kubescape Scan Results"
