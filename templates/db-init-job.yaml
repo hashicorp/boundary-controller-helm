@@ -13,9 +13,9 @@ metadata:
     app.kubernetes.io/component: controller-init
   annotations:
     "helm.sh/hook": pre-install
+    "helm.sh/hook-output-log-policy": hook-failed, hook-succeeded
     "helm.sh/hook-weight": "-10"
     "helm.sh/hook-delete-policy": before-hook-creation
-    # "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   backoffLimit: 3
   ttlSecondsAfterFinished: 3600
@@ -47,6 +47,13 @@ spec:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
                   key: {{ .Values.controller.secretRefs.keys.databaseUrl }}
+            {{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" }}
+            - name: BOUNDARY_PG_MIGRATION_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.migrationUrl }}
+            {{- end }}
             - name: BOUNDARY_LICENSE
               valueFrom:
                 secretKeyRef:
@@ -93,7 +100,7 @@ spec:
             - name: config
               mountPath: /etc/boundary
               readOnly: true
-            {{- if .Values.tls.enabled  }}
+            {{- if not .Values.tls.disabled  }}
             - name: tls-certs
               mountPath: {{ .Values.tls.mountPath }}
               readOnly: true
@@ -106,7 +113,7 @@ spec:
         - name: config
           configMap:
             name: {{ include "boundary.controller.configMapName" . }}
-        {{- if .Values.tls.enabled }}
+        {{- if not .Values.tls.disabled }}
         - name: tls-certs
           secret:
             secretName: {{ .Values.tls.secretName }}

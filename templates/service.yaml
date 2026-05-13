@@ -5,15 +5,15 @@ metadata:
   labels:
     {{- include "boundary.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller
-  {{- with .Values.controller.service.annotations }}
+  {{- with .Values.controller.service.api.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  type: {{ .Values.controller.service.type }}
+  type: {{ .Values.controller.service.api.type }}
   ports:
-    - port: {{ .Values.controller.service.port }}
-      targetPort: {{ .Values.controller.service.targetPort }}
+    - port: {{ .Values.controller.service.api.port }}
+      targetPort: {{ .Values.controller.service.api.targetPort }}
       protocol: TCP
       name: api
   selector:
@@ -27,15 +27,37 @@ metadata:
   labels:
     {{- include "boundary.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller
+  {{- with .Values.controller.service.cluster.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
-  type: {{ .Values.controller.service.clusterType }}
+  type: {{ .Values.controller.service.cluster.type }}
   ports:
-    - port: {{ .Values.controller.service.clusterPort }}
-      targetPort: {{ .Values.controller.service.clusterTargetPort }}
+    - port: {{ .Values.controller.service.cluster.port }}
+      targetPort: {{ .Values.controller.service.cluster.targetPort }}
       protocol: TCP
       name: cluster
-    - port: {{ .Values.controller.service.opsPort }}
-      targetPort: {{ .Values.controller.service.opsTargetPort }}
+  selector:
+    {{- include "boundary.controller.selectorLabels" . | nindent 4 }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "boundary.controller.opsServiceName" . }}
+  labels:
+    {{- include "boundary.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+  {{- with .Values.controller.service.ops.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.controller.service.ops.type }}
+  ports:
+    - port: {{ .Values.controller.service.ops.port }}
+      targetPort: {{ .Values.controller.service.ops.targetPort }}
       protocol: TCP
       name: ops
   selector:

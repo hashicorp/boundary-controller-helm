@@ -1,5 +1,6 @@
 {{- include "boundary.controller.validateSecretRefs" . -}}
 {{- include "boundary.controller.validateConfig" . -}}
+{{- include "boundary.controller.validateDatabaseJobs" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -53,6 +54,13 @@ spec:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
                   key: {{ .Values.controller.secretRefs.keys.databaseUrl }}
+            {{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" }}
+            - name: BOUNDARY_PG_MIGRATION_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.migrationUrl }}
+            {{- end }}
             - name: BOUNDARY_LICENSE
               valueFrom:
                 secretKeyRef:
@@ -80,13 +88,13 @@ spec:
             - "-config=/etc/boundary/controller.hcl"
           ports:
             - name: api
-              containerPort: {{ .Values.controller.service.targetPort }}
+              containerPort: {{ .Values.controller.service.api.targetPort }}
               protocol: TCP
             - name: cluster
-              containerPort: {{ .Values.controller.service.clusterTargetPort }}
+              containerPort: {{ .Values.controller.service.cluster.targetPort }}
               protocol: TCP
             - name: ops
-              containerPort: {{ .Values.controller.service.opsTargetPort }}
+              containerPort: {{ .Values.controller.service.ops.targetPort }}
               protocol: TCP
           livenessProbe:
             httpGet:
@@ -112,7 +120,7 @@ spec:
             - name: config
               mountPath: /etc/boundary
               readOnly: true
-            {{- if .Values.tls.enabled }}
+            {{- if not .Values.tls.disabled }}
             - name: tls-certs
               mountPath: {{ .Values.tls.mountPath }}
               readOnly: true
@@ -125,7 +133,7 @@ spec:
         - name: config
           configMap:
             name: {{ include "boundary.controller.configMapName" . }}
-        {{- if .Values.tls.enabled }}
+        {{- if not .Values.tls.disabled }}
         - name: tls-certs
           secret:
             secretName: {{ .Values.tls.secretName }}

@@ -73,6 +73,13 @@ Get the controller cluster service name
 {{- end }}
 
 {{/*
+Get the controller ops service name
+*/}}
+{{- define "boundary.controller.opsServiceName" -}}
+{{- printf "%s-ops" (include "boundary.name" .) }}
+{{- end }}
+
+{{/*
 Get the controller configmap name
 */}}
 {{- define "boundary.controller.configMapName" -}}
@@ -115,6 +122,26 @@ false
 {{- end }}
 
 {{/*
+Returns true when controller config uses env://BOUNDARY_PG_MIGRATION_URL.
+Commented lines are ignored.
+*/}}
+{{- define "boundary.controller.usesEnvMigrationUrl" -}}
+{{- $configNoComments := regexReplaceAll "(?m)^\\s*#.*$" .Values.controller.config "" -}}
+{{- if regexMatch "migration_url\\s*=\\s*\"env://BOUNDARY_PG_MIGRATION_URL\"" $configNoComments -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{/*
+Validate migration and repair job settings.
+*/}}
+{{- define "boundary.controller.validateDatabaseJobs" -}}
+{{- /* No-op: repair trigger is inferred from migrate.enabled + non-empty repair.version. */ -}}
+{{- end }}
+
+{{/*
 Validate manual Secret existence and required keys.
 Runs only when controller.secretRefs.validateExisting=true.
 */}}
@@ -130,6 +157,9 @@ Runs only when controller.secretRefs.validateExisting=true.
 {{- end }}
 {{- $data := default dict (get $secret "data") -}}
 {{- $requiredKeys := list .Values.controller.secretRefs.keys.databaseUrl .Values.controller.secretRefs.keys.license -}}
+{{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" -}}
+{{- $requiredKeys = append $requiredKeys .Values.controller.secretRefs.keys.migrationUrl -}}
+{{- end -}}
 {{- if .Values.controller.bootstrapAdmin.enabled -}}
 {{- $requiredKeys = append $requiredKeys .Values.controller.secretRefs.keys.adminUsername -}}
 {{- $requiredKeys = append $requiredKeys .Values.controller.secretRefs.keys.adminPassword -}}
@@ -159,14 +189,14 @@ Validate controller config patterns that Boundary cannot resolve safely at runti
 {{- if regexMatch "key\\s*=\\s*\"env://BOUNDARY_KMS_(ROOT|WORKER_AUTH|RECOVERY)\"" $configNoComments }}
 {{- fail "controller.config uses env://BOUNDARY_KMS_* inside AEAD kms blocks. Boundary AEAD keys do not support env:// indirection. Use an external KMS stanza (recommended for production) or inline AEAD keys only for dev/testing." }}
 {{- end }}
-{{- if .Values.tls.enabled }}
+{{- if not .Values.tls.disabled }}
 {{- $expectedCert := printf "tls_cert_file = \"%s/tls.crt\"" .Values.tls.mountPath -}}
 {{- $expectedKey := printf "tls_key_file  = \"%s/tls.key\"" .Values.tls.mountPath -}}
 {{- if not (contains $expectedCert $configNoComments) }}
-{{- fail (printf "tls.enabled=true but controller.config is missing expected cert path %q. Keep listener tls_cert_file aligned with tls.mountPath." (printf "%s/tls.crt" .Values.tls.mountPath)) }}
+{{- fail (printf "tls.disabled=false but controller.config is missing expected cert path %q. Keep listener tls_cert_file aligned with tls.mountPath." (printf "%s/tls.crt" .Values.tls.mountPath)) }}
 {{- end }}
 {{- if not (contains $expectedKey $configNoComments) }}
-{{- fail (printf "tls.enabled=true but controller.config is missing expected key path %q. Keep listener tls_key_file aligned with tls.mountPath." (printf "%s/tls.key" .Values.tls.mountPath)) }}
+{{- fail (printf "tls.disabled=false but controller.config is missing expected key path %q. Keep listener tls_key_file aligned with tls.mountPath." (printf "%s/tls.key" .Values.tls.mountPath)) }}
 {{- end }}
 {{- end }}
 {{- end }}

@@ -66,7 +66,7 @@ Ensure the following exist before installing:
 - **Kubernetes Secret** in the release namespace containing the database URL credentials and Boundary Enterprise license (add admin credentials when `controller.bootstrapAdmin.enabled=true`). Create it manually or sync it using the [Vault Secrets Operator](https://developer.hashicorp.com/vault/docs/platform/k8s/vso) or the [External Secrets Operator](https://external-secrets.io).
 - **PostgreSQL database** reachable from the cluster, with a user that has permission to create tables.
 - **KMS provider** — choose one: Vault Transit (`transit` stanza, requires Vault 1.11+), AWS KMS (`awskms`), GCP Cloud KMS (`gcpckms`), or Azure Key Vault (`azurekeyvault`). Cloud KMS providers require IAM/RBAC permissions granting the controller access to the key.
-- **Kubernetes TLS Secret** containing `tls.crt` and `tls.key` when `tls.enabled=true` (the default).
+- **Kubernetes TLS Secret** containing `tls.crt` and `tls.key` when `tls.disabled=false` (the default).
 
 For multi-replica deployments, `public_cluster_addr` must be set in `controller.config` so workers can reach each replica.
 
@@ -96,12 +96,13 @@ Use this flow when you want to deploy a Boundary controller with this chart.
 
 ### 1. Create the Kubernetes Secret
 
-Create the Secret that the chart reads sensitive values from. At minimum it must contain the database credentials and enterprise license. Add admin credentials when `controller.bootstrapAdmin.enabled=true` (the default).
+Create the Secret that the chart reads sensitive values from. At minimum it must contain the database credentials, migration database credentials (if using `env://BOUNDARY_PG_MIGRATION_URL` in `controller.config`), and enterprise license. Add admin credentials when `controller.bootstrapAdmin.enabled=true` (the default).
 
 ```bash
 kubectl create secret generic boundary-controller-secrets \
   --namespace boundary \
   --from-literal=database-url="postgres://boundary:password@postgres:5432/boundary?sslmode=require" \
+  --from-literal=migration-url="postgres://boundary-migrator:password@postgres:5432/boundary?sslmode=require" \
   --from-literal=license="<boundary-enterprise-license>" \
   --from-literal=admin-username="admin" \
   --from-literal=admin-password="<secure-password>"
@@ -130,7 +131,7 @@ Check `values.yaml` before installing, especially:
 - `controller.secretRefs.secretName`
 - `controller.bootstrapAdmin.enabled`
 - `tls.secretName` and `tls.mountPath`
-- `controller.service.type` and `controller.service.annotations`
+- `controller.service.api`, `controller.service.cluster`, and `controller.service.ops`
 - `serviceAccount.create` and `serviceAccount.name`
 - `controller.resources`
 
@@ -146,9 +147,16 @@ controller:
     secretName: "boundary-controller-secrets"
 
   service:
-    annotations:
-      service.beta.kubernetes.io/aws-load-balancer-type: "nlb-ip"
-      service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+    api:
+      annotations:
+        service.beta.kubernetes.io/aws-load-balancer-type: "nlb-ip"
+        service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+    cluster:
+      type: LoadBalancer
+      annotations:
+        service.beta.kubernetes.io/aws-load-balancer-type: "external"
+        service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+        service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
 
 serviceAccount:
   create: true
@@ -215,7 +223,7 @@ The actual controller behavior is defined by `controller.config`, which is suppl
 Important characteristics:
 
 - The chart renders `controller.config` through Helm's `tpl` function, so Helm template expressions inside the HCL are evaluated.
-- The chart validates that `tls_cert_file` and `tls_key_file` paths are aligned with `tls.mountPath` when `tls.enabled=true`.
+- The chart validates that `tls_cert_file` and `tls_key_file` paths are aligned with `tls.mountPath` when `tls.disabled=false`.
 - The chart validates that AEAD `env://` key indirection is not used inside `kms` blocks (Boundary does not support this).
 - The operator is responsible for keeping listener ports, KMS stanzas, and cluster addresses aligned with the Kubernetes resources.
 
@@ -347,13 +355,13 @@ The chart validates that `controller.config` references `tls.mountPath` for both
 
 To disable TLS:
 
-1. Set `tls.enabled=false`
+1. Set `tls.disabled=true`
 2. Update `controller.config` to set `tls_disable = true` on each listener
 3. Update liveness and readiness probe schemes to `HTTP`:
 
 ```yaml
 tls:
-  enabled: false
+  disabled: true
 
 controller:
   livenessProbe:
@@ -430,7 +438,7 @@ The table below documents all chart values shipped in `values.yaml`.
 | `imagePullSecrets` | `[]` | Optional registry credentials for private image pulls. |
 | `nameOverride` | `""` | Override the chart name used in resource naming. |
 | `fullnameOverride` | `""` | Override the full release name used in resource naming. |
-| `tls.enabled` | `true` | Mount TLS certs into controller pods and hook jobs, and enforce TLS path validation. |
+| `tls.disabled` | `false` | Disable TLS cert mounts and related validation when set to `true`. |
 | `tls.secretName` | `boundary-controller-tls` | Name of the Kubernetes TLS Secret containing `tls.crt` and `tls.key`. |
 | `tls.mountPath` | `/etc/boundary/tls` | Mount path for TLS certs inside containers. Must match paths in `controller.config`. |
 | `controller.replicas` | `2` | Number of controller replicas. |
@@ -440,6 +448,7 @@ The table below documents all chart values shipped in `values.yaml`.
 | `controller.secretRefs.secretName` | `boundary-controller-secrets` | Name of the Kubernetes Secret containing sensitive values. Must exist before install. |
 | `controller.secretRefs.validateExisting` | `true` | When true, Helm validates that the Secret exists and contains all required keys at render time. Set to `false` for offline `helm template` runs. |
 | `controller.secretRefs.keys.databaseUrl` | `database-url` | Key in the Secret for the PostgreSQL connection string. |
+| `controller.secretRefs.keys.migrationUrl` | `migration-url` | Key in the Secret for the migration PostgreSQL connection string, used when `controller.config` sets `database.migration_url = "env://BOUNDARY_PG_MIGRATION_URL"`. |
 | `controller.secretRefs.keys.license` | `license` | Key in the Secret for the Boundary Enterprise license. |
 | `controller.secretRefs.keys.adminUsername` | `admin-username` | Key in the Secret for the bootstrap admin login name. Required when `bootstrapAdmin.enabled=true`. |
 | `controller.secretRefs.keys.adminPassword` | `admin-password` | Key in the Secret for the bootstrap admin password. Required when `bootstrapAdmin.enabled=true`. |
@@ -454,6 +463,7 @@ The table below documents all chart values shipped in `values.yaml`.
 | `controller.bootstrapAdmin.accountResourceName` | `bootstrap-admin` | Display name for the Boundary account resource created by the bootstrap job. |
 | `controller.bootstrapAdmin.roleName` | `bootstrap-global-admin` | Display name for the global admin role created by the bootstrap job. |
 | `controller.database.migrate.enabled` | `false` | Run `boundary database migrate` as a `pre-upgrade` hook job. Pass via `--set` on the upgrade command rather than setting in your values file. |
+| `controller.database.repair.version` | `""` | Migration version id passed to `-repair`. When non-empty and `controller.database.migrate.enabled=true`, a repair job runs first, then migrate. |
 | `controller.livenessProbe.scheme` | `HTTPS` | HTTP scheme for liveness probe requests to the ops listener. |
 | `controller.livenessProbe.initialDelaySeconds` | `60` | Seconds before the first liveness probe. |
 | `controller.livenessProbe.periodSeconds` | `10` | Liveness probe interval in seconds. |
@@ -468,15 +478,18 @@ The table below documents all chart values shipped in `values.yaml`.
 | `controller.resources.requests.memory` | `512Mi` | Memory request for the controller container. |
 | `controller.resources.limits.cpu` | `500m` | CPU limit for the controller container. |
 | `controller.resources.limits.memory` | `1Gi` | Memory limit for the controller container. |
-| `controller.service.type` | `LoadBalancer` | Service type for the API listener. |
-| `controller.service.port` | `9200` | Service port for the API listener. |
-| `controller.service.targetPort` | `9200` | Container port targeted by the API Service. |
-| `controller.service.clusterType` | `ClusterIP` | Service type for the cluster and ops listeners. |
-| `controller.service.clusterPort` | `9201` | Service port for the cluster listener. |
-| `controller.service.clusterTargetPort` | `9201` | Container port targeted by the cluster Service. |
-| `controller.service.opsPort` | `9203` | Service port for the ops listener. |
-| `controller.service.opsTargetPort` | `9203` | Container port targeted by the ops Service port. |
-| `controller.service.annotations` | `{}` | Annotations applied to the API Service. Use for cloud load balancer configuration. |
+| `controller.service.api.type` | `LoadBalancer` | Service type for the API listener. |
+| `controller.service.api.port` | `9200` | Service port for the API listener. |
+| `controller.service.api.targetPort` | `9200` | Container port targeted by the API Service. |
+| `controller.service.api.annotations` | `{}` | Annotations applied to the API Service. Use for cloud load balancer configuration. |
+| `controller.service.cluster.type` | `LoadBalancer` | Service type for the cluster listener. |
+| `controller.service.cluster.port` | `9201` | Service port for the cluster listener. |
+| `controller.service.cluster.targetPort` | `9201` | Container port targeted by the cluster Service. |
+| `controller.service.cluster.annotations` | `{}` | Annotations applied to the cluster Service (9201), typically used for NLB internal or external mode. |
+| `controller.service.ops.type` | `ClusterIP` | Service type for the ops listener. |
+| `controller.service.ops.port` | `9203` | Service port for the ops listener. |
+| `controller.service.ops.targetPort` | `9203` | Container port targeted by the ops Service. |
+| `controller.service.ops.annotations` | `{}` | Annotations applied to the ops Service. |
 | `podSecurityContext` | secure non-root defaults | Pod-level security context applied to controller pods and hook job pods. |
 | `containerSecurityContext` | secure non-root defaults | Container-level security context with dropped Linux capabilities. |
 | `podAnnotations` | `{}` | Extra annotations added to controller pods. |
@@ -565,6 +578,38 @@ helm upgrade boundary-controller . \
   -f my-values.yaml \
   --set controller.database.migrate.enabled=true
 ```
+
+If the migration user differs from the runtime database user, set `migration_url` in `controller.config` under the `database` block. The chart does not pass `-migration-url`; Boundary will use the configured value automatically.
+
+```bash
+controller {
+  database {
+    url           = "env://BOUNDARY_PG_URL"
+    migration_url = "env://BOUNDARY_PG_MIGRATION_URL"
+  }
+}
+```
+
+When using `env://BOUNDARY_PG_MIGRATION_URL`, ensure the Secret contains the key configured by `controller.secretRefs.keys.migrationUrl` (default `migration-url`).
+
+#### Upgrade with migration repair
+
+Use repair only after reviewing Boundary migration failure output and identifying the failed version id. This chart runs repair as a separate `pre-upgrade` hook job.
+
+```bash
+helm upgrade boundary-controller . \
+  --namespace boundary \
+  -f my-values.yaml \
+  --set controller.database.migrate.enabled=true \
+  --set controller.database.repair.version=20240111120000
+```
+
+Notes:
+
+- Repair runs only when both conditions are true: `controller.database.migrate.enabled=true` and `controller.database.repair.version` is non-empty.
+- If `controller.database.repair.version` is set but `controller.database.migrate.enabled=false`, no repair job runs.
+- Keep `controller.database.repair.version` as a one-time value, similar to migrate flags.
+- When both run, Helm runs repair first (hook weight `-10`) and migrate second (hook weight `-5`).
 
 #### Post-Upgrade Verification
 

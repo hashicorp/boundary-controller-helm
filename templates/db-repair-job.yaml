@@ -1,21 +1,18 @@
-{{- if .Values.controller.database.migrate.enabled }}
+{{- if and .Values.controller.database.migrate.enabled (ne (printf "%v" (default "" .Values.controller.database.repair.version) | trim) "") }}
 {{- include "boundary.controller.validateSecretRefs" . -}}
 {{- include "boundary.controller.validateConfig" . -}}
 {{- include "boundary.controller.validateDatabaseJobs" . -}}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "boundary.controller.serviceName" . }}-database-migration
-  {{- if .Values.namespace }}
-  namespace: {{ .Values.namespace }}
-  {{- end }}
+  name: {{ include "boundary.controller.serviceName" . }}-database-repair
   labels:
     {{- include "boundary.labels" . | nindent 4 }}
-    app.kubernetes.io/component: controller-migrate
+    app.kubernetes.io/component: controller-repair
   annotations:
     "helm.sh/hook": pre-upgrade
     "helm.sh/hook-output-log-policy": hook-failed, hook-succeeded
-    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-weight": "-10"
     "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   backoffLimit: 3
@@ -24,7 +21,7 @@ spec:
     metadata:
       labels:
         {{- include "boundary.labels" . | nindent 8 }}
-        app.kubernetes.io/component: controller-migrate
+        app.kubernetes.io/component: controller-repair
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -35,7 +32,7 @@ spec:
       serviceAccountName: {{ include "boundary.controller.serviceAccountName" . }}
       restartPolicy: OnFailure
       containers:
-        - name: migrate-db
+        - name: repair-db
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
@@ -83,8 +80,8 @@ spec:
             - "migrate"
             - "-config"
             - "/etc/boundary/controller.hcl"
-          resources:
-            {{- toYaml .Values.controller.database.resources | nindent 12 }}
+            - "-repair"
+            - {{ .Values.controller.database.repair.version | quote }}
           volumeMounts:
             - name: config
               mountPath: /etc/boundary
@@ -94,10 +91,6 @@ spec:
               mountPath: {{ .Values.tls.mountPath }}
               readOnly: true
             {{- end }}
-            - name: tmp
-              mountPath: /tmp
-            - name: boundary-data
-              mountPath: /boundary
       volumes:
         - name: config
           configMap:
@@ -107,8 +100,4 @@ spec:
           secret:
             secretName: {{ .Values.tls.secretName }}
         {{- end }}
-        - name: tmp
-          emptyDir: {}
-        - name: boundary-data
-          emptyDir: {}
 {{- end }}

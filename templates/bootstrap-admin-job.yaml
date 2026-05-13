@@ -42,8 +42,8 @@ spec:
             - name: SKIP_SETCAP
               value: "1"
             - name: BOUNDARY_ADDR
-              value: "{{ if .Values.tls.enabled }}https{{ else }}http{{ end }}://{{ include "boundary.controller.serviceName" . }}:{{ .Values.controller.service.port }}"
-            {{- if .Values.tls.enabled }}
+              value: "{{ if not .Values.tls.disabled }}https{{ else }}http{{ end }}://{{ include "boundary.controller.serviceName" . }}:{{ .Values.controller.service.api.port }}"
+            {{- if not .Values.tls.disabled }}
             - name: BOUNDARY_CACERT
               value: "{{ .Values.tls.mountPath }}/tls.crt"
             {{- end }}
@@ -57,6 +57,13 @@ spec:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
                   key: {{ .Values.controller.secretRefs.keys.adminPassword }}
+            {{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" }}
+            - name: BOUNDARY_PG_MIGRATION_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.migrationUrl }}
+            {{- end }}
           command:
             - "sh"
             - "-c"
@@ -64,7 +71,7 @@ spec:
               set -eu
 
               export BOUNDARY_RECOVERY_CONFIG=/etc/boundary/controller.hcl
-              export BOUNDARY_ADDR="{{ if .Values.tls.enabled }}https{{ else }}http{{ end }}://{{ include "boundary.controller.serviceName" . }}:{{ .Values.controller.service.port }}"
+              export BOUNDARY_ADDR="{{ if not .Values.tls.disabled }}https{{ else }}http{{ end }}://{{ include "boundary.controller.serviceName" . }}:{{ .Values.controller.service.api.port }}"
 
               if [ -z "${BOUNDARY_ADMIN_USERNAME}" ] || [ -z "${BOUNDARY_ADMIN_PASSWORD}" ]; then
                 echo "bootstrap admin username/password are required"
@@ -232,7 +239,7 @@ spec:
             - name: config
               mountPath: /etc/boundary
               readOnly: true
-            {{- if .Values.tls.enabled }}
+            {{- if not .Values.tls.disabled }}
             - name: tls-certs
               mountPath: {{ .Values.tls.mountPath }}
               readOnly: true
@@ -245,7 +252,7 @@ spec:
         - name: config
           configMap:
             name: {{ include "boundary.controller.configMapName" . }}
-        {{- if .Values.tls.enabled }}
+        {{- if not .Values.tls.disabled }}
         - name: tls-certs
           secret:
             secretName: {{ .Values.tls.secretName }}
