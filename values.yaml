@@ -137,7 +137,7 @@ controller:
     secretName: "boundary-controller-secrets"  # Name of the Kubernetes Secret to read values from
     # When true templates validate that the Secret exists in the release namespace and contains all configured keys.
     # Keep false for offline rendering (helm template) without cluster access.
-    validateExisting: true
+    validateExisting: false
     keys:
       databaseUrl: "database-url"
       license: "license"
