@@ -1,0 +1,141 @@
+name: Lint Pipeline
+on:
+  pull_request:
+    branches: [main, controller-helm-0.1.0-version]
+  # push:
+  #   branches: []
+
+permissions:
+  contents: read
+
+env:
+  RENDERED_TEMPLATES_RETENTION_DAYS: 1
+  SECURITY_RESULTS_RETENTION_DAYS: 7
+  TEST_IMAGE_TAG: 0.22-ent
+  TEST_CPU_LIMIT: 500m
+  TEST_MEMORY_LIMIT: 2Gi
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Helm
+        run: make setup-helm
+
+      - name: Setup Kubeconform
+        run: make setup-kubeconform
+
+      - name: Run Helm Lint & Kubernetes Validation
+        run: make lint-helm-k8s
+
+      - name: Upload rendered templates
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: rendered-templates
+          path: rendered.yaml
+          retention-days: ${{ env.RENDERED_TEMPLATES_RETENTION_DAYS }}
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Download rendered templates
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: rendered-templates
+
+      - name: Setup Trivy
+        run: make setup-trivy
+
+      - name: Run Trivy Security Scan
+        run: make trivy-scan
+
+      - name: Setup Kubescape
+        run: make setup-kubescape
+
+      - name: Run Kubescape Security Scan
+        run: make kubescape-scan
+
+      - name: Upload Kubescape results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: kubescape-results
+          path: kubescape-output.json
+          retention-days: ${{ env.SECURITY_RESULTS_RETENTION_DAYS }}
+
+  unit-test:
+    name: Unit Test
+    runs-on: ubuntu-latest
+    needs: [lint, security]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Print test job info
+        run: |
+          echo "================================"
+          echo "Running Unit Tests"
+          echo "================================"
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "================================"
+
+      - name: Setup Helm
+        run: make setup-helm
+
+      - name: Setup helm-unittest plugin
+        run: make setup-helm-unittest
+
+      - name: Run Unit Tests
+        run: make unit-test
+
+      - name: Helm Template (Dry Run)
+        run: |
+          echo "Running Helm template to validate chart rendering..."
+          helm template boundary-worker . --debug
+          echo ""
+          echo "Helm template validation passed!"
+
+      - name: Test with different values
+        run: |
+          echo "Testing chart with custom values..."
+          helm template boundary-controller . \
+            --set image.tag=$TEST_IMAGE_TAG \
+            --set worker.resources.limits.cpu=$TEST_CPU_LIMIT \
+            --set worker.resources.limits.memory=$TEST_MEMORY_LIMIT
+          echo ""
+          echo "Custom values test passed!"
+
+      - name: Test Summary
+        run: |
+          echo "================================"
+          echo "✅ All tests completed successfully!"
+          echo "================================"
+
+  acceptance-test:
+    name: Acceptance Test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: unit-test
+    env:
+      BOUNDARY_ADDR: ${{ secrets.BOUNDARY_ADDR }}
+      BOUNDARY_AUTH_METHOD_ID: ${{ secrets.BOUNDARY_AUTH_METHOD_ID }}
+      BOUNDARY_CLUSTER_ID: ${{ secrets.BOUNDARY_CLUSTER_ID }}
+      BOUNDARY_LOGIN_NAME: ${{ secrets.BOUNDARY_LOGIN_NAME }}
+      BOUNDARY_PASSWORD: ${{ secrets.BOUNDARY_PASSWORD }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Run acceptance tests
+        run: echo "Acceptance tests not yet implemented — coming soon!"
+
