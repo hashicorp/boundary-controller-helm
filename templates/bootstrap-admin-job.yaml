@@ -5,6 +5,9 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ include "boundary.controller.serviceName" . }}-bootstrap-admin
+  {{- if .Values.namespace }}
+  namespace: {{ .Values.namespace }}
+  {{- end }}
   labels:
     {{- include "boundary.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller-bootstrap-admin
@@ -223,6 +226,8 @@ spec:
                 -recovery-config "$BOUNDARY_RECOVERY_CONFIG" 2>&1 || echo "User may already be assigned to role"
 
               echo "bootstrap admin workflow completed"
+          resources:
+            {{- toYaml .Values.controller.bootstrapAdmin.resources | nindent 12 }}
           volumeMounts:
             - name: config
               mountPath: /etc/boundary
@@ -232,6 +237,10 @@ spec:
               mountPath: {{ .Values.tls.mountPath }}
               readOnly: true
             {{- end }}
+            - name: tmp
+              mountPath: /tmp
+            - name: boundary-data
+              mountPath: /boundary
       volumes:
         - name: config
           configMap:
@@ -241,4 +250,8 @@ spec:
           secret:
             secretName: {{ .Values.tls.secretName }}
         {{- end }}
+        - name: tmp
+          emptyDir: {}
+        - name: boundary-data
+          emptyDir: {}
 {{- end }}

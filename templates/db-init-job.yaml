@@ -5,6 +5,9 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ include "boundary.controller.serviceName" . }}-init-db
+  {{- if .Values.namespace }}
+  namespace: {{ .Values.namespace }}
+  {{- end }}
   labels:
     {{- include "boundary.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller-init
@@ -84,6 +87,8 @@ spec:
                 cat "$OUTPUT_FILE"
                 exit 1
               fi
+          resources:
+            {{- toYaml .Values.controller.database.resources | nindent 12 }}
           volumeMounts:
             - name: config
               mountPath: /etc/boundary
@@ -93,6 +98,10 @@ spec:
               mountPath: {{ .Values.tls.mountPath }}
               readOnly: true
             {{- end }}
+            - name: tmp
+              mountPath: /tmp
+            - name: boundary-data
+              mountPath: /boundary
       volumes:
         - name: config
           configMap:
@@ -101,5 +110,9 @@ spec:
         - name: tls-certs
           secret:
             secretName: {{ .Values.tls.secretName }}
-        {{- end }}            
+        {{- end }}
+        - name: tmp
+          emptyDir: {}
+        - name: boundary-data
+          emptyDir: {}
 {{- end }}

@@ -4,6 +4,9 @@
 nameOverride: ""
 fullnameOverride: ""
 
+# Namespace to deploy resources into (leave empty to use release namespace)
+namespace: ""
+
 # Boundary image configuration
 image:
   repository: hashicorp/boundary-enterprise
@@ -152,10 +155,26 @@ controller:
     # Boundary account resource display name (from `boundary accounts create password -name`).
     accountResourceName: "bootstrap-admin"
     roleName: "bootstrap-global-admin"
+    # Resource limits and requests for bootstrap admin job
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
 
   database:
     migrate:
       enabled: false  # Enable database migration job during upgrades
+    # Resource limits and requests for database init job
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
 
   # Liveness probe configuration
   livenessProbe:
@@ -225,6 +244,7 @@ podSecurityContext:
 containerSecurityContext:
   runAsNonRoot: true
   allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
   capabilities:
     drop:
       - ALL

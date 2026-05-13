@@ -5,6 +5,9 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ include "boundary.controller.serviceName" . }}-database-migration
+  {{- if .Values.namespace }}
+  namespace: {{ .Values.namespace }}
+  {{- end }}
   labels:
     {{- include "boundary.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller-migrate
@@ -71,6 +74,8 @@ spec:
             - "migrate"
             - "-config"
             - "/etc/boundary/controller.hcl"
+          resources:
+            {{- toYaml .Values.controller.database.resources | nindent 12 }}
           volumeMounts:
             - name: config
               mountPath: /etc/boundary
@@ -80,6 +85,10 @@ spec:
               mountPath: {{ .Values.tls.mountPath }}
               readOnly: true
             {{- end }}
+            - name: tmp
+              mountPath: /tmp
+            - name: boundary-data
+              mountPath: /boundary
       volumes:
         - name: config
           configMap:
@@ -89,4 +98,8 @@ spec:
           secret:
             secretName: {{ .Values.tls.secretName }}
         {{- end }}
+        - name: tmp
+          emptyDir: {}
+        - name: boundary-data
+          emptyDir: {}
 {{- end }}
