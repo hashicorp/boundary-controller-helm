@@ -1,0 +1,21 @@
+# Ignore VCS and CI metadata
+.git/
+.github/
+
+# Ignore local/editor artifacts
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.tmp
+*.bak
+
+# Ignore Helm chart archives
+*.tgz
+
+# Ignore local project-only files not needed in chart packages
+Makefile
+kubescape-exceptions.json
+scripts/
+tests/acceptance/
+example-config/

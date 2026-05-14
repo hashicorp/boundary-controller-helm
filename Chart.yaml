@@ -1,0 +1,18 @@
+apiVersion: v2
+name: boundary-controller
+description: A Helm chart for HashiCorp Boundary controller deployment
+type: application
+version: 0.1.0
+appVersion: "0.20.0"
+keywords:
+  - boundary
+  - hashicorp
+  - identity
+  - access
+  - security
+home: https://www.boundaryproject.io/
+icon: https://raw.githubusercontent.com/hashicorp/boundary/main/boundary.png
+sources:
+  - https://github.com/hashicorp/boundary
+maintainers:
+  - name: HashiCorp

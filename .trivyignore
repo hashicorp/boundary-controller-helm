@@ -1,0 +1,27 @@
+# Trivy ignore file for Boundary Controller Helm Chart
+# These are accepted risks with documented justifications
+
+# KSV-0020: runAsUser < 10000
+# Justification: HashiCorp Boundary Controller requires UID 100 for proper operation
+# This is a non-root user that provides adequate security
+KSV-0020
+
+# KSV-0021: runAsGroup < 10000
+# Justification: HashiCorp Boundary Controller requires GID 1000 for proper operation
+# This is a non-root group that provides adequate security
+KSV-0021
+
+# KSV-0125: Untrusted registry (Docker Hub)
+# Justification: HashiCorp officially publishes Boundary Enterprise images on Docker Hub
+# This is the official and trusted source for Boundary images
+KSV-0125
+
+# KSV-0053: RBAC pods/exec permissions
+# Justification: Test pods require exec permissions to validate controller pod functionality
+# Scope: Test namespace only, ephemeral execution during helm test
+KSV-0053
+
+# KSV-0113: RBAC secrets access (read-only)
+# Justification: Test pods need read-only secrets access for validation
+# Scope: Read-only access, test namespace only, ephemeral execution
+KSV-0113

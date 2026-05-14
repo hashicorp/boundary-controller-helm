@@ -1,0 +1,156 @@
+{{- include "boundary.controller.validateSecretRefs" . -}}
+{{- include "boundary.controller.validateConfig" . -}}
+{{- include "boundary.controller.validateDatabaseJobs" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "boundary.controller.serviceName" . }}
+  {{- if .Values.namespace }}
+  namespace: {{ .Values.namespace }}
+  {{- end }}
+  labels:
+    {{- include "boundary.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  replicas: {{ .Values.controller.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: {{ .Values.controller.rollingUpdate.maxUnavailable }} # Always keep at least one pod alive
+      maxSurge: {{ .Values.controller.rollingUpdate.maxSurge }} # Start a new one before killing an old one
+  selector:
+    matchLabels:
+      {{- include "boundary.controller.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/values: {{ toJson .Values.controller | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "boundary.controller.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "boundary.controller.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: controller
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          env:
+            - name: SKIP_SETCAP
+              value: "1"
+            - name: BOUNDARY_PG_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.databaseUrl }}
+            {{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" }}
+            - name: BOUNDARY_PG_MIGRATION_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.migrationUrl }}
+            {{- end }}
+            - name: BOUNDARY_LICENSE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.license }}
+            {{- if eq (include "boundary.controller.usesEnvAeadKms" . | trim) "true" }}
+            - name: BOUNDARY_KMS_ROOT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.kmsRoot }}
+            - name: BOUNDARY_KMS_WORKER_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.kmsWorkerAuth }}
+            - name: BOUNDARY_KMS_RECOVERY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.kmsRecovery }}
+            {{- end }}
+          args:
+            - "server"
+            - "-config=/etc/boundary/controller.hcl"
+          ports:
+            - name: api
+              containerPort: {{ .Values.controller.service.api.targetPort }}
+              protocol: TCP
+            - name: cluster
+              containerPort: {{ .Values.controller.service.cluster.targetPort }}
+              protocol: TCP
+            - name: ops
+              containerPort: {{ .Values.controller.service.ops.targetPort }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: ops
+              scheme: {{ .Values.controller.livenessProbe.scheme }}
+            initialDelaySeconds: {{ .Values.controller.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.controller.livenessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.controller.livenessProbe.failureThreshold }}
+            timeoutSeconds: {{ .Values.controller.livenessProbe.timeoutSeconds }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: ops
+              scheme: {{ .Values.controller.readinessProbe.scheme }}
+            initialDelaySeconds: {{ .Values.controller.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.controller.readinessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.controller.readinessProbe.failureThreshold }}
+            timeoutSeconds: {{ .Values.controller.readinessProbe.timeoutSeconds }}
+          resources:
+            {{- toYaml .Values.controller.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/boundary
+              readOnly: true
+            {{- if not .Values.tls.disabled }}
+            - name: tls-certs
+              mountPath: {{ .Values.tls.mountPath }}
+              readOnly: true
+            {{- end }}
+            - name: tmp
+              mountPath: /tmp
+            - name: boundary-data
+              mountPath: /boundary
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "boundary.controller.configMapName" . }}
+        {{- if not .Values.tls.disabled }}
+        - name: tls-certs
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+        {{- end }}
+        - name: tmp
+          emptyDir: {}
+        - name: boundary-data
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

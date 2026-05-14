@@ -1,0 +1,103 @@
+{{- if and .Values.controller.database.migrate.enabled (ne (printf "%v" (default "" .Values.controller.database.repair.version) | trim) "") }}
+{{- include "boundary.controller.validateSecretRefs" . -}}
+{{- include "boundary.controller.validateConfig" . -}}
+{{- include "boundary.controller.validateDatabaseJobs" . -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "boundary.controller.serviceName" . }}-database-repair
+  labels:
+    {{- include "boundary.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller-repair
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-output-log-policy": hook-failed, hook-succeeded
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        {{- include "boundary.labels" . | nindent 8 }}
+        app.kubernetes.io/component: controller-repair
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      serviceAccountName: {{ include "boundary.controller.serviceAccountName" . }}
+      restartPolicy: OnFailure
+      containers:
+        - name: repair-db
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          env:
+            - name: SKIP_SETCAP
+              value: "1"
+            - name: BOUNDARY_PG_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.databaseUrl }}
+            {{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" }}
+            - name: BOUNDARY_PG_MIGRATION_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.migrationUrl }}
+            {{- end }}
+            - name: BOUNDARY_LICENSE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.license }}
+            {{- if eq (include "boundary.controller.usesEnvAeadKms" . | trim) "true" }}
+            - name: BOUNDARY_KMS_ROOT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.kmsRoot }}
+            - name: BOUNDARY_KMS_WORKER_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.kmsWorkerAuth }}
+            - name: BOUNDARY_KMS_RECOVERY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.controller.secretRefs.keys.kmsRecovery }}
+            {{- end }}
+          command:
+            - "boundary"
+            - "database"
+            - "migrate"
+            - "-config"
+            - "/etc/boundary/controller.hcl"
+            - "-repair"
+            - {{ .Values.controller.database.repair.version | quote }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/boundary
+              readOnly: true
+            {{- if not .Values.tls.disabled }}
+            - name: tls-certs
+              mountPath: {{ .Values.tls.mountPath }}
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "boundary.controller.configMapName" . }}
+        {{- if not .Values.tls.disabled }}
+        - name: tls-certs
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+        {{- end }}
+{{- end }}
