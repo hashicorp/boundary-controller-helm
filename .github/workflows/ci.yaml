@@ -127,15 +127,23 @@ jobs:
     runs-on: ubuntu-latest
     needs: unit-test
     env:
-      BOUNDARY_ADDR: ${{ secrets.BOUNDARY_ADDR }}
-      BOUNDARY_AUTH_METHOD_ID: ${{ secrets.BOUNDARY_AUTH_METHOD_ID }}
-      BOUNDARY_CLUSTER_ID: ${{ secrets.BOUNDARY_CLUSTER_ID }}
-      BOUNDARY_LOGIN_NAME: ${{ secrets.BOUNDARY_LOGIN_NAME }}
-      BOUNDARY_PASSWORD: ${{ secrets.BOUNDARY_PASSWORD }}
+      BOUNDARY_LICENSE: ${{ secrets.BOUNDARY_LICENSE }}
+      BOOTSTRAP_ADMIN_USERNAME: ${{ secrets.BOOTSTRAP_ADMIN_USERNAME }}
+      BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      - name: Setup acceptance environment
+        run: make acceptance-setup
+
+      - name: Install Helm chart
+        run: make acceptance-helm
+
       - name: Run acceptance tests
-        run: echo "Acceptance tests not yet implemented — coming soon!"
+        run: make acceptance-test
+
+      - name: Cleanup
+        if: always()
+        run: make acceptance-cleanup
 
