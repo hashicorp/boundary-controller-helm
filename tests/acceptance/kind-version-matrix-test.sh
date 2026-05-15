@@ -1,25 +1,12 @@
 #!/bin/bash
 # Copyright IBM Corp. 2026
 
-# KIND Version Matrix Test — Controller API
-# Dynamically resolves the latest stable KIND release from GitHub, then runs
-# controller-api-test.sh against the two versions immediately preceding it
-# (latest-1 and latest-2).  Falls back to hardcoded defaults when offline.
-# For each version:
-#   1. Downloads the pinned KIND binary (cached in /tmp)
-#   2. Creates a fresh KIND cluster using kind-acceptance-config.yaml
-#   3. Deploys an in-cluster PostgreSQL instance
-#   4. Creates the boundary-controller-secrets Kubernetes Secret
-#   5. Installs the Helm chart using tests/acceptance/test-values.yaml
-#   6. Runs controller-api-test.sh
-#   7. Tears down the cluster
-# Prints a per-version pass/fail summary at the end.
+# KIND Version Matrix Test
+# Tests controller-api-test.sh against multiple KIND versions.
 
 set -euo pipefail
 
 # -- Helpers --------------------------------------------------------------------
-# All helpers write to stderr so they are safe to use inside $() subshells
-# (e.g. download_kind) without polluting captured stdout.
 pass()   { echo "   ✅ $1" >&2; }
 fail()   { echo "❌ FAILED: $1" >&2; exit 1; }
 info()   { echo "   $1" >&2; }
@@ -29,14 +16,10 @@ header() {
     echo "  $1" >&2
 }
 
-# -- Fallback versions (used when GitHub API is unreachable) -------------------
+# -- Fallback versions ----------------------------------------------------------
 _FALLBACK_KIND_VERSIONS=("v0.30.0" "v0.29.0")
 
-# -- resolve_kind_versions -----------------------------------------------------
-# Queries the GitHub Releases API for kubernetes-sigs/kind, sorts stable tags
-# by semver descending, and returns the two versions immediately below the
-# latest (latest-1 and latest-2) so the matrix always tests the two most
-# recently released prior versions without any manual edits.
+# -- resolve_kind_versions ------------------------------------------------------
 resolve_kind_versions() {
     local raw
     raw="$(curl -fsSL --retry 2 --connect-timeout 10 \
@@ -82,15 +65,14 @@ API_TEST="${SCRIPT_DIR}/controller-api-test.sh"
 TEST_VALUES="${SCRIPT_DIR}/test-values.yaml"
 KIND_CACHE_DIR="${TMPDIR:-/tmp}"
 
-# In-cluster postgres credentials (test-only, matches tests/acceptance/postgres.yaml)
+NAMESPACE="boundary"
 POSTGRES_USER="boundary"
 POSTGRES_PASSWORD="boundary-test-pw"
 POSTGRES_DB="boundary"
-POSTGRES_HOST="postgres.${NAMESPACE:-boundary}.svc.cluster.local"
+POSTGRES_HOST="postgres.${NAMESPACE}.svc.cluster.local"
 POSTGRES_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:5432/${POSTGRES_DB}?sslmode=disable"
-NAMESPACE="boundary"
 
-# -- OS / Architecture detection ------------------------------------------------
+# -- OS / Architecture detection -----------------------------------------------
 _OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 _ARCH="$(uname -m)"
 case "${_ARCH}" in
@@ -99,14 +81,6 @@ case "${_ARCH}" in
     *) fail "Unsupported architecture: ${_ARCH}" ;;
 esac
 KIND_PLATFORM="${_OS}-${_ARCH}"
-
-# -- Load .env (for BOUNDARY_LICENSE and bootstrap credentials) ----------------
-if [ -f "${CHART_DIR}/.env" ]; then
-    set -o allexport
-    # shellcheck disable=SC1091
-    source "${CHART_DIR}/.env"
-    set +o allexport
-fi
 
 # -- Pre-flight checks ----------------------------------------------------------
 header "Pre-flight Checks"
@@ -118,7 +92,7 @@ done
 
 # Confirm Docker daemon is reachable
 docker info >/dev/null 2>&1 \
-    || fail "Docker daemon is not running. Start Docker Desktop and retry."
+    || fail "Docker daemon is not running."
 pass "Docker daemon is running"
 
 [ -f "${KIND_CONFIG}" ]  || fail "Kind config not found: ${KIND_CONFIG}"
@@ -135,9 +109,10 @@ BOOTSTRAP_ADMIN_USERNAME="${BOOTSTRAP_ADMIN_USERNAME:-admin}"
 pass "Required environment variables are set"
 echo ""
 
-# -- Result tracking ------------------------------------------------------------
-declare -A RESULTS
-declare -A RESULT_NOTES
+# Result tracking
+RESULTS=()
+RESULT_NOTES=()
+VERSION_IDX=0
 
 # -- download_kind: fetch a pinned KIND binary, cache it in /tmp ----------------
 download_kind() {
@@ -169,25 +144,6 @@ preload_controller_image() {
         if ! docker pull "${image}" >/dev/null 2>&1; then
             warn "docker pull failed for ${image} — pod will pull from registry (may be slow)"
             return 0
-        fi
-    fi
-
-    # On Apple Silicon: detect arch mismatch and build a native-arch wrapper.
-    local img_arch
-    img_arch="$(docker image inspect "${image}" --format '{{.Architecture}}' 2>/dev/null || true)"
-    if [ -n "${img_arch}" ] && [ "${img_arch}" != "${_ARCH}" ]; then
-        info "Image arch (${img_arch}) ≠ node arch (${_ARCH}) — building ${_ARCH} wrapper via buildx..."
-        if docker buildx build \
-                --platform "linux/${_ARCH}" \
-                --tag "${image}" \
-                --load \
-                - >/dev/null 2>&1 <<EOF
-FROM --platform=linux/${img_arch} ${image}
-EOF
-        then
-            info "Platform-compatible wrapper created: ${image} (${_ARCH})"
-        else
-            warn "buildx wrapper failed — pod may hit ImagePullBackOff on ${_ARCH} nodes"
         fi
     fi
 
@@ -318,59 +274,65 @@ for VERSION in "${KIND_VERSIONS[@]}"; do
     # 3. Remove any leftover cluster from a previous run
     cleanup_cluster "${KIND_BIN}"
 
-    # 4. Create a fresh cluster with this KIND version
-    info "Creating KIND cluster '${KIND_CLUSTER_NAME}' using KIND ${VERSION}..."
-    CREATE_OUT=$(mktemp) || fail "Failed to create temp file for cluster creation output"
-    [ -n "${CREATE_OUT}" ] || fail "mktemp returned empty path"
-    if ! "${KIND_BIN}" create cluster \
-        --name "${KIND_CLUSTER_NAME}" \
-        --config "${KIND_CONFIG}" >"${CREATE_OUT}" 2>&1; then
-        echo "" >&2
-        echo "❌ kind create cluster failed. Output:" >&2
-        cat "${CREATE_OUT}" >&2
-        rm -f "${CREATE_OUT}"
-        fail "KIND cluster creation failed for ${VERSION}"
-    fi
-    rm -f "${CREATE_OUT}"
-    pass "Cluster '${KIND_CLUSTER_NAME}' created with KIND ${VERSION}"
-    echo ""
-
-    # 5. Pre-load the controller image into the KIND node to avoid cold pull
-    preload_controller_image "${KIND_BIN}"
-    echo ""
-
-    # 6. Deploy in-cluster PostgreSQL
-    setup_postgres
-    echo ""
-
-    # 7. Create the controller K8s Secret
-    create_controller_secrets
-    echo ""
-
-    # 8. Install the Helm chart
-    install_helm_chart
-    echo ""
-
-    # 9. Run the controller API test with an extended timeout.
-    # TIMEOUT=600 gives 10 min — enough for image load + db-init + bootstrap jobs.
-    info "Running controller-api-test.sh for KIND ${VERSION} (TIMEOUT=600s)..."
-    echo ""
+    # 4-9. Run cluster setup and API test in a subshell so a failure records FAIL
+    #       and continues to the next version instead of aborting the whole matrix.
     set +e
-    TIMEOUT=600 \
-    BOOTSTRAP_ADMIN_USERNAME="${BOOTSTRAP_ADMIN_USERNAME}" \
-    BOOTSTRAP_ADMIN_PASSWORD="${BOOTSTRAP_ADMIN_PASSWORD}" \
-    bash "${API_TEST}"
-    API_EXIT=$?
+    (
+        set -euo pipefail
+
+        # 4. Create a fresh cluster with this KIND version
+        info "Creating KIND cluster '${KIND_CLUSTER_NAME}' using KIND ${VERSION}..."
+        CREATE_OUT=$(mktemp) || fail "Failed to create temp file for cluster creation output"
+        [ -n "${CREATE_OUT}" ] || fail "mktemp returned empty path"
+        if ! "${KIND_BIN}" create cluster \
+            --name "${KIND_CLUSTER_NAME}" \
+            --config "${KIND_CONFIG}" >"${CREATE_OUT}" 2>&1; then
+            echo "" >&2
+            echo "❌ kind create cluster failed. Output:" >&2
+            cat "${CREATE_OUT}" >&2
+            rm -f "${CREATE_OUT}"
+            fail "KIND cluster creation failed for ${VERSION}"
+        fi
+        rm -f "${CREATE_OUT}"
+        pass "Cluster '${KIND_CLUSTER_NAME}' created with KIND ${VERSION}"
+        echo ""
+
+        # 5. Pre-load the controller image into the KIND node to avoid cold pull
+        preload_controller_image "${KIND_BIN}"
+        echo ""
+
+        # 6. Deploy in-cluster PostgreSQL
+        setup_postgres
+        echo ""
+
+        # 7. Create the controller K8s Secret
+        create_controller_secrets
+        echo ""
+
+        # 8. Install the Helm chart
+        install_helm_chart
+        echo ""
+
+        # 9. Run the controller API test with an extended timeout.
+        # TIMEOUT=600 gives 10 min — enough for image load + db-init + bootstrap jobs.
+        info "Running controller-api-test.sh for KIND ${VERSION} (TIMEOUT=600s)..."
+        echo ""
+        TIMEOUT=600 \
+        BOOTSTRAP_ADMIN_USERNAME="${BOOTSTRAP_ADMIN_USERNAME}" \
+        BOOTSTRAP_ADMIN_PASSWORD="${BOOTSTRAP_ADMIN_PASSWORD}" \
+        bash "${API_TEST}"
+    )
+    VERSION_EXIT=$?
     set -e
 
-    if [ "${API_EXIT}" -eq 0 ]; then
-        RESULTS["${VERSION}"]="PASS"
-        RESULT_NOTES["${VERSION}"]=""
+    if [ "${VERSION_EXIT}" -eq 0 ]; then
+        RESULTS[$VERSION_IDX]="PASS"
+        RESULT_NOTES[$VERSION_IDX]=""
         pass "KIND ${VERSION}: Controller API test PASSED"
     else
-        RESULTS["${VERSION}"]="FAIL"
-        RESULT_NOTES["${VERSION}"]="controller-api-test.sh exited with code ${API_EXIT}"
-        warn "KIND ${VERSION}: Controller API test FAILED (exit code ${API_EXIT})"
+        RESULTS[$VERSION_IDX]="FAIL"
+        RESULT_NOTES[$VERSION_IDX]="exited with code ${VERSION_EXIT}"
+        warn "KIND ${VERSION}: Controller API test FAILED (exit code ${VERSION_EXIT})"
     fi
 
     # 10. Tear down the cluster
@@ -378,6 +340,8 @@ for VERSION in "${KIND_VERSIONS[@]}"; do
     info "Tearing down cluster for KIND ${VERSION}..."
     cleanup_cluster "${KIND_BIN}"
     pass "Cleanup complete for KIND ${VERSION}"
+
+    VERSION_IDX=$(( VERSION_IDX + 1 ))
 
 done
 
@@ -387,15 +351,17 @@ printf "  %-14s  %-8s  %s\n" "KIND Version" "Result" "Notes"
 printf "  %-14s  %-8s  %s\n" "--------------" "--------" "-----"
 
 OVERALL_PASS=true
+_IDX=0
 for VERSION in "${KIND_VERSIONS[@]}"; do
-    RESULT="${RESULTS[${VERSION}]:-SKIP}"
-    NOTE="${RESULT_NOTES[${VERSION}]:-}"
+    RESULT="${RESULTS[$_IDX]:-SKIP}"
+    NOTE="${RESULT_NOTES[$_IDX]:-}"
     if [ "${RESULT}" = "PASS" ]; then
         printf "  %-14s  ✅ %-8s  %s\n" "${VERSION}" "PASS" "${NOTE}"
     else
         printf "  %-14s  ❌ %-8s  %s\n" "${VERSION}" "${RESULT}" "${NOTE}"
         OVERALL_PASS=false
     fi
+    _IDX=$(( _IDX + 1 ))
 done
 
 echo ""

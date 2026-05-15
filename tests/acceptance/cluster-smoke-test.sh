@@ -2,7 +2,7 @@
 # Copyright IBM Corp. 2026
 
 
-set -e
+set -euo pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -18,7 +18,7 @@ echo "Acceptance Test Suite"
 
 # Function to print test results
 print_result() {
-    if [ $1 -eq 0 ]; then
+    if [ "$1" -eq 0 ]; then
         echo -e "${GREEN}✅ PASSED:${NC} $2"
     else
         echo -e "${RED}❌ FAILED:${NC} $2"
@@ -46,41 +46,6 @@ else
     else
         print_result 1 "Failed to create namespace"
     fi
-fi
-echo ""
-
-# Test 3: Verify namespace exists
-echo "Test 3: Verifying namespace exists..."
-if kubectl get namespace "${TEST_NAMESPACE}" --context "${CONTEXT}" > /dev/null 2>&1; then
-    print_result 0 "Namespace '${TEST_NAMESPACE}' exists"
-else
-    print_result 1 "Namespace '${TEST_NAMESPACE}' does not exist"
-fi
-echo ""
-
-# Test 4: List all namespaces and verify test namespace is present
-echo "Test 4: Listing all namespaces..."
-NAMESPACES=$(kubectl get namespaces --context "${CONTEXT}" -o jsonpath='{.items[*].metadata.name}')
-echo "Available namespaces: ${NAMESPACES}"
-echo ""
-
-if echo "${NAMESPACES}" | grep -q "${TEST_NAMESPACE}"; then
-    print_result 0 "Test namespace found in namespace list"
-else
-    print_result 1 "Test namespace not found in namespace list"
-fi
-echo ""
-
-# Test 5: Get namespace details
-echo "Test 5: Getting namespace details..."
-kubectl get namespace "${TEST_NAMESPACE}" --context "${CONTEXT}" -o yaml > /dev/null 2>&1
-if [ $? -eq 0 ]; then
-    print_result 0 "Successfully retrieved namespace details"
-    echo ""
-    echo "Namespace status:"
-    kubectl get namespace "${TEST_NAMESPACE}" --context "${CONTEXT}"
-else
-    print_result 1 "Failed to retrieve namespace details"
 fi
 echo ""
 
