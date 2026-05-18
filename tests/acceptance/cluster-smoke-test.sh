@@ -19,9 +19,9 @@ echo "Acceptance Test Suite"
 # Function to print test results
 print_result() {
     if [ "$1" -eq 0 ]; then
-        echo -e "${GREEN}✅ PASSED:${NC} $2"
+        echo -e "${GREEN}✅ :${NC} $2"
     else
-        echo -e "${RED}❌ FAILED:${NC} $2"
+        echo -e "${RED}❌ :${NC} $2"
         exit 1
     fi
 }

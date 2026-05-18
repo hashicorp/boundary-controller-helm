@@ -410,10 +410,11 @@ acceptance-full:
 	@$(MAKE) acceptance-setup
 	@$(MAKE) acceptance-helm
 	@$(MAKE) acceptance-test
+	@$(MAKE) kind-matrix-test
 	@echo ""
 	@echo "✅ End-to-end acceptance workflow completed successfully"
 	@echo ""
-	@echo "To cleanup: make acceptance-cleanup"
+	@echo "To cleanup: make acceptance-cleanup && make kind-matrix-cleanup"
 
 acceptance-cleanup:
 	@echo "================================"
