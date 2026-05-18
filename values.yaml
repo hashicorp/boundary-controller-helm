@@ -1,3 +1,5 @@
+# Copyright IBM Corp. 2026
+
 # Default values for Boundary Controller Helm Chart
 
 # Override chart name (used in resource naming)
