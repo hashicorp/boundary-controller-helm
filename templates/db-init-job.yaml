@@ -1,8 +1,6 @@
 # Copyright IBM Corp. 2026
 
 {{- if .Release.IsInstall }}
-{{- include "boundary.controller.validateSecretRefs" . -}}
-{{- include "boundary.controller.validateConfig" . -}}
 apiVersion: batch/v1
 kind: Job
 metadata:

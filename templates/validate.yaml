@@ -1,0 +1,9 @@
+{{- /*
+validate.yaml — Chart-wide validation. Produces no Kubernetes resources.
+All three helpers use {{- ... -}} trimming and only call fail on invalid
+configuration, so when validation passes this template renders to an empty
+string and Helm omits it from the manifest output entirely.
+*/ -}}
+{{- include "boundary.controller.validateSecretRefs" . -}}
+{{- include "boundary.controller.validateConfig" . -}}
+{{- include "boundary.controller.validateDatabaseJobs" . -}}

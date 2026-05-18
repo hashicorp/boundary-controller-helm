@@ -4,14 +4,14 @@
 .PHONY: help format deps clean lint test unit-test worker-config
 .PHONY: setup-helm setup-kubeconform setup-trivy setup-kubescape setup-helm-unittest lint-helm-k8s trivy-scan kubescape-scan
 .PHONY: acceptance-setup acceptance-cluster acceptance-helm acceptance-test acceptance-full acceptance-cleanup
-.PHONY: acceptance-int-test acceptance-int-full acceptance-connect
+.PHONY: kind-matrix-test
 
 # ================================
 # Help Target
 # ================================
 help:
 	@echo "================================"
-	@echo "Boundary Worker Helm Chart - Lint Targets"
+	@echo "Boundary Controller Helm Chart - Targets"
 	@echo "================================"
 	@echo "Available targets:"
 	@echo "  make format            - Format all YAML files with Prettier"
@@ -20,17 +20,25 @@ help:
 	@echo "  make test              - Run unit tests (alias for unit-test)"
 	@echo "  make unit-test         - Run Helm unit tests with helm-unittest"
 	@echo "  make clean             - Clean generated files"
-	@echo "  make worker-config          - Authenticate, create a worker, and generate worker.hcl"
 	@echo ""
 	@echo "CI/CD targets:"
-	@echo "  make setup-helm         - Install Helm for CI"
-	@echo "  make setup-helm-unittest - Install helm-unittest plugin for CI"
-	@echo "  make setup-kubeconform  - Install Kubeconform for CI"
-	@echo "  make setup-trivy        - Install Trivy for CI"
-	@echo "  make setup-kubescape    - Install Kubescape for CI"
-	@echo "  make lint-helm-k8s      - Run Helm lint, render templates, and K8s validation"
-	@echo "  make trivy-scan         - Run security scan with Trivy"
-	@echo "  make kubescape-scan     - Run security scan with Kubescape"
+	@echo "  make setup-helm              - Install Helm for CI"
+	@echo "  make setup-helm-unittest     - Install helm-unittest plugin for CI"
+	@echo "  make setup-kubeconform       - Install Kubeconform for CI"
+	@echo "  make setup-trivy             - Install Trivy for CI"
+	@echo "  make setup-kubescape         - Install Kubescape for CI"
+	@echo "  make lint-helm-k8s           - Run Helm lint, render templates, and K8s validation"
+	@echo "  make trivy-scan              - Run security scan with Trivy"
+	@echo "  make kubescape-scan          - Run security scan with Kubescape"
+	@echo ""
+	@echo "Acceptance Testing targets:"
+	@echo "  make acceptance-setup        - Install dependencies and set up KIND cluster"
+	@echo "  make acceptance-helm         - Deploy postgres + install controller Helm chart"
+	@echo "  make acceptance-test         - Run controller API acceptance tests"
+	@echo "  make acceptance-full         - Full acceptance workflow (setup + helm + test)"
+	@echo "  make acceptance-cleanup      - Delete acceptance KIND cluster and cached KIND binaries"
+	@echo "  make kind-matrix-test        - Run controller-api-test.sh across 2 KIND versions prior to latest"
+	@echo "================================"
 
 # ================================
 # Local Development Targets
@@ -156,20 +164,20 @@ lint-helm-k8s:
 	@echo "================================"
 	@echo "Running Helm Lint"
 	@echo "================================"
-	helm lint .
+	@helm lint .
 	@echo "✅ Helm lint passed!"
 	@echo ""
 	@echo "================================"
 	@echo "Rendering Helm Templates"
 	@echo "================================"
-	helm template boundary-worker . --set controller.secretRefs.validateExisting=false > rendered.yaml
+	@helm template boundary-controller . --set controller.secretRefs.validateExisting=false > rendered.yaml
 	@echo "✅ Templates rendered successfully!"
 	@echo "Rendered file size: $$(wc -l < rendered.yaml) lines"
 	@echo ""
 	@echo "================================"
 	@echo "Running Kubernetes Validation"
 	@echo "================================"
-	kubeconform -strict rendered.yaml
+	@kubeconform -strict rendered.yaml
 	@echo "✅ Kubernetes validation passed!"
 
 trivy-scan:
@@ -242,4 +250,203 @@ kubescape-scan:
 	else \
 		echo "⚠️  Kubescape output file not found"; \
 	fi
+
+# ================================
+# Acceptance Testing Targets
+# ================================
+
+acceptance-setup:
+	@echo "================================"
+	@echo "Setting up Acceptance Environment"
+	@echo "================================"
+	@echo ""
+	@echo "Checking dependencies..."
+	@if ! command -v kubectl >/dev/null 2>&1; then \
+		echo "❌ kubectl is not installed"; \
+		echo "Please install kubectl: https://kubernetes.io/docs/tasks/tools/"; \
+		exit 1; \
+	fi
+	@echo "✅ kubectl is installed ($$(kubectl version --client --short 2>/dev/null || kubectl version --client))"
+	@if ! command -v kind >/dev/null 2>&1; then \
+		echo "❌ kind is not installed"; \
+		echo "Installing kind..."; \
+		if [ "$$(uname)" = "Darwin" ]; then \
+			brew install kind; \
+		else \
+			curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64; \
+			chmod +x ./kind; \
+			sudo mv ./kind /usr/local/bin/kind; \
+		fi; \
+	fi
+	@echo "✅ kind is installed ($$(kind version))"
+	@if ! command -v helm >/dev/null 2>&1; then \
+		echo "❌ helm is not installed"; \
+		echo "Installing helm..."; \
+		curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash; \
+	fi
+	@echo "✅ helm is installed ($$(helm version --short 2>/dev/null || helm version))"
+	@if ! command -v boundary >/dev/null 2>&1; then \
+		echo "⚠️  boundary CLI is not installed"; \
+		echo "Installing boundary CLI..."; \
+		ENV=$$(uname); \
+		if [ "$$ENV" = "Darwin" ]; then \
+			brew tap hashicorp/tap && brew install hashicorp/tap/boundary; \
+		elif [ "$$ENV" = "Linux" ]; then \
+			wget -O - https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg; \
+			echo "deb [arch=$$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $$(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list; \
+			sudo apt update && sudo apt install -y boundary; \
+		else \
+			echo "❌ Failed to install Boundary"; \
+			exit 1; \
+		fi; \
+	fi
+	@echo "✅ boundary CLI is installed ($$(boundary version 2>/dev/null | head -n1 || echo 'version unknown'))"
+	@echo ""
+	@echo "Setting up KIND cluster..."
+	@if kind get clusters | grep -q "^acceptance$$"; then \
+		echo "⚠️  Acceptance cluster already exists"; \
+	else \
+		kind create cluster --config tests/acceptance/kind-acceptance-config.yaml; \
+		echo "✅ Acceptance cluster created"; \
+	fi
+	@echo ""
+	@echo "Verifying cluster..."
+	@kubectl cluster-info --context kind-acceptance
+	@echo "✅ Cluster is ready"
+	@echo ""
+	@echo "Installed tools:"
+	@echo "  - kubectl:  $$(kubectl version --client --short 2>/dev/null | head -n1 || echo 'installed')"
+	@echo "  - kind:     $$(kind version)"
+	@echo "  - helm:     $$(helm version --short 2>/dev/null | head -n1 || echo 'installed')"
+	@echo "  - boundary: $$(boundary version 2>/dev/null | head -n1 || echo 'installed')"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  - Install Helm chart: make acceptance-helm"
+	@echo "  - Run tests:          make acceptance-test"
+	@echo "  - Full workflow:      make acceptance-full"
+	@echo "  - Cleanup:            make acceptance-cleanup"
+
+acceptance-helm:
+	@echo "============================================"
+	@echo "Installing Helm Chart in Acceptance Cluster"
+	@echo "============================================"
+	@echo ""
+	@command -v helm >/dev/null 2>&1 || (echo "❌ Helm not found. Run 'make acceptance-setup' first"; exit 1)
+	@if [ -z "$$BOUNDARY_LICENSE" ]; then \
+		echo "❌ BOUNDARY_LICENSE is not set. Add it to .env or export it."; \
+		exit 1; \
+	fi
+	@if [ -z "$$BOOTSTRAP_ADMIN_PASSWORD" ]; then \
+		echo "❌ BOOTSTRAP_ADMIN_PASSWORD is not set. Add it to .env or export it."; \
+		exit 1; \
+	fi
+	@BOOTSTRAP_ADMIN_USERNAME=$${BOOTSTRAP_ADMIN_USERNAME:-admin}; \
+	echo "Deploying in-cluster PostgreSQL (official postgres:16)..."; \
+	kubectl create namespace boundary --context kind-acceptance --dry-run=client -o yaml \
+		| kubectl apply -f - --context kind-acceptance; \
+	kubectl apply -f tests/acceptance/postgres.yaml --context kind-acceptance; \
+	echo "Waiting for PostgreSQL to be ready..."; \
+	kubectl wait --for=condition=ready pod \
+		-n boundary \
+		--context kind-acceptance \
+		-l "app=postgres" \
+		--timeout=120s; \
+	echo "✅ PostgreSQL is ready"; \
+	echo ""; \
+	echo "Creating boundary-controller-secrets Secret..."; \
+	kubectl create secret generic boundary-controller-secrets \
+		--namespace boundary \
+		--context kind-acceptance \
+		--from-literal="database-url=postgresql://boundary:boundary-test-pw@postgres.boundary.svc.cluster.local:5432/boundary?sslmode=disable" \
+		--from-literal="license=$$BOUNDARY_LICENSE" \
+		--from-literal="admin-username=$$BOOTSTRAP_ADMIN_USERNAME" \
+		--from-literal="admin-password=$$BOOTSTRAP_ADMIN_PASSWORD" \
+		--dry-run=client -o yaml | kubectl apply -f - --context kind-acceptance; \
+	echo "✅ Secret created"; \
+	echo ""; \
+	echo "Installing boundary-controller chart with test values..."
+	@helm upgrade --install boundary-controller . \
+		--namespace boundary \
+		--create-namespace \
+		--kube-context kind-acceptance \
+		--values tests/acceptance/test-values.yaml \
+		--timeout 10m
+	@echo "✅ Helm chart installed successfully"
+	@echo ""
+	@echo "Deployed resources:"
+	@kubectl get all -n boundary --context kind-acceptance
+	@echo ""
+	@echo "Waiting for all controller replicas to be ready..."
+	@kubectl wait --for=condition=available --timeout=10m \
+		deployment/boundary-controller \
+		-n boundary \
+		--context kind-acceptance
+	@echo "✅ Deployment is ready ($$(kubectl get deployment boundary-controller -n boundary --context kind-acceptance -o jsonpath='{.status.readyReplicas}') replica(s) up)"
+
+acceptance-test:
+	@echo "================================"
+	@echo "Running Controller Acceptance Tests"
+	@echo "================================"
+	@echo ""
+	@if [ -z "$$BOOTSTRAP_ADMIN_PASSWORD" ]; then \
+		echo "❌ BOOTSTRAP_ADMIN_PASSWORD is not set. Add it to .env or export it."; \
+		exit 1; \
+	fi
+	@if [ -z "$$BOUNDARY_LICENSE" ]; then \
+		echo "❌ BOUNDARY_LICENSE is not set. Add it to .env or export it."; \
+		exit 1; \
+	fi
+	@export BOOTSTRAP_ADMIN_USERNAME=$${BOOTSTRAP_ADMIN_USERNAME:-admin};
+	@bash tests/acceptance/cluster-smoke-test.sh
+	@bash tests/acceptance/controller-api-test.sh
+	@bash tests/acceptance/kind-version-matrix-test.sh
+	@echo ""
+	@echo "✅ All acceptance tests passed!"
+
+acceptance-full:
+	@echo "================================"
+	@echo "Full Controller Acceptance Workflow"
+	@echo "================================"
+	@echo ""
+	@$(MAKE) acceptance-setup
+	@$(MAKE) acceptance-helm
+	@$(MAKE) acceptance-test
+	@echo ""
+	@echo "✅ End-to-end acceptance workflow completed successfully"
+	@echo ""
+	@echo "To cleanup: make acceptance-cleanup"
+
+acceptance-cleanup:
+	@echo "================================"
+	@echo "Cleaning Up Acceptance Environment"
+	@echo "================================"
+	@echo ""
+	@if kind get clusters 2>/dev/null | grep -q "^acceptance$$"; then \
+		echo "Deleting KIND cluster 'acceptance'..."; \
+		kind delete cluster --name acceptance; \
+		echo "✅ Cluster deleted"; \
+	else \
+		echo "⚠️  No 'acceptance' cluster found"; \
+	fi
+	@echo "Removing cached KIND binaries..."
+	@find "$${TMPDIR:-/tmp}" -maxdepth 1 -name 'kind-v[0-9]*' 2>/dev/null | while read -r BIN; do \
+		rm -f "$$BIN"; \
+		echo "✅ Removed cached $$(basename $$BIN) binary"; \
+	done
+	@echo "✅ Acceptance cleanup complete"
+
+kind-matrix-test:
+	@echo "================================"
+	@echo "KIND Version Matrix Test"
+	@echo "================================"
+	@echo ""
+	@if [ -z "$$BOUNDARY_LICENSE" ]; then \
+		echo "❌ BOUNDARY_LICENSE is not set. Add it to .env or export it."; \
+		exit 1; \
+	fi
+	@if [ -z "$$BOOTSTRAP_ADMIN_PASSWORD" ]; then \
+		echo "❌ BOOTSTRAP_ADMIN_PASSWORD is not set. Add it to .env or export it."; \
+		exit 1; \
+	fi
+	@bash tests/acceptance/kind-version-matrix-test.sh
 

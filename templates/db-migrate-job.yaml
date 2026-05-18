@@ -1,9 +1,6 @@
 # Copyright IBM Corp. 2026
 
 {{- if .Values.controller.database.migrate.enabled }}
-{{- include "boundary.controller.validateSecretRefs" . -}}
-{{- include "boundary.controller.validateConfig" . -}}
-{{- include "boundary.controller.validateDatabaseJobs" . -}}
 apiVersion: batch/v1
 kind: Job
 metadata:
