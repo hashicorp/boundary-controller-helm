@@ -1,6 +1,4 @@
 {{- if and .Values.controller.bootstrapAdmin.enabled (or .Release.IsInstall (and .Release.IsUpgrade .Values.controller.bootstrapAdmin.runOnUpgrade)) }}
-{{- include "boundary.controller.validateSecretRefs" . -}}
-{{- include "boundary.controller.validateConfig" . -}}
 apiVersion: batch/v1
 kind: Job
 metadata:

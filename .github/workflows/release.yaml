@@ -40,7 +40,7 @@ jobs:
       - uses: hashicorp/actions-slack-status@38d0699d80d50038000c0af77944c3531c6e97c0 # v2
         if: ${{always()}}
         with:
-          success-message: "boundary-worker-helm charts index update triggered successfully. View the run <https://github.com/hashicorp/helm-charts/actions/workflows/publish-charts.yml|here>."
-          failure-message: "boundary-worker-helm charts index update trigger failed."
+          success-message: "boundary-controller-helm charts index update triggered successfully. View the run <https://github.com/hashicorp/helm-charts/actions/workflows/publish-charts.yml|here>."
+          failure-message: "boundary-controller-helm charts index update trigger failed."
           status: ${{ job.status }}
           slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}

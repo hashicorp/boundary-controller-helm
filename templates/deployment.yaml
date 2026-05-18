@@ -1,6 +1,3 @@
-{{- include "boundary.controller.validateSecretRefs" . -}}
-{{- include "boundary.controller.validateConfig" . -}}
-{{- include "boundary.controller.validateDatabaseJobs" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

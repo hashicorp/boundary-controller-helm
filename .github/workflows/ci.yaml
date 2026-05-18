@@ -101,7 +101,7 @@ jobs:
       - name: Helm Template (Dry Run)
         run: |
           echo "Running Helm template to validate chart rendering..."
-          helm template boundary-worker . --debug
+          helm template boundary-controller . --debug
           echo ""
           echo "Helm template validation passed!"
 

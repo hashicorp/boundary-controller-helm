@@ -166,20 +166,20 @@ lint-helm-k8s:
 	@echo "================================"
 	@echo "Running Helm Lint"
 	@echo "================================"
-	helm lint .
+	@helm lint .
 	@echo "✅ Helm lint passed!"
 	@echo ""
 	@echo "================================"
 	@echo "Rendering Helm Templates"
 	@echo "================================"
-	helm template boundary-worker . --set controller.secretRefs.validateExisting=false > rendered.yaml
+	@helm template boundary-controller . --set controller.secretRefs.validateExisting=false > rendered.yaml
 	@echo "✅ Templates rendered successfully!"
 	@echo "Rendered file size: $$(wc -l < rendered.yaml) lines"
 	@echo ""
 	@echo "================================"
 	@echo "Running Kubernetes Validation"
 	@echo "================================"
-	kubeconform -strict rendered.yaml
+	@kubeconform -strict rendered.yaml
 	@echo "✅ Kubernetes validation passed!"
 
 trivy-scan:
@@ -394,11 +394,16 @@ acceptance-test:
 		echo "❌ BOOTSTRAP_ADMIN_PASSWORD is not set. Add it to .env or export it."; \
 		exit 1; \
 	fi
-	@BOOTSTRAP_ADMIN_USERNAME=$${BOOTSTRAP_ADMIN_USERNAME:-admin} \
-		bash tests/acceptance/cluster-smoke-test.sh
-	@echo ""
-	@BOOTSTRAP_ADMIN_USERNAME=$${BOOTSTRAP_ADMIN_USERNAME:-admin} \
-		bash tests/acceptance/controller-api-test.sh
+	@export BOOTSTRAP_ADMIN_USERNAME=$${BOOTSTRAP_ADMIN_USERNAME:-admin}; \
+	for script in tests/acceptance/*.sh; do \
+		case "$$script" in \
+			*kind-version-matrix-test.sh) continue ;; \
+		esac; \
+		echo "Running: $$script"; \
+		echo "--------------------------------"; \
+		echo ""; \
+		bash $$script || exit 1; \
+	done
 	@echo ""
 	@echo "✅ All acceptance tests passed!"
 
