@@ -1,3 +1,5 @@
+# Copyright IBM Corp. 2026
+
 {{- if and .Values.controller.database.migrate.enabled (ne (printf "%v" (default "" .Values.controller.database.repair.version) | trim) "") }}
 apiVersion: batch/v1
 kind: Job

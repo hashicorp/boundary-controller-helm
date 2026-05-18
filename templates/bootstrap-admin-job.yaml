@@ -1,3 +1,5 @@
+# Copyright IBM Corp. 2026
+
 {{- if and .Values.controller.bootstrapAdmin.enabled (or .Release.IsInstall (and .Release.IsUpgrade .Values.controller.bootstrapAdmin.runOnUpgrade)) }}
 apiVersion: batch/v1
 kind: Job

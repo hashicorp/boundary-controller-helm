@@ -4,8 +4,7 @@
 .PHONY: help format deps clean lint test unit-test worker-config
 .PHONY: setup-helm setup-kubeconform setup-trivy setup-kubescape setup-helm-unittest lint-helm-k8s trivy-scan kubescape-scan
 .PHONY: acceptance-setup acceptance-cluster acceptance-helm acceptance-test acceptance-full acceptance-cleanup
-.PHONY: acceptance-int-test acceptance-int-full acceptance-connect
-.PHONY: kind-matrix-test kind-matrix-cleanup
+.PHONY: kind-matrix-test
 
 # ================================
 # Help Target
@@ -37,9 +36,8 @@ help:
 	@echo "  make acceptance-helm         - Deploy postgres + install controller Helm chart"
 	@echo "  make acceptance-test         - Run controller API acceptance tests"
 	@echo "  make acceptance-full         - Full acceptance workflow (setup + helm + test)"
-	@echo "  make acceptance-cleanup      - Delete acceptance KIND cluster"
+	@echo "  make acceptance-cleanup      - Delete acceptance KIND cluster and cached KIND binaries"
 	@echo "  make kind-matrix-test        - Run controller-api-test.sh across 2 KIND versions prior to latest"
-	@echo "  make kind-matrix-cleanup     - Delete the acceptance cluster and cached KIND binaries"
 	@echo "================================"
 
 # ================================
@@ -394,16 +392,14 @@ acceptance-test:
 		echo "❌ BOOTSTRAP_ADMIN_PASSWORD is not set. Add it to .env or export it."; \
 		exit 1; \
 	fi
-	@export BOOTSTRAP_ADMIN_USERNAME=$${BOOTSTRAP_ADMIN_USERNAME:-admin}; \
-	for script in tests/acceptance/*.sh; do \
-		case "$$script" in \
-			*kind-version-matrix-test.sh) continue ;; \
-		esac; \
-		echo "Running: $$script"; \
-		echo "--------------------------------"; \
-		echo ""; \
-		bash $$script || exit 1; \
-	done
+	@if [ -z "$$BOUNDARY_LICENSE" ]; then \
+		echo "❌ BOUNDARY_LICENSE is not set. Add it to .env or export it."; \
+		exit 1; \
+	fi
+	@export BOOTSTRAP_ADMIN_USERNAME=$${BOOTSTRAP_ADMIN_USERNAME:-admin};
+	@bash tests/acceptance/cluster-smoke-test.sh
+	@bash tests/acceptance/controller-api-test.sh
+	@bash tests/acceptance/kind-version-matrix-test.sh
 	@echo ""
 	@echo "✅ All acceptance tests passed!"
 
@@ -415,11 +411,10 @@ acceptance-full:
 	@$(MAKE) acceptance-setup
 	@$(MAKE) acceptance-helm
 	@$(MAKE) acceptance-test
-	@$(MAKE) kind-matrix-test
 	@echo ""
 	@echo "✅ End-to-end acceptance workflow completed successfully"
 	@echo ""
-	@echo "To cleanup: make acceptance-cleanup && make kind-matrix-cleanup"
+	@echo "To cleanup: make acceptance-cleanup"
 
 acceptance-cleanup:
 	@echo "================================"
@@ -433,6 +428,12 @@ acceptance-cleanup:
 	else \
 		echo "⚠️  No 'acceptance' cluster found"; \
 	fi
+	@echo "Removing cached KIND binaries..."
+	@find "$${TMPDIR:-/tmp}" -maxdepth 1 -name 'kind-v[0-9]*' 2>/dev/null | while read -r BIN; do \
+		rm -f "$$BIN"; \
+		echo "✅ Removed cached $$(basename $$BIN) binary"; \
+	done
+	@echo "✅ Acceptance cleanup complete"
 
 kind-matrix-test:
 	@echo "================================"
@@ -449,18 +450,3 @@ kind-matrix-test:
 	fi
 	@bash tests/acceptance/kind-version-matrix-test.sh
 
-kind-matrix-cleanup:
-	@echo "================================"
-	@echo "KIND Matrix Cleanup"
-	@echo "================================"
-	@echo ""
-	@if kind get clusters 2>/dev/null | grep -q "^acceptance$$"; then \
-		echo "Deleting KIND cluster 'acceptance'..."; \
-		kind delete cluster --name acceptance; \
-		echo "✅ Cluster deleted"; \
-	else \
-		echo "⚠️  No 'acceptance' cluster found"; \
-	fi
-	@echo "Removing cached KIND binaries..."
-	@rm -f "$${TMPDIR:-/tmp}"/kind-v* 2>/dev/null || true
-	@echo "✅ Cached KIND binaries removed"
