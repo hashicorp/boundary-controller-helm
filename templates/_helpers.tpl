@@ -6,21 +6,10 @@ Expand the name of the chart.
 {{- end }}
 
 {{/*
-Create a default fully qualified app name.
-We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
-If release name contains chart name it will be used as a full name.
+Resolve the effective namespace for namespaced resources.
 */}}
-{{- define "boundary.fullname" -}}
-{{- if .Values.fullnameOverride }}
-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
-{{- else }}
-{{- $name := default .Chart.Name .Values.nameOverride }}
-{{- if contains $name .Release.Name }}
-{{- .Release.Name | trunc 63 | trimSuffix "-" }}
-{{- else }}
-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
-{{- end }}
-{{- end }}
+{{- define "boundary.namespace" -}}
+{{- default .Release.Namespace .Values.namespace -}}
 {{- end }}
 
 {{/*
@@ -66,6 +55,13 @@ Get the controller service name
 {{- end }}
 
 {{/*
+Get the controller API service name
+*/}}
+{{- define "boundary.controller.apiServiceName" -}}
+{{- printf "%s-api" (include "boundary.name" .) }}
+{{- end }}
+
+{{/*
 Get the controller cluster service name
 */}}
 {{- define "boundary.controller.clusterServiceName" -}}
@@ -90,8 +86,8 @@ Get the controller configmap name
 Get the controller secret name
 */}}
 {{- define "boundary.controller.secretName" -}}
-{{- if .Values.controller.secretRefs.secretName }}
-{{- .Values.controller.secretRefs.secretName }}
+{{- if .Values.secretRefs.secretName }}
+{{- .Values.secretRefs.secretName }}
 {{- else }}
 {{- printf "%s-secrets" (include "boundary.controller.serviceName" .) }}
 {{- end }}
@@ -143,35 +139,36 @@ Validate migration and repair job settings.
 
 {{/*
 Validate manual Secret existence and required keys.
-Runs only when controller.secretRefs.validateExisting=true.
+Runs only when secretRefs.validateExisting=true.
 */}}
 {{- define "boundary.controller.validateSecretRefs" -}}
-{{- if .Values.controller.secretRefs.validateExisting }}
+{{- if .Values.secretRefs.validateExisting }}
 {{- $secretName := include "boundary.controller.secretName" . | trim -}}
 {{- if eq $secretName "" }}
-{{- fail "controller.secretRefs.secretName resolved to empty value" }}
+{{- fail "secretRefs.secretName resolved to empty value" }}
 {{- end }}
-{{- $secret := lookup "v1" "Secret" .Release.Namespace $secretName -}}
+{{- $namespace := include "boundary.namespace" . | trim -}}
+{{- $secret := lookup "v1" "Secret" $namespace $secretName -}}
 {{- if not $secret }}
-{{- fail (printf "Secret %q not found in namespace %q (set controller.secretRefs.secretName or disable controller.secretRefs.validateExisting)" $secretName .Release.Namespace) }}
+{{- fail (printf "Secret %q not found in namespace %q (set secretRefs.secretName or disable secretRefs.validateExisting)" $secretName $namespace) }}
 {{- end }}
 {{- $data := default dict (get $secret "data") -}}
-{{- $requiredKeys := list .Values.controller.secretRefs.keys.databaseUrl .Values.controller.secretRefs.keys.license -}}
+{{- $requiredKeys := list .Values.secretRefs.keys.databaseUrl .Values.secretRefs.keys.license -}}
 {{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" -}}
-{{- $requiredKeys = append $requiredKeys .Values.controller.secretRefs.keys.migrationUrl -}}
+{{- $requiredKeys = append $requiredKeys .Values.secretRefs.keys.migrationUrl -}}
 {{- end -}}
-{{- if .Values.controller.bootstrapAdmin.enabled -}}
-{{- $requiredKeys = append $requiredKeys .Values.controller.secretRefs.keys.adminUsername -}}
-{{- $requiredKeys = append $requiredKeys .Values.controller.secretRefs.keys.adminPassword -}}
+{{- if .Values.bootstrapAdmin.enabled -}}
+{{- $requiredKeys = append $requiredKeys .Values.secretRefs.keys.adminUsername -}}
+{{- $requiredKeys = append $requiredKeys .Values.secretRefs.keys.adminPassword -}}
 {{- end -}}
 {{- if eq (include "boundary.controller.usesEnvAeadKms" . | trim) "true" -}}
-{{- $requiredKeys = append $requiredKeys .Values.controller.secretRefs.keys.kmsRoot -}}
-{{- $requiredKeys = append $requiredKeys .Values.controller.secretRefs.keys.kmsWorkerAuth -}}
-{{- $requiredKeys = append $requiredKeys .Values.controller.secretRefs.keys.kmsRecovery -}}
+{{- $requiredKeys = append $requiredKeys .Values.secretRefs.keys.kmsRoot -}}
+{{- $requiredKeys = append $requiredKeys .Values.secretRefs.keys.kmsWorkerAuth -}}
+{{- $requiredKeys = append $requiredKeys .Values.secretRefs.keys.kmsRecovery -}}
 {{- end -}}
 {{- range $key := $requiredKeys }}
 {{- if eq (trim $key) "" }}
-{{- fail "controller.secretRefs.keys contains an empty key name" }}
+{{- fail "secretRefs.keys contains an empty key name" }}
 {{- end }}
 {{- if not (hasKey $data $key) }}
 {{- fail (printf "Secret %q is missing required key %q" $secretName $key) }}

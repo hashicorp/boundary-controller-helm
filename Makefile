@@ -162,7 +162,7 @@ lint-helm-k8s:
 	@echo "================================"
 	@echo "Rendering Helm Templates"
 	@echo "================================"
-	helm template boundary-worker . --set controller.secretRefs.validateExisting=false > rendered.yaml
+	helm template boundary-worker . --set secretRefs.validateExisting=false > rendered.yaml
 	@echo "✅ Templates rendered successfully!"
 	@echo "Rendered file size: $$(wc -l < rendered.yaml) lines"
 	@echo ""

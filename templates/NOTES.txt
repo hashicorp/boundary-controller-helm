@@ -1,36 +1,38 @@
 Boundary controller chart has been installed successfully.
 
 Release:   {{ .Release.Name }}
-Namespace: {{ .Release.Namespace }}
+Namespace: {{ include "boundary.namespace" . }}
 
 Controller:
 - Replicas:         {{ .Values.controller.replicas }}
-- API Service:      {{ include "boundary.controller.serviceName" . }} (port {{ .Values.controller.service.api.port }})
+- API Service:      {{ include "boundary.controller.apiServiceName" . }} (port {{ .Values.controller.service.api.port }})
 - Cluster Service:  {{ include "boundary.controller.clusterServiceName" . }} (port {{ .Values.controller.service.cluster.port }})
 - Ops Service:      {{ include "boundary.controller.opsServiceName" . }} (port {{ .Values.controller.service.ops.port }})
 - TLS:              {{ if .Values.tls.disabled }}disabled{{ else }}enabled (cert from Secret "{{ .Values.tls.secretName }}"){{ end }}
 
 Secret:
 - Name:          {{ include "boundary.controller.secretName" . }}
-- Required keys: {{ .Values.controller.secretRefs.keys.databaseUrl }}, {{ .Values.controller.secretRefs.keys.license }}{{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" }}, {{ .Values.controller.secretRefs.keys.migrationUrl }}{{- end }}{{- if .Values.controller.bootstrapAdmin.enabled }}, {{ .Values.controller.secretRefs.keys.adminUsername }}, {{ .Values.controller.secretRefs.keys.adminPassword }}{{- end }}{{- if eq (include "boundary.controller.usesEnvAeadKms" . | trim) "true" }}, {{ .Values.controller.secretRefs.keys.kmsRoot }}, {{ .Values.controller.secretRefs.keys.kmsWorkerAuth }}, {{ .Values.controller.secretRefs.keys.kmsRecovery }}{{- end }}
+- Required keys: {{ .Values.secretRefs.keys.databaseUrl }}, {{ .Values.secretRefs.keys.license }}{{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" }}, {{ .Values.secretRefs.keys.migrationUrl }}{{- end }}{{- if .Values.bootstrapAdmin.enabled }}, {{ .Values.secretRefs.keys.adminUsername }}, {{ .Values.secretRefs.keys.adminPassword }}{{- end }}{{- if eq (include "boundary.controller.usesEnvAeadKms" . | trim) "true" }}, {{ .Values.secretRefs.keys.kmsRoot }}, {{ .Values.secretRefs.keys.kmsWorkerAuth }}, {{ .Values.secretRefs.keys.kmsRecovery }}{{- end }}
 
 Next steps:
 
 1. Check that hook jobs completed successfully:
 
-   kubectl get jobs -n {{ .Release.Namespace }}
-   kubectl logs -n {{ .Release.Namespace }} job/{{ include "boundary.controller.serviceName" . }}-init-db
-{{- if .Values.controller.bootstrapAdmin.enabled }}
-   kubectl logs -n {{ .Release.Namespace }} job/{{ include "boundary.controller.serviceName" . }}-bootstrap-admin
+   kubectl get jobs -n {{ include "boundary.namespace" . }}
+{{- if .Values.database.init.enabled }}
+   kubectl logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-init-db
+{{- end }}
+{{- if .Values.bootstrapAdmin.enabled }}
+   kubectl logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-bootstrap-admin
 {{- end }}
 
 2. Wait for controller pods to become ready:
 
-   kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/component=controller
+   kubectl get pods -n {{ include "boundary.namespace" . }} -l app.kubernetes.io/component=controller
 
 3. Wait for the API Service to receive an external address:
 
-   kubectl get svc {{ include "boundary.controller.serviceName" . }} -n {{ .Release.Namespace }}
+   kubectl get svc {{ include "boundary.controller.apiServiceName" . }} -n {{ include "boundary.namespace" . }}
 
 4. Access the Boundary UI at:
 

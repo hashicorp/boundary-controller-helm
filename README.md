@@ -41,7 +41,8 @@ By default, a release renders the following resources:
 
 - One Deployment with two controller replicas and a RollingUpdate strategy
 - One API Service (`LoadBalancer`) for client traffic on port 9200
-- One cluster Service (`ClusterIP`) for worker registration traffic on port 9201 and the ops listener on port 9203
+- One cluster Service (`LoadBalancer` by default) for worker registration traffic on port 9201
+- One ops Service (`ClusterIP`) for health and metrics traffic on port 9203
 - One ConfigMap containing the rendered Boundary controller configuration file
 - One PodDisruptionBudget ensuring at least one replica stays available during voluntary disruptions
 - Helm hook Jobs for database initialization (`pre-install`), optional database migration (`pre-upgrade`), and optional admin bootstrap (`post-install`)
@@ -63,10 +64,10 @@ An optional ServiceAccount is created when `serviceAccount.create=true`.
 
 Ensure the following exist before installing:
 
-- **Kubernetes Secret** in the release namespace containing the database URL credentials and Boundary Enterprise license (add admin credentials when `controller.bootstrapAdmin.enabled=true`). Create it manually or sync it using the [Vault Secrets Operator](https://developer.hashicorp.com/vault/docs/platform/k8s/vso) or the [External Secrets Operator](https://external-secrets.io).
+- **Kubernetes Secret** in the release namespace containing the database URL credentials and Boundary Enterprise license (add admin credentials when `bootstrapAdmin.enabled=true`). Create it manually or sync it using the [Vault Secrets Operator](https://developer.hashicorp.com/vault/docs/platform/k8s/vso) or the [External Secrets Operator](https://external-secrets.io).
 - **PostgreSQL database** reachable from the cluster, with a user that has permission to create tables.
 - **KMS provider** — choose one: Vault Transit (`transit` stanza, requires Vault 1.11+), AWS KMS (`awskms`), GCP Cloud KMS (`gcpckms`), or Azure Key Vault (`azurekeyvault`). Cloud KMS providers require IAM/RBAC permissions granting the controller access to the key.
-- **Kubernetes TLS Secret** containing `tls.crt` and `tls.key` when `tls.disabled=false` (the default).
+- **Kubernetes TLS Secret** containing `tls.crt` and `tls.key` when `tls.disabled=false`.
 
 For multi-replica deployments, `public_cluster_addr` must be set in `controller.config` so workers can reach each replica.
 
@@ -88,7 +89,7 @@ Operational implications:
 - `disable_mlock = true` should remain set in the controller configuration when using this deployment model.
 - Sensitive values are not stored in the ConfigMap. They are sourced from an existing Kubernetes Secret via `valueFrom.secretKeyRef` in all containers. That Secret can be populated manually or synced from Vault using the Vault Secrets Operator or External Secrets Operator.
 - The cluster and ops Services default to `ClusterIP` and are not exposed externally.
-- Secret validation at render time (`controller.secretRefs.validateExisting=true`) catches missing credentials before any resources are created.
+- Secret validation at render time (`secretRefs.validateExisting=true`) catches missing credentials before any resources are created.
 
 ## Installation
 
@@ -96,7 +97,7 @@ Use this flow when you want to deploy a Boundary controller with this chart.
 
 ### 1. Create the Kubernetes Secret
 
-Create the Secret that the chart reads sensitive values from. At minimum it must contain the database credentials, migration database credentials (if using `env://BOUNDARY_PG_MIGRATION_URL` in `controller.config`), and enterprise license. Add admin credentials when `controller.bootstrapAdmin.enabled=true` (the default).
+Create the Secret that the chart reads sensitive values from. At minimum it must contain the database credentials, migration database credentials (if using `env://BOUNDARY_PG_MIGRATION_URL` in `controller.config`), and enterprise license. Add admin credentials when `bootstrapAdmin.enabled=true` (the default).
 
 ```bash
 kubectl create secret generic boundary-controller-secrets \
@@ -110,7 +111,7 @@ kubectl create secret generic boundary-controller-secrets \
 
 ### 2. Create the TLS Secret
 
-The default configuration enables TLS on all listeners. Supply a TLS certificate and key:
+Create this Secret only if you plan to enable TLS (`tls.disabled=false`). Supply a TLS certificate and key:
 
 ```bash
 kubectl create secret tls boundary-controller-tls \
@@ -128,8 +129,8 @@ Set `controller.config` in your values file with your Boundary HCL. The embedded
 Check `values.yaml` before installing, especially:
 
 - `image.repository`, `image.tag`, and `image.pullPolicy`
-- `controller.secretRefs.secretName`
-- `controller.bootstrapAdmin.enabled`
+- `secretRefs.secretName`
+- `bootstrapAdmin.enabled`
 - `tls.secretName` and `tls.mountPath`
 - `controller.service.api`, `controller.service.cluster`, and `controller.service.ops`
 - `serviceAccount.create` and `serviceAccount.name`
@@ -143,9 +144,6 @@ If you need Kubernetes infrastructure overrides, create a separate `my-values.ya
 # my-values.yaml — Kubernetes infrastructure overrides.
 # Include controller.config with your HCL from step 3.
 controller:
-  secretRefs:
-    secretName: "boundary-controller-secrets"
-
   service:
     api:
       annotations:
@@ -157,6 +155,9 @@ controller:
         service.beta.kubernetes.io/aws-load-balancer-type: "external"
         service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
         service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
+
+secretRefs:
+  secretName: "boundary-controller-secrets"
 
 serviceAccount:
   create: true
@@ -194,12 +195,12 @@ helm install boundary-controller . \
 kubectl get pods -n boundary
 kubectl get svc -n boundary
 kubectl get jobs -n boundary
-kubectl logs deployment/boundary -n boundary
+kubectl logs deployment/boundary-controller -n boundary
 ```
 
 Confirm that:
 
-- The database initialization Job completes successfully
+- The database initialization Job completes successfully when database.init.enabled=true
 - The bootstrap admin Job completes successfully (if enabled)
 - The controller pods become ready
 - The API Service has an external address
@@ -207,7 +208,7 @@ Confirm that:
 ### 8. If using a LoadBalancer, retrieve the external address
 
 ```bash
-kubectl get svc boundary -n boundary
+kubectl get svc boundary-controller-api -n boundary
 ```
 
 Use the external address to access the Boundary UI at `https://<EXTERNAL_IP>:9200`.
@@ -271,8 +272,6 @@ listener "tcp" {
 listener "tcp" {
   address       = "0.0.0.0:9201"
   purpose       = "cluster"
-  tls_cert_file = "/etc/boundary/tls/tls.crt"
-  tls_key_file  = "/etc/boundary/tls/tls.key"
 }
 
 listener "tcp" {
@@ -349,25 +348,25 @@ The Vault token or other credentials required by the Transit engine must be supp
 
 ## TLS
 
-TLS is enabled by default. The chart expects a Kubernetes TLS Secret named by `tls.secretName` containing `tls.crt` and `tls.key`. That Secret is mounted at `tls.mountPath` in all controller and job containers.
+TLS is disabled by default (`tls.disabled=true`). When enabled, the chart expects a Kubernetes TLS Secret named by `tls.secretName` containing `tls.crt` and `tls.key`. That Secret is mounted at `tls.mountPath` in all controller and job containers.
 
 The chart validates that `controller.config` references `tls.mountPath` for both `tls_cert_file` and `tls_key_file`. If the paths do not match, rendering fails with an actionable error.
 
-To disable TLS:
+To enable TLS:
 
-1. Set `tls.disabled=true`
-2. Update `controller.config` to set `tls_disable = true` on each listener
-3. Update liveness and readiness probe schemes to `HTTP`:
+1. Set `tls.disabled=false`
+2. Configure `controller.config` listeners with `tls_disable = false` and cert/key file paths under `tls.mountPath`
+3. Update liveness and readiness probe schemes to `HTTPS`:
 
 ```yaml
 tls:
-  disabled: true
+  disabled: false
 
 controller:
   livenessProbe:
-    scheme: HTTP
+    scheme: HTTPS
   readinessProbe:
-    scheme: HTTP
+    scheme: HTTPS
 ```
 
 ## Common Deployment Patterns
@@ -407,23 +406,21 @@ Use [Azure Managed Identity](https://learn.microsoft.com/azure/aks/workload-iden
 If you manage admin accounts externally, disable the bootstrap job:
 
 ```yaml
-controller:
-  bootstrapAdmin:
-    enabled: false
+bootstrapAdmin:
+  enabled: false
 ```
 
 ### Vault-managed secrets
 
-If Vault is your source of truth for secrets, use the [Vault Secrets Operator](https://developer.hashicorp.com/vault/docs/platform/k8s/vso) or the [External Secrets Operator](https://external-secrets.io) with a Vault backend to sync the required values into a Kubernetes Secret before install. Once the Secret exists in the release namespace with the correct key names, the chart reads it the same way as a manually created Secret. Set `controller.secretRefs.secretName` to match the name the operator creates. Cloud-native alternatives such as AWS Secrets Manager (via the AWS Secrets and Configuration Provider) or GCP Secret Manager can also be used to populate the Secret in the same way.
+If Vault is your source of truth for secrets, use the [Vault Secrets Operator](https://developer.hashicorp.com/vault/docs/platform/k8s/vso) or the [External Secrets Operator](https://external-secrets.io) with a Vault backend to sync the required values into a Kubernetes Secret before install. Once the Secret exists in the release namespace with the correct key names, the chart reads it the same way as a manually created Secret. Set `secretRefs.secretName` to match the name the operator creates. Cloud-native alternatives such as AWS Secrets Manager (via the AWS Secrets and Configuration Provider) or GCP Secret Manager can also be used to populate the Secret in the same way.
 
 ### Offline rendering without cluster access
 
 Secret validation requires a live cluster connection. Disable it for `helm template` runs:
 
 ```yaml
-controller:
-  secretRefs:
-    validateExisting: false
+secretRefs:
+  validateExisting: false
 ```
 
 ## Configuration Reference
@@ -433,11 +430,11 @@ The table below documents all chart values shipped in `values.yaml`.
 | Key | Default | Description |
 | --- | --- | --- |
 | `image.repository` | `hashicorp/boundary-enterprise` | Boundary controller container image repository. |
-| `image.tag` | `0.19-ent` | Image tag used by the controller container and hook jobs. |
+| `image.tag` | `0.21-ent` | Image tag used by the controller container and hook jobs. |
 | `image.pullPolicy` | `IfNotPresent` | Kubernetes image pull policy. |
 | `imagePullSecrets` | `[]` | Optional registry credentials for private image pulls. |
 | `nameOverride` | `""` | Override the chart name used in resource naming. |
-| `fullnameOverride` | `""` | Override the full release name used in resource naming. |
+| `namespace` | `""` | Namespace applied to all namespaced chart resources. Leave empty to use the Helm release namespace. |
 | `tls.disabled` | `false` | Disable TLS cert mounts and related validation when set to `true`. |
 | `tls.secretName` | `boundary-controller-tls` | Name of the Kubernetes TLS Secret containing `tls.crt` and `tls.key`. |
 | `tls.mountPath` | `/etc/boundary/tls` | Mount path for TLS certs inside containers. Must match paths in `controller.config`. |
@@ -445,31 +442,32 @@ The table below documents all chart values shipped in `values.yaml`.
 | `controller.rollingUpdate.maxUnavailable` | `1` | Maximum unavailable pods during a rolling update. |
 | `controller.rollingUpdate.maxSurge` | `1` | Maximum surge pods during a rolling update. |
 | `controller.config` | Embedded HCL | Raw HCL controller configuration stored in a ConfigMap and mounted into all containers. Rendered with `tpl`. |
-| `controller.secretRefs.secretName` | `boundary-controller-secrets` | Name of the Kubernetes Secret containing sensitive values. Must exist before install. |
-| `controller.secretRefs.validateExisting` | `true` | When true, Helm validates that the Secret exists and contains all required keys at render time. Set to `false` for offline `helm template` runs. |
-| `controller.secretRefs.keys.databaseUrl` | `database-url` | Key in the Secret for the PostgreSQL connection string. |
-| `controller.secretRefs.keys.migrationUrl` | `migration-url` | Key in the Secret for the migration PostgreSQL connection string, used when `controller.config` sets `database.migration_url = "env://BOUNDARY_PG_MIGRATION_URL"`. |
-| `controller.secretRefs.keys.license` | `license` | Key in the Secret for the Boundary Enterprise license. |
-| `controller.secretRefs.keys.adminUsername` | `admin-username` | Key in the Secret for the bootstrap admin login name. Required when `bootstrapAdmin.enabled=true`. |
-| `controller.secretRefs.keys.adminPassword` | `admin-password` | Key in the Secret for the bootstrap admin password. Required when `bootstrapAdmin.enabled=true`. |
-| `controller.secretRefs.keys.kmsRoot` | `kms-root` | Key in the Secret for the AEAD root KMS key. Required only when using AEAD `env://` key mode. |
-| `controller.secretRefs.keys.kmsWorkerAuth` | `kms-worker-auth` | Key in the Secret for the AEAD worker-auth KMS key. Required only when using AEAD `env://` key mode. |
-| `controller.secretRefs.keys.kmsRecovery` | `kms-recovery` | Key in the Secret for the AEAD recovery KMS key. Required only when using AEAD `env://` key mode. |
-| `controller.bootstrapAdmin.enabled` | `true` | Run the post-install bootstrap admin hook job. |
-| `controller.bootstrapAdmin.runOnUpgrade` | `false` | Also run the bootstrap admin job as a post-upgrade hook. |
-| `controller.bootstrapAdmin.waitTimeoutSeconds` | `120` | Seconds the bootstrap job waits for the controller API to become available. |
-| `controller.bootstrapAdmin.authMethodName` | `bootstrap-password` | Display name for the password auth method created by the bootstrap job. |
-| `controller.bootstrapAdmin.userResourceName` | `bootstrap-admin` | Display name for the Boundary user resource created by the bootstrap job. |
-| `controller.bootstrapAdmin.accountResourceName` | `bootstrap-admin` | Display name for the Boundary account resource created by the bootstrap job. |
-| `controller.bootstrapAdmin.roleName` | `bootstrap-global-admin` | Display name for the global admin role created by the bootstrap job. |
-| `controller.database.migrate.enabled` | `false` | Run `boundary database migrate` as a `pre-upgrade` hook job. Pass via `--set` on the upgrade command rather than setting in your values file. |
-| `controller.database.repair.version` | `""` | Migration version id passed to `-repair`. When non-empty and `controller.database.migrate.enabled=true`, a repair job runs first, then migrate. |
-| `controller.livenessProbe.scheme` | `HTTPS` | HTTP scheme for liveness probe requests to the ops listener. |
+| `secretRefs.secretName` | `boundary-controller-secrets` | Name of the Kubernetes Secret containing sensitive values. Must exist before install. |
+| `secretRefs.validateExisting` | `false` | When true, Helm validates that the Secret exists and contains all required keys at render time. Set to `false` for offline `helm template` runs. |
+| `secretRefs.keys.databaseUrl` | `database-url` | Key in the Secret for the PostgreSQL connection string. |
+| `secretRefs.keys.migrationUrl` | `migration-url` | Key in the Secret for the migration PostgreSQL connection string, used when `controller.config` sets `database.migration_url = "env://BOUNDARY_PG_MIGRATION_URL"`. |
+| `secretRefs.keys.license` | `license` | Key in the Secret for the Boundary Enterprise license. |
+| `secretRefs.keys.adminUsername` | `admin-username` | Key in the Secret for the bootstrap admin login name. Required when `bootstrapAdmin.enabled=true`. |
+| `secretRefs.keys.adminPassword` | `admin-password` | Key in the Secret for the bootstrap admin password. Required when `bootstrapAdmin.enabled=true`. |
+| `secretRefs.keys.kmsRoot` | `kms-root` | Key in the Secret for the AEAD root KMS key. Required only when using AEAD `env://` key mode. |
+| `secretRefs.keys.kmsWorkerAuth` | `kms-worker-auth` | Key in the Secret for the AEAD worker-auth KMS key. Required only when using AEAD `env://` key mode. |
+| `secretRefs.keys.kmsRecovery` | `kms-recovery` | Key in the Secret for the AEAD recovery KMS key. Required only when using AEAD `env://` key mode. |
+| `bootstrapAdmin.enabled` | `true` | Run the post-install bootstrap admin hook job. |
+| `bootstrapAdmin.runOnUpgrade` | `false` | Also run the bootstrap admin job as a post-upgrade hook. |
+| `bootstrapAdmin.waitTimeoutSeconds` | `120` | Seconds the bootstrap job waits for the controller API to become available. |
+| `bootstrapAdmin.authMethodName` | `bootstrap-password` | Display name for the password auth method created by the bootstrap job. |
+| `bootstrapAdmin.userResourceName` | `bootstrap-admin` | Display name for the Boundary user resource created by the bootstrap job. |
+| `bootstrapAdmin.accountResourceName` | `bootstrap-admin` | Display name for the Boundary account resource created by the bootstrap job. |
+| `bootstrapAdmin.roleName` | `bootstrap-global-admin` | Display name for the global admin role created by the bootstrap job. |
+| `database.init.enabled` | `true` | Run `boundary database init` as a `pre-install` hook job. Set to `false` when database lifecycle is managed outside this chart. |
+| `database.migrate.enabled` | `false` | Run `boundary database migrate` as a `pre-upgrade` hook job. Pass via `--set` on the upgrade command rather than setting in your values file. |
+| `database.repair.version` | `""` | Migration version id passed to `-repair`. When non-empty and `database.migrate.enabled=true`, a repair job runs first, then migrate. |
+| `controller.livenessProbe.scheme` | `HTTP` | HTTP scheme for liveness probe requests to the ops listener. |
 | `controller.livenessProbe.initialDelaySeconds` | `60` | Seconds before the first liveness probe. |
 | `controller.livenessProbe.periodSeconds` | `10` | Liveness probe interval in seconds. |
 | `controller.livenessProbe.failureThreshold` | `3` | Consecutive failures before the pod is restarted. |
 | `controller.livenessProbe.timeoutSeconds` | `5` | Timeout in seconds for each liveness probe. |
-| `controller.readinessProbe.scheme` | `HTTPS` | HTTP scheme for readiness probe requests to the ops listener. |
+| `controller.readinessProbe.scheme` | `HTTP` | HTTP scheme for readiness probe requests to the ops listener. |
 | `controller.readinessProbe.initialDelaySeconds` | `15` | Seconds before the first readiness probe. |
 | `controller.readinessProbe.periodSeconds` | `10` | Readiness probe interval in seconds. |
 | `controller.readinessProbe.failureThreshold` | `3` | Consecutive failures before the pod is removed from Service endpoints. |
@@ -513,15 +511,15 @@ kubectl get deployment,pods,svc,pdb -n boundary
 ### Inspect controller logs
 
 ```bash
-kubectl logs -n boundary deployment/boundary
+kubectl logs -n boundary deployment/boundary-controller
 ```
 
 ### Check hook job status
 
 ```bash
 kubectl get jobs -n boundary
-kubectl logs -n boundary job/boundary-init-db
-kubectl logs -n boundary job/boundary-bootstrap-admin
+kubectl logs -n boundary job/boundary-controller-init-db
+kubectl logs -n boundary job/boundary-controller-bootstrap-admin
 ```
 
 ### Upgrading
@@ -570,13 +568,13 @@ helm upgrade boundary-controller . \
 
 **Step 2 — run the migration and bring controllers back up:**
 
-Pass `--set controller.database.migrate.enabled=true` on the upgrade command. Do not set this in your values file — it is a one-time flag. Helm runs the `pre-upgrade` migration job first, then rolls out the Deployment using the replica count from your values file, bringing the controllers back up automatically.
+Pass `--set database.migrate.enabled=true` on the upgrade command. Do not set this in your values file — it is a one-time flag. Helm runs the `pre-upgrade` migration job first, then rolls out the Deployment using the replica count from your values file, bringing the controllers back up automatically.
 
 ```bash
 helm upgrade boundary-controller . \
   --namespace boundary \
   -f my-values.yaml \
-  --set controller.database.migrate.enabled=true
+  --set database.migrate.enabled=true
 ```
 
 If the migration user differs from the runtime database user, set `migration_url` in `controller.config` under the `database` block. The chart does not pass `-migration-url`; Boundary will use the configured value automatically.
@@ -590,7 +588,7 @@ controller {
 }
 ```
 
-When using `env://BOUNDARY_PG_MIGRATION_URL`, ensure the Secret contains the key configured by `controller.secretRefs.keys.migrationUrl` (default `migration-url`).
+When using `env://BOUNDARY_PG_MIGRATION_URL`, ensure the Secret contains the key configured by `secretRefs.keys.migrationUrl` (default `migration-url`).
 
 #### Upgrade with migration repair
 
@@ -600,15 +598,15 @@ Use repair only after reviewing Boundary migration failure output and identifyin
 helm upgrade boundary-controller . \
   --namespace boundary \
   -f my-values.yaml \
-  --set controller.database.migrate.enabled=true \
-  --set controller.database.repair.version=20240111120000
+  --set database.migrate.enabled=true \
+  --set database.repair.version=20240111120000
 ```
 
 Notes:
 
-- Repair runs only when both conditions are true: `controller.database.migrate.enabled=true` and `controller.database.repair.version` is non-empty.
-- If `controller.database.repair.version` is set but `controller.database.migrate.enabled=false`, no repair job runs.
-- Keep `controller.database.repair.version` as a one-time value, similar to migrate flags.
+- Repair runs only when both conditions are true: `database.migrate.enabled=true` and `database.repair.version` is non-empty.
+- If `database.repair.version` is set but `database.migrate.enabled=false`, no repair job runs.
+- Keep `database.repair.version` as a one-time value, similar to migrate flags.
 - When both run, Helm runs repair first (hook weight `-10`) and migrate second (hook weight `-5`).
 
 #### Post-Upgrade Verification
@@ -620,10 +618,10 @@ After upgrading:
 kubectl get pods -n boundary
 
 # Verify all replicas are ready
-kubectl rollout status deployment/boundary -n boundary
+kubectl rollout status deployment/boundary-controller -n boundary
 
 # Check controller logs for errors
-kubectl logs -n boundary deployment/boundary --tail=100
+kubectl logs -n boundary deployment/boundary-controller --tail=100
 
 # Check hook job completion
 kubectl get jobs -n boundary
@@ -668,7 +666,7 @@ kubectl delete jobs -n boundary -l app.kubernetes.io/instance=boundary-controlle
 The ops listener (port 9203) on the internal cluster Service (`ClusterIP`) exposes the `/health` endpoint used by the Kubernetes liveness and readiness probes. It is not reachable externally. Use `kubectl port-forward` to access it manually:
 
 ```bash
-kubectl port-forward -n boundary svc/boundary-cluster 9203:9203
+kubectl port-forward -n boundary svc/boundary-controller-ops 9203:9203
 curl -k https://localhost:9203/health
 ```
 

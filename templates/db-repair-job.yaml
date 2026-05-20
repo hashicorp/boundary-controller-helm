@@ -1,4 +1,4 @@
-{{- if and .Values.controller.database.migrate.enabled (ne (printf "%v" (default "" .Values.controller.database.repair.version) | trim) "") }}
+{{- if and .Values.database.migrate.enabled (ne (printf "%v" (default "" .Values.database.repair.version) | trim) "") }}
 {{- include "boundary.controller.validateSecretRefs" . -}}
 {{- include "boundary.controller.validateConfig" . -}}
 {{- include "boundary.controller.validateDatabaseJobs" . -}}
@@ -6,6 +6,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ include "boundary.controller.serviceName" . }}-database-repair
+  namespace: {{ include "boundary.namespace" . }}
   labels:
     {{- include "boundary.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller-repair
@@ -44,35 +45,35 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
-                  key: {{ .Values.controller.secretRefs.keys.databaseUrl }}
+                  key: {{ .Values.secretRefs.keys.databaseUrl }}
             {{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" }}
             - name: BOUNDARY_PG_MIGRATION_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
-                  key: {{ .Values.controller.secretRefs.keys.migrationUrl }}
+                  key: {{ .Values.secretRefs.keys.migrationUrl }}
             {{- end }}
             - name: BOUNDARY_LICENSE
               valueFrom:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
-                  key: {{ .Values.controller.secretRefs.keys.license }}
+                  key: {{ .Values.secretRefs.keys.license }}
             {{- if eq (include "boundary.controller.usesEnvAeadKms" . | trim) "true" }}
             - name: BOUNDARY_KMS_ROOT
               valueFrom:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
-                  key: {{ .Values.controller.secretRefs.keys.kmsRoot }}
+                  key: {{ .Values.secretRefs.keys.kmsRoot }}
             - name: BOUNDARY_KMS_WORKER_AUTH
               valueFrom:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
-                  key: {{ .Values.controller.secretRefs.keys.kmsWorkerAuth }}
+                  key: {{ .Values.secretRefs.keys.kmsWorkerAuth }}
             - name: BOUNDARY_KMS_RECOVERY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
-                  key: {{ .Values.controller.secretRefs.keys.kmsRecovery }}
+                  key: {{ .Values.secretRefs.keys.kmsRecovery }}
             {{- end }}
           command:
             - "boundary"
@@ -81,7 +82,9 @@ spec:
             - "-config"
             - "/etc/boundary/controller.hcl"
             - "-repair"
-            - {{ .Values.controller.database.repair.version | quote }}
+            - {{ .Values.database.repair.version | quote }}
+          resources:
+            {{- toYaml .Values.database.resources | nindent 12 }}
           volumeMounts:
             - name: config
               mountPath: /etc/boundary
