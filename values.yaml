@@ -10,7 +10,7 @@ namespace: ""
 # Boundary image configuration
 image:
   repository: hashicorp/boundary-enterprise
-  tag: "0.21-ent"
+  tag: "0.20-ent"
   pullPolicy: IfNotPresent
 
 # Image pull secrets for private registries. Expects an array of secret names.
@@ -241,7 +241,7 @@ database:
 bootstrapAdmin:
   enabled: true
   runOnUpgrade: false
-  waitTimeoutSeconds: 120
+  waitTimeoutSeconds: 120 # Max job wait time for the Boundary API to become reachable before failing.
   authMethodName: "bootstrap-password"
   # Boundary user resource display name (from `boundary users create -name`), not the login credential.
   userResourceName: "bootstrap-admin"

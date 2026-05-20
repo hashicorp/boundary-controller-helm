@@ -88,7 +88,8 @@ Operational implications:
 
 - `disable_mlock = true` should remain set in the controller configuration when using this deployment model.
 - Sensitive values are not stored in the ConfigMap. They are sourced from an existing Kubernetes Secret via `valueFrom.secretKeyRef` in all containers. That Secret can be populated manually or synced from Vault using the Vault Secrets Operator or External Secrets Operator.
-- The cluster and ops Services default to `ClusterIP` and are not exposed externally.
+- The ops Service defaults to `ClusterIP` and is not exposed externally.
+- The cluster Service defaults to `LoadBalancer`; set `controller.service.cluster.type=ClusterIP` for internal-only worker registration.
 - Secret validation at render time (`secretRefs.validateExisting=true`) catches missing credentials before any resources are created.
 
 ## Installation
@@ -130,6 +131,7 @@ Check `values.yaml` before installing, especially:
 
 - `image.repository`, `image.tag`, and `image.pullPolicy`
 - `secretRefs.secretName`
+- `database.init.enabled`, `database.migrate.enabled`, and `database.repair.version`
 - `bootstrapAdmin.enabled`
 - `tls.secretName` and `tls.mountPath`
 - `controller.service.api`, `controller.service.cluster`, and `controller.service.ops`
@@ -137,34 +139,6 @@ Check `values.yaml` before installing, especially:
 - `controller.resources`
 
 For all available values see the [Configuration Reference](#configuration-reference). For cloud-specific examples (AWS, GCP, Azure) see [Common Deployment Patterns](#common-deployment-patterns).
-
-If you need Kubernetes infrastructure overrides, create a separate `my-values.yaml`. Example for AWS with IRSA and NLB:
-
-```yaml
-# my-values.yaml — Kubernetes infrastructure overrides.
-# Include controller.config with your HCL from step 3.
-controller:
-  service:
-    api:
-      annotations:
-        service.beta.kubernetes.io/aws-load-balancer-type: "nlb-ip"
-        service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-    cluster:
-      type: LoadBalancer
-      annotations:
-        service.beta.kubernetes.io/aws-load-balancer-type: "external"
-        service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
-        service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
-
-secretRefs:
-  secretName: "boundary-controller-secrets"
-
-serviceAccount:
-  create: true
-  name: "boundary-controller"
-  annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/boundary-controller-role
-```
 
 ### 5. Create the namespace
 
@@ -401,6 +375,20 @@ Use [Azure Managed Identity](https://learn.microsoft.com/azure/aks/workload-iden
 - [Azure Key Vault RBAC and Access Policies](https://learn.microsoft.com/azure/key-vault/general/rbac-guide)
 - [Azure Load Balancer in AKS](https://learn.microsoft.com/azure/aks/load-balancer-standard)
 
+### Database Ops Flags
+
+Use these values to control database operational hooks:
+
+```yaml
+database:
+  init:
+    enabled: true
+  migrate:
+    enabled: false
+  repair:
+    version: ""
+```
+
 ### Disable bootstrap admin
 
 If you manage admin accounts externally, disable the bootstrap job:
@@ -435,7 +423,7 @@ The table below documents all chart values shipped in `values.yaml`.
 | `imagePullSecrets` | `[]` | Optional registry credentials for private image pulls. |
 | `nameOverride` | `""` | Override the chart name used in resource naming. |
 | `namespace` | `""` | Namespace applied to all namespaced chart resources. Leave empty to use the Helm release namespace. |
-| `tls.disabled` | `false` | Disable TLS cert mounts and related validation when set to `true`. |
+| `tls.disabled` | `true` | Disable TLS cert mounts and related validation when set to `true`. |
 | `tls.secretName` | `boundary-controller-tls` | Name of the Kubernetes TLS Secret containing `tls.crt` and `tls.key`. |
 | `tls.mountPath` | `/etc/boundary/tls` | Mount path for TLS certs inside containers. Must match paths in `controller.config`. |
 | `controller.replicas` | `2` | Number of controller replicas. |
@@ -452,6 +440,9 @@ The table below documents all chart values shipped in `values.yaml`.
 | `secretRefs.keys.kmsRoot` | `kms-root` | Key in the Secret for the AEAD root KMS key. Required only when using AEAD `env://` key mode. |
 | `secretRefs.keys.kmsWorkerAuth` | `kms-worker-auth` | Key in the Secret for the AEAD worker-auth KMS key. Required only when using AEAD `env://` key mode. |
 | `secretRefs.keys.kmsRecovery` | `kms-recovery` | Key in the Secret for the AEAD recovery KMS key. Required only when using AEAD `env://` key mode. |
+| `database.init.enabled` | `true` | Run `boundary database init` as a `pre-install` hook job. Set to `false` when database lifecycle is managed outside this chart. |
+| `database.migrate.enabled` | `false` | Run `boundary database migrate` as a `pre-upgrade` hook job. Pass via `--set` on the upgrade command rather than setting in your values file. |
+| `database.repair.version` | `""` | Migration version id passed to `-repair`. When non-empty and `database.migrate.enabled=true`, a repair job runs first, then migrate. |
 | `bootstrapAdmin.enabled` | `true` | Run the post-install bootstrap admin hook job. |
 | `bootstrapAdmin.runOnUpgrade` | `false` | Also run the bootstrap admin job as a post-upgrade hook. |
 | `bootstrapAdmin.waitTimeoutSeconds` | `120` | Seconds the bootstrap job waits for the controller API to become available. |
@@ -459,9 +450,6 @@ The table below documents all chart values shipped in `values.yaml`.
 | `bootstrapAdmin.userResourceName` | `bootstrap-admin` | Display name for the Boundary user resource created by the bootstrap job. |
 | `bootstrapAdmin.accountResourceName` | `bootstrap-admin` | Display name for the Boundary account resource created by the bootstrap job. |
 | `bootstrapAdmin.roleName` | `bootstrap-global-admin` | Display name for the global admin role created by the bootstrap job. |
-| `database.init.enabled` | `true` | Run `boundary database init` as a `pre-install` hook job. Set to `false` when database lifecycle is managed outside this chart. |
-| `database.migrate.enabled` | `false` | Run `boundary database migrate` as a `pre-upgrade` hook job. Pass via `--set` on the upgrade command rather than setting in your values file. |
-| `database.repair.version` | `""` | Migration version id passed to `-repair`. When non-empty and `database.migrate.enabled=true`, a repair job runs first, then migrate. |
 | `controller.livenessProbe.scheme` | `HTTP` | HTTP scheme for liveness probe requests to the ops listener. |
 | `controller.livenessProbe.initialDelaySeconds` | `60` | Seconds before the first liveness probe. |
 | `controller.livenessProbe.periodSeconds` | `10` | Liveness probe interval in seconds. |
@@ -667,6 +655,12 @@ The ops listener (port 9203) on the internal cluster Service (`ClusterIP`) expos
 
 ```bash
 kubectl port-forward -n boundary svc/boundary-controller-ops 9203:9203
+curl http://localhost:9203/health
+```
+
+If `tls.disabled=false` and your ops listener uses TLS, use:
+
+```bash
 curl -k https://localhost:9203/health
 ```
 
@@ -687,7 +681,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: boundary
+      app.kubernetes.io/name: boundary-controller
       app.kubernetes.io/component: controller
   endpoints:
   - port: ops
