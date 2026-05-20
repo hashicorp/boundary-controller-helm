@@ -40,11 +40,13 @@ The chart does not manage worker resources, Boundary scopes, HCP Boundary connec
 By default, a release renders the following resources:
 
 - One Deployment with two controller replicas and a RollingUpdate strategy
-- One API Service (`LoadBalancer`) for client traffic on port 9200
-- One cluster Service (`ClusterIP`) for worker registration traffic on port 9201 and the ops listener on port 9203
+- Three Services for controller traffic:
+  - **API Service** (`boundary-controller`): LoadBalancer on port 9200 for client API traffic
+  - **Cluster Service** (`boundary-controller-cluster`): LoadBalancer on port 9201 for worker registration
+  - **Ops Service** (`boundary-controller-ops`): ClusterIP on port 9203 for health checks and metrics
 - One ConfigMap containing the rendered Boundary controller configuration file
 - One PodDisruptionBudget ensuring at least one replica stays available during voluntary disruptions
-- Helm hook Jobs for database initialization (`pre-install`), optional database migration (`pre-upgrade`), and optional admin bootstrap (`post-install`)
+- Helm hook Jobs for database initialization (`pre-install`), optional database migration (`pre-upgrade`), optional database repair (`pre-upgrade`), and optional admin bootstrap (`post-install`)
 
 An optional ServiceAccount is created when `serviceAccount.create=true`.
 
@@ -520,8 +522,8 @@ kubectl logs -n boundary deployment/boundary
 
 ```bash
 kubectl get jobs -n boundary
-kubectl logs -n boundary job/boundary-init-db
-kubectl logs -n boundary job/boundary-bootstrap-admin
+kubectl logs -n boundary job/boundary-controller-init-db
+kubectl logs -n boundary job/boundary-controller-bootstrap-admin
 ```
 
 ### Upgrading
@@ -604,7 +606,15 @@ helm upgrade boundary-controller . \
   --set controller.database.repair.version=20240111120000
 ```
 
-Notes:
+**Version Format:**
+
+The repair version must match one of these formats:
+- Standard: `YYYYMMDDHHMMSS` (e.g., `20240111120000`)
+- Dirty migration: `SEQUENCE/YYYYMMDDHHMMSS` (e.g., `0/20240111120000`)
+
+The chart validates the format at render time and fails with a clear error if invalid.
+
+**Notes:**
 
 - Repair runs only when both conditions are true: `controller.database.migrate.enabled=true` and `controller.database.repair.version` is non-empty.
 - If `controller.database.repair.version` is set but `controller.database.migrate.enabled=false`, no repair job runs.
@@ -668,7 +678,7 @@ kubectl delete jobs -n boundary -l app.kubernetes.io/instance=boundary-controlle
 The ops listener (port 9203) on the internal cluster Service (`ClusterIP`) exposes the `/health` endpoint used by the Kubernetes liveness and readiness probes. It is not reachable externally. Use `kubectl port-forward` to access it manually:
 
 ```bash
-kubectl port-forward -n boundary svc/boundary-cluster 9203:9203
+kubectl port-forward -n boundary svc/boundary-controller-ops 9203:9203
 curl -k https://localhost:9203/health
 ```
 
@@ -689,7 +699,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: boundary
+      app.kubernetes.io/name: boundary-controller
       app.kubernetes.io/component: controller
   endpoints:
   - port: ops
@@ -749,6 +759,69 @@ Set up alerts for:
 5. **Resource Exhaustion**: Alert on high CPU/memory usage (>80% of limits)
 6. **Certificate Expiration**: Alert 30 days before TLS cert expiry
 7. **Failed Hook Jobs**: Alert if database init or migration jobs fail
+
+## Testing
+
+The chart includes comprehensive acceptance tests for validation before deployment. See [docs/TESTING.md](docs/TESTING.md) for detailed testing documentation.
+
+Quick test commands:
+
+```bash
+# Cluster smoke test
+bash tests/acceptance/cluster-smoke-test.sh
+
+# Controller API test
+bash tests/acceptance/controller-api-test.sh
+
+# KIND version matrix test
+bash tests/acceptance/kind-version-matrix-test.sh
+```
+
+## Repository Layout
+
+```text
+.
+├── Chart.yaml
+├── README.md
+├── values.yaml
+├── Makefile
+├── docs/
+│   └── TESTING.md
+├── templates/
+│   ├── _helpers.tpl
+│   ├── NOTES.txt
+│   ├── bootstrap-admin-job.yaml
+│   ├── configmap.yaml
+│   ├── db-init-job.yaml
+│   ├── db-migrate-job.yaml
+│   ├── db-repair-job.yaml
+│   ├── deployment.yaml
+│   ├── pdb.yaml
+│   ├── service.yaml
+│   ├── serviceaccount.yaml
+│   └── validate.yaml
+└── tests/
+    └── acceptance/
+        ├── cluster-smoke-test.sh
+        ├── controller-api-test.sh
+        ├── kind-version-matrix-test.sh
+        ├── kind-acceptance-config.yaml
+        ├── postgres.yaml
+        └── test-values.yaml
+```
+
+Key files:
+
+- `values.yaml`: Default chart values
+- `templates/deployment.yaml`: Multi-replica controller Deployment
+- `templates/service.yaml`: API, cluster, and ops Services
+- `templates/db-init-job.yaml`: Database initialization hook
+- `templates/db-migrate-job.yaml`: Database migration hook
+- `templates/db-repair-job.yaml`: Database repair hook
+- `templates/bootstrap-admin-job.yaml`: Admin bootstrap hook
+- `docs/TESTING.md`: Comprehensive testing guide
+- `tests/acceptance/controller-api-test.sh`: Controller API validation
+- `tests/acceptance/kind-version-matrix-test.sh`: Multi-version compatibility testing
 
 ## Known Limitations
 
