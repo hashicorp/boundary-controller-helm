@@ -1,3 +1,5 @@
+# Copyright IBM Corp. 2026
+
 {{- if and .Release.IsInstall .Values.database.init.enabled }}
 {{- include "boundary.controller.validateSecretRefs" . -}}
 {{- include "boundary.controller.validateConfig" . -}}

@@ -1,3 +1,5 @@
+# Copyright IBM Corp. 2026
+
 {{- if and .Values.database.migrate.enabled (ne (printf "%v" (default "" .Values.database.repair.version) | trim) "") }}
 {{- include "boundary.controller.validateSecretRefs" . -}}
 {{- include "boundary.controller.validateConfig" . -}}

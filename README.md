@@ -45,7 +45,7 @@ By default, a release renders the following resources:
 - One ops Service (`ClusterIP`) for health and metrics traffic on port 9203
 - One ConfigMap containing the rendered Boundary controller configuration file
 - One PodDisruptionBudget ensuring at least one replica stays available during voluntary disruptions
-- Helm hook Jobs for database initialization (`pre-install`), optional database migration (`pre-upgrade`), and optional admin bootstrap (`post-install`)
+- Helm hook Jobs for database initialization (`pre-install`), optional database migration (`pre-upgrade`), optional database repair (`pre-upgrade`), and optional admin bootstrap (`post-install`)
 
 The chart uses an existing ServiceAccount and does not create ServiceAccount resources.
 
@@ -590,7 +590,15 @@ helm upgrade boundary-controller . \
   --set database.repair.version=20240111120000
 ```
 
-Notes:
+**Version Format:**
+
+The repair version must match one of these formats:
+- Standard: `YYYYMMDDHHMMSS` (e.g., `20240111120000`)
+- Dirty migration: `SEQUENCE/YYYYMMDDHHMMSS` (e.g., `0/20240111120000`)
+
+The chart validates the format at render time and fails with a clear error if invalid.
+
+**Notes:**
 
 - Repair runs only when both conditions are true: `database.migrate.enabled=true` and `database.repair.version` is non-empty.
 - If `database.repair.version` is set but `database.migrate.enabled=false`, no repair job runs.
@@ -741,6 +749,69 @@ Set up alerts for:
 5. **Resource Exhaustion**: Alert on high CPU/memory usage (>80% of limits)
 6. **Certificate Expiration**: Alert 30 days before TLS cert expiry
 7. **Failed Hook Jobs**: Alert if database init or migration jobs fail
+
+## Testing
+
+The chart includes comprehensive acceptance tests for validation before deployment. See [docs/TESTING.md](docs/TESTING.md) for detailed testing documentation.
+
+Quick test commands:
+
+```bash
+# Cluster smoke test
+bash tests/acceptance/cluster-smoke-test.sh
+
+# Controller API test
+bash tests/acceptance/controller-api-test.sh
+
+# KIND version matrix test
+bash tests/acceptance/kind-version-matrix-test.sh
+```
+
+## Repository Layout
+
+```text
+.
+├── Chart.yaml
+├── README.md
+├── values.yaml
+├── Makefile
+├── docs/
+│   └── TESTING.md
+├── templates/
+│   ├── _helpers.tpl
+│   ├── NOTES.txt
+│   ├── bootstrap-admin-job.yaml
+│   ├── configmap.yaml
+│   ├── db-init-job.yaml
+│   ├── db-migrate-job.yaml
+│   ├── db-repair-job.yaml
+│   ├── deployment.yaml
+│   ├── pdb.yaml
+│   ├── service.yaml
+│   ├── serviceaccount.yaml
+│   └── validate.yaml
+└── tests/
+    └── acceptance/
+        ├── cluster-smoke-test.sh
+        ├── controller-api-test.sh
+        ├── kind-version-matrix-test.sh
+        ├── kind-acceptance-config.yaml
+        ├── postgres.yaml
+        └── test-values.yaml
+```
+
+Key files:
+
+- `values.yaml`: Default chart values
+- `templates/deployment.yaml`: Multi-replica controller Deployment
+- `templates/service.yaml`: API, cluster, and ops Services
+- `templates/db-init-job.yaml`: Database initialization hook
+- `templates/db-migrate-job.yaml`: Database migration hook
+- `templates/db-repair-job.yaml`: Database repair hook
+- `templates/bootstrap-admin-job.yaml`: Admin bootstrap hook
+- `docs/TESTING.md`: Comprehensive testing guide
+- `tests/acceptance/controller-api-test.sh`: Controller API validation
+- `tests/acceptance/kind-version-matrix-test.sh`: Multi-version compatibility testing
 
 ## Known Limitations
 

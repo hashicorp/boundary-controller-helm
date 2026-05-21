@@ -1,0 +1,43 @@
+# Copyright IBM Corp. 2026
+# In-cluster PostgreSQL for acceptance testing only.
+# Ephemeral storage: data is lost when the pod restarts (intentional for tests).
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: boundary
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: boundary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          env:
+            - name: POSTGRES_USER
+              value: boundary
+            - name: POSTGRES_PASSWORD
+              value: boundary-test-pw
+            - name: POSTGRES_DB
+              value: boundary
+          ports:
+            - containerPort: 5432

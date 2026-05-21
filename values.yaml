@@ -1,3 +1,5 @@
+# Copyright IBM Corp. 2026
+
 # Default values for Boundary Controller Helm Chart
 
 # Override chart-generated resource names. Ex: if set to "custom", resources will be named custom-api, custom-cluster, etc.

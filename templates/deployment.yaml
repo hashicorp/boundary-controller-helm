@@ -1,6 +1,5 @@
-{{- include "boundary.controller.validateSecretRefs" . -}}
-{{- include "boundary.controller.validateConfig" . -}}
-{{- include "boundary.controller.validateDatabaseJobs" . -}}
+# Copyright IBM Corp. 2026
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
