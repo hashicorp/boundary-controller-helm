@@ -44,7 +44,7 @@ deps:
 	@command -v trivy >/dev/null 2>&1 || brew install trivy
 	@command -v kubescape >/dev/null 2>&1 || brew install kubescape
 	@command -v prettier >/dev/null 2>&1 || npm install -g prettier
-	@helm plugin list | grep -q unittest || helm plugin install https://github.com/helm-unittest/helm-unittest.git
+	@helm plugin list | grep -q unittest || helm plugin install https://github.com/helm-unittest/helm-unittest.git --verify=false
 	@echo "✅ All tools installed"
 
 format:
@@ -96,7 +96,7 @@ unit-test:
 	@echo "================================"
 	@if ! helm plugin list | grep -q unittest; then \
 		echo "❌ helm-unittest plugin not found. Installing..."; \
-		helm plugin install https://github.com/helm-unittest/helm-unittest.git; \
+		helm plugin install https://github.com/helm-unittest/helm-unittest.git --verify=false; \
 	fi
 	@echo "Running unit tests..."
 	@helm unittest . -f 'tests/unit/*_test.yaml'
@@ -108,7 +108,7 @@ unit-test:
 
 setup-helm-unittest:
 	@echo "Installing helm-unittest plugin..."
-	@helm plugin install https://github.com/helm-unittest/helm-unittest.git || true
+	@helm plugin install https://github.com/helm-unittest/helm-unittest.git --verify=false || true
 	@helm plugin list | grep unittest
 	@echo "✅ helm-unittest plugin installed"
 

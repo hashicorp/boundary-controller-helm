@@ -11,6 +11,9 @@ local-values.yaml
 *.tgz
 charts/
 
+# helm-unittest snapshot directory (only commit if you use matchSnapshot assertions)
+tests/unit/__snapshot__/
+
 # Editor
 .idea/
 .vscode/

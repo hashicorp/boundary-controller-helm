@@ -10,7 +10,7 @@ namespace: ""
 # Boundary image configuration
 image:
   repository: hashicorp/boundary-enterprise
-  tag: "0.20-ent"
+  tag: "0.21-ent"
   pullPolicy: IfNotPresent
 
 # Image pull secrets for private registries. Expects an array of secret names.
@@ -150,7 +150,7 @@ controller:
 
   # Liveness probe configuration
   livenessProbe:
-    scheme: HTTP # Use HTTP if TLS is disabled, HTTPS otherwise. Helm template will render the appropriate scheme based on .Values.tls.disabled
+    scheme: HTTP # Set this to HTTPS when tls.disabled=false
     initialDelaySeconds: 60
     periodSeconds: 10
     failureThreshold: 3
@@ -158,7 +158,7 @@ controller:
 
   # Readiness probe configuration
   readinessProbe:
-    scheme: HTTP # Use HTTP if TLS is disabled, HTTPS otherwise. Helm template will render the appropriate scheme based on .Values.tls.disabled
+    scheme: HTTP # Set this to HTTPS when tls.disabled=false
     initialDelaySeconds: 15
     periodSeconds: 10
     failureThreshold: 3
@@ -288,12 +288,10 @@ tolerations: []
 affinity: {}
 
 # ServiceAccount configuration
-# Annotate with eks.amazonaws.com/role-arn for IRSA (AWS KMS access)
+# Chart does not create ServiceAccounts. Provide an existing ServiceAccount name.
 serviceAccount:
-  create: false
-  name: "default"  # Defaults to the chart name when empty
-  # annotations: {}
-  # eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/boundary-controller-role
+  name: "default"  # Existing ServiceAccount used by controller and hook jobs
+  automountServiceAccountToken: false
 
 # PodDisruptionBudget — prevents both replicas being evicted simultaneously
 podDisruptionBudget:

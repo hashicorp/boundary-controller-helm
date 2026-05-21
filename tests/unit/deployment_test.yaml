@@ -1,0 +1,36 @@
+suite: Controller deployment
+templates:
+  - templates/configmap.yaml
+  - templates/deployment.yaml
+tests:
+  - it: renders the default tag and hardened pod settings
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: hashicorp/boundary-enterprise:0.21-ent
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: default
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
+          value: HTTP
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
+          value: HTTP
+        template: templates/deployment.yaml
+  - it: renders a custom tag when image.tag is overridden
+    set:
+      image:
+        tag: 9.9.9
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: hashicorp/boundary-enterprise:9.9.9
+        template: templates/deployment.yaml

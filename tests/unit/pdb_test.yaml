@@ -1,0 +1,14 @@
+suite: Controller PDB
+templates:
+  - templates/pdb.yaml
+tests:
+  - it: renders a pod disruption budget with minAvailable
+    asserts:
+      - isKind:
+          of: PodDisruptionBudget
+      - equal:
+          path: metadata.name
+          value: boundary-controller
+      - equal:
+          path: spec.minAvailable
+          value: 1

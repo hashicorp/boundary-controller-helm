@@ -1,0 +1,28 @@
+suite: Bootstrap admin job
+templates:
+  - templates/bootstrap-admin-job.yaml
+tests:
+  - it: renders the default image tag for the bootstrap job
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: hashicorp/boundary-enterprise:0.21-ent
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: default
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_ADDR
+            value: http://boundary-controller-api:9200
+  - it: renders a custom tag when image.tag is overridden
+    set:
+      image:
+        tag: 9.9.9
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: hashicorp/boundary-enterprise:9.9.9

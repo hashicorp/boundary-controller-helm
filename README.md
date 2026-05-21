@@ -47,7 +47,7 @@ By default, a release renders the following resources:
 - One PodDisruptionBudget ensuring at least one replica stays available during voluntary disruptions
 - Helm hook Jobs for database initialization (`pre-install`), optional database migration (`pre-upgrade`), and optional admin bootstrap (`post-install`)
 
-An optional ServiceAccount is created when `serviceAccount.create=true`.
+The chart uses an existing ServiceAccount and does not create ServiceAccount resources.
 
 ## Prerequisites
 
@@ -135,7 +135,7 @@ Check `values.yaml` before installing, especially:
 - `bootstrapAdmin.enabled`
 - `tls.secretName` and `tls.mountPath`
 - `controller.service.api`, `controller.service.cluster`, and `controller.service.ops`
-- `serviceAccount.create` and `serviceAccount.name`
+- `serviceAccount.name`
 - `controller.resources`
 
 For all available values see the [Configuration Reference](#configuration-reference). For cloud-specific examples (AWS, GCP, Azure) see [Common Deployment Patterns](#common-deployment-patterns).
@@ -418,7 +418,7 @@ The table below documents all chart values shipped in `values.yaml`.
 | Key | Default | Description |
 | --- | --- | --- |
 | `image.repository` | `hashicorp/boundary-enterprise` | Boundary controller container image repository. |
-| `image.tag` | `0.21-ent` | Image tag used by the controller container and hook jobs. |
+| `image.tag` | `0.21-ent` | Image tag used by the controller container and hook jobs. Defaults to `appVersion` in Chart.yaml when empty. |
 | `image.pullPolicy` | `IfNotPresent` | Kubernetes image pull policy. |
 | `imagePullSecrets` | `[]` | Optional registry credentials for private image pulls. |
 | `nameOverride` | `""` | Override the chart name used in resource naming. |
@@ -482,8 +482,8 @@ The table below documents all chart values shipped in `values.yaml`.
 | `nodeSelector` | `{}` | Node selector constraints for the controller Deployment. |
 | `tolerations` | `[]` | Tolerations for controller pod scheduling. |
 | `affinity` | `{}` | Affinity rules for controller pod scheduling. |
-| `serviceAccount.create` | `false` | Create a ServiceAccount for the controller. |
-| `serviceAccount.name` | `default` | Name of the ServiceAccount to use or create. |
+| `serviceAccount.name` | `default` | Name of an existing ServiceAccount used by controller and hook jobs. |
+| `serviceAccount.automountServiceAccountToken` | `false` | Control whether pods using this ServiceAccount receive an API token. |
 | `podDisruptionBudget.enabled` | `true` | Create a PodDisruptionBudget for the controller Deployment. |
 | `podDisruptionBudget.minAvailable` | `1` | Minimum number of controller pods that must remain available during voluntary disruptions. |
 | `terminationGracePeriodSeconds` | `15` | Seconds Kubernetes waits before sending SIGKILL after SIGTERM. Should exceed `graceful_shutdown_wait_duration` in the controller config. |

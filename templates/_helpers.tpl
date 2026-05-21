@@ -97,11 +97,14 @@ Get the controller secret name
 Get the service account name for the controller
 */}}
 {{- define "boundary.controller.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default (include "boundary.controller.serviceName" .) .Values.serviceAccount.name }}
-{{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
+
+{{/*
+Build the controller image reference.
+*/}}
+{{- define "boundary.controller.image" -}}
+{{- printf "%s:%s" .Values.image.repository (default .Chart.AppVersion .Values.image.tag | trim) -}}
 {{- end }}
 
 {{/*
