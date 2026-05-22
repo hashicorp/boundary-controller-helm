@@ -587,16 +587,8 @@ helm upgrade boundary-controller . \
   --namespace boundary \
   -f my-values.yaml \
   --set database.migrate.enabled=true \
-  --set database.repair.version=20240111120000
+  --set database.repair.version=<version_id>
 ```
-
-**Version Format:**
-
-The repair version must match one of these formats:
-- Standard: `YYYYMMDDHHMMSS` (e.g., `20240111120000`)
-- Dirty migration: `SEQUENCE/YYYYMMDDHHMMSS` (e.g., `0/20240111120000`)
-
-The chart validates the format at render time and fails with a clear error if invalid.
 
 **Notes:**
 
@@ -649,11 +641,7 @@ helm rollback boundary-controller <revision> -n boundary
 helm uninstall boundary-controller -n boundary
 ```
 
-Hook jobs have `ttlSecondsAfterFinished: 3600` set, so Kubernetes will automatically delete them 1 hour after they complete. They are not removed by `helm uninstall` — if you need to clean them up before the TTL expires, delete them manually:
-
-```bash
-kubectl delete jobs -n boundary -l app.kubernetes.io/instance=boundary-controller
-```
+Hook jobs have `ttlSecondsAfterFinished: 3600` set, so Kubernetes will automatically delete them 1 hour after they complete.
 
 ## Monitoring
 
@@ -753,65 +741,6 @@ Set up alerts for:
 ## Testing
 
 The chart includes comprehensive acceptance tests for validation before deployment. See [docs/TESTING.md](docs/TESTING.md) for detailed testing documentation.
-
-Quick test commands:
-
-```bash
-# Cluster smoke test
-bash tests/acceptance/cluster-smoke-test.sh
-
-# Controller API test
-bash tests/acceptance/controller-api-test.sh
-
-# KIND version matrix test
-bash tests/acceptance/kind-version-matrix-test.sh
-```
-
-## Repository Layout
-
-```text
-.
-├── Chart.yaml
-├── README.md
-├── values.yaml
-├── Makefile
-├── docs/
-│   └── TESTING.md
-├── templates/
-│   ├── _helpers.tpl
-│   ├── NOTES.txt
-│   ├── bootstrap-admin-job.yaml
-│   ├── configmap.yaml
-│   ├── db-init-job.yaml
-│   ├── db-migrate-job.yaml
-│   ├── db-repair-job.yaml
-│   ├── deployment.yaml
-│   ├── pdb.yaml
-│   ├── service.yaml
-│   ├── serviceaccount.yaml
-│   └── validate.yaml
-└── tests/
-    └── acceptance/
-        ├── cluster-smoke-test.sh
-        ├── controller-api-test.sh
-        ├── kind-version-matrix-test.sh
-        ├── kind-acceptance-config.yaml
-        ├── postgres.yaml
-        └── test-values.yaml
-```
-
-Key files:
-
-- `values.yaml`: Default chart values
-- `templates/deployment.yaml`: Multi-replica controller Deployment
-- `templates/service.yaml`: API, cluster, and ops Services
-- `templates/db-init-job.yaml`: Database initialization hook
-- `templates/db-migrate-job.yaml`: Database migration hook
-- `templates/db-repair-job.yaml`: Database repair hook
-- `templates/bootstrap-admin-job.yaml`: Admin bootstrap hook
-- `docs/TESTING.md`: Comprehensive testing guide
-- `tests/acceptance/controller-api-test.sh`: Controller API validation
-- `tests/acceptance/kind-version-matrix-test.sh`: Multi-version compatibility testing
 
 ## Known Limitations
 

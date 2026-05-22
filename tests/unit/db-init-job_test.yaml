@@ -24,3 +24,19 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].command
           content: /etc/boundary/db-init.sh
+  - it: uses serviceAccount.name override in init hook job
+    set:
+      serviceAccount:
+        name: boundary-custom-sa
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: boundary-custom-sa
+  - it: does not render init job when disabled
+    set:
+      database:
+        init:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

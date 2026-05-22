@@ -44,3 +44,11 @@ tests:
       - equal:
           path: spec.ports[0].port
           value: 9203
+  - it: renders services into overridden namespace
+    set:
+      namespace: boundary
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: boundary

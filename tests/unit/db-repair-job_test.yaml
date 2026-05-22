@@ -30,3 +30,23 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].command
           content: "2024-01-01-01"
+  - it: does not render repair job when repair version is empty
+    set:
+      database:
+        migrate:
+          enabled: true
+        repair:
+          version: ""
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: does not render repair job when migrate is disabled
+    set:
+      database:
+        migrate:
+          enabled: false
+        repair:
+          version: "2024-01-01-01"
+    asserts:
+      - hasDocuments:
+          count: 0

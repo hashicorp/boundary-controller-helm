@@ -2,6 +2,10 @@
 
 # Default values for Boundary Controller Helm Chart
 
+# --------------------------------------------------
+# Naming and Namespace
+# --------------------------------------------------
+
 # Override chart-generated resource names. Ex: if set to "custom", resources will be named custom-api, custom-cluster, etc.
 nameOverride: ""
 
@@ -9,25 +13,41 @@ nameOverride: ""
 # If set, all resources will be deployed into the specified namespace regardless of the Helm release namespace.
 namespace: ""
 
+# --------------------------------------------------
+# Image
+# --------------------------------------------------
+
 # Boundary image configuration
 image:
   repository: hashicorp/boundary-enterprise
   tag: "0.21-ent"
   pullPolicy: IfNotPresent
 
-# Image pull secrets for private registries. Expects an array of secret names.
 # https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry
+# Image pull secret to use for registry authentication.
 imagePullSecrets: []
-# - name: regcred
+# imagePullSecrets:
+#   - name: image-pull-secret
+
+# --------------------------------------------------
+# TLS
+# --------------------------------------------------
 
 tls:
-  disabled: true # Set to false to enable TLS for API and Ops listeners
-  secretName: "boundary-controller-tls" # Name of K8s tls Secret containing tls.crt and tls.key
-  mountPath: "/etc/boundary/tls" # Path where TLS certs are mounted inside the container
+  # Set to false to enable TLS for API and Ops listeners
+  disabled: true
+  # Name of the Kubernetes TLS Secret containing tls.crt and tls.key
+  secretName: "boundary-controller-tls"
+  # Path where TLS certs are mounted inside the container
+  mountPath: "/etc/boundary/tls"
+
+# --------------------------------------------------
+# Secret References
+# --------------------------------------------------
 
 # Secret keys consumed by Boundary via environment variables.
 secretRefs:
-  secretName: "boundary-controller-secrets"  # Name of the Kubernetes Secret to read values from
+  secretName: "boundary-controller-secrets"
   # When true templates validate that the Secret exists in the release namespace and contains all configured keys.
   # Keep false for offline rendering (helm template) without cluster access.
   validateExisting: false
@@ -42,6 +62,10 @@ secretRefs:
     # Login name value used by `boundary accounts create password -login-name`.
     adminUsername: "admin-username"
     adminPassword: "admin-password"
+
+  # --------------------------------------------------
+  # Controller
+  # --------------------------------------------------
 
 # Controller deployment configuration
 controller:
@@ -152,7 +176,8 @@ controller:
 
   # Liveness probe configuration
   livenessProbe:
-    scheme: HTTP # Set this to HTTPS when tls.disabled=false
+    # Set this to HTTPS when tls.disabled=false
+    scheme: HTTP
     initialDelaySeconds: 60
     periodSeconds: 10
     failureThreshold: 3
@@ -160,7 +185,8 @@ controller:
 
   # Readiness probe configuration
   readinessProbe:
-    scheme: HTTP # Set this to HTTPS when tls.disabled=false
+    # Set this to HTTPS when tls.disabled=false
+    scheme: HTTP
     initialDelaySeconds: 15
     periodSeconds: 10
     failureThreshold: 3
@@ -220,12 +246,18 @@ controller:
       targetPort: 9203
       annotations: {}
 
+# --------------------------------------------------
+# Database Jobs
+# --------------------------------------------------
+
 # Database configuration and jobs
 database:
   init:
-    enabled: true  # Run database init job during install
+    # Run database init job during install
+    enabled: true
   migrate:
-    enabled: false  # Enable database migration job during upgrades
+    # Enable database migration job during upgrades
+    enabled: false
   # Resource limits and requests for database init/migration jobs
   resources:
     limits:
@@ -235,7 +267,12 @@ database:
       cpu: 100m
       memory: 128Mi
   repair:
-    version: ""    # If set, runs the repair function for the provided migration version
+    # If set, runs the repair function for the provided migration version
+    version: ""
+
+# --------------------------------------------------
+# Bootstrap Admin
+# --------------------------------------------------
 
 # Bootstrap admin user configuration.
 # When enabled, a bootstrap admin user is created on initial install and optionally during upgrades.
@@ -243,7 +280,8 @@ database:
 bootstrapAdmin:
   enabled: true
   runOnUpgrade: false
-  waitTimeoutSeconds: 120 # Max job wait time for the Boundary API to become reachable before failing.
+  # Max job wait time for the Boundary API to become reachable before failing
+  waitTimeoutSeconds: 120
   authMethodName: "bootstrap-password"
   # Boundary user resource display name (from `boundary users create -name`), not the login credential.
   userResourceName: "bootstrap-admin"
@@ -258,6 +296,10 @@ bootstrapAdmin:
     requests:
       cpu: 100m
       memory: 128Mi
+
+# --------------------------------------------------
+# Pod and Container Security
+# --------------------------------------------------
 
 # Pod security context
 podSecurityContext:
@@ -277,6 +319,10 @@ containerSecurityContext:
   seccompProfile:
     type: RuntimeDefault
 
+# --------------------------------------------------
+# Scheduling and Metadata
+# --------------------------------------------------
+
 # Pod annotations
 podAnnotations: {}
 
@@ -289,11 +335,20 @@ tolerations: []
 # Affinity rules
 affinity: {}
 
+# --------------------------------------------------
+# Service Account
+# --------------------------------------------------
+
 # ServiceAccount configuration
 # Chart does not create ServiceAccounts. Provide an existing ServiceAccount name.
 serviceAccount:
-  name: "default"  # Existing ServiceAccount used by controller and hook jobs
+  # Existing ServiceAccount used by controller and hook jobs
+  name: "default"
   automountServiceAccountToken: false
+
+# --------------------------------------------------
+# Availability and Shutdown
+# --------------------------------------------------
 
 # PodDisruptionBudget — prevents both replicas being evicted simultaneously
 podDisruptionBudget:

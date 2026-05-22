@@ -12,3 +12,10 @@ tests:
       - equal:
           path: spec.minAvailable
           value: 1
+  - it: does not render a pod disruption budget when disabled
+    set:
+      podDisruptionBudget:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

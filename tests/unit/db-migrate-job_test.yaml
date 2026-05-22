@@ -28,3 +28,11 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].command
           content: migrate
+  - it: does not render migration job when migrate is disabled
+    set:
+      database:
+        migrate:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

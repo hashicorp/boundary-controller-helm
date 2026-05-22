@@ -34,3 +34,69 @@ tests:
           path: spec.template.spec.containers[0].image
           value: hashicorp/boundary-enterprise:9.9.9
         template: templates/deployment.yaml
+  - it: uses serviceAccount.name override in deployment
+    set:
+      serviceAccount:
+        name: boundary-custom-sa
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: boundary-custom-sa
+        template: templates/deployment.yaml
+  - it: renders imagePullSecrets when configured
+    set:
+      imagePullSecrets:
+        - name: regcred
+    asserts:
+      - contains:
+          path: spec.template.spec.imagePullSecrets
+          content:
+            name: regcred
+        template: templates/deployment.yaml
+  - it: renders TLS secret volume and HTTPS probes when TLS is enabled
+    set:
+      tls:
+        disabled: false
+      controller:
+        livenessProbe:
+          scheme: HTTPS
+        readinessProbe:
+          scheme: HTTPS
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
+          value: HTTPS
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
+          value: HTTPS
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tls-certs
+            mountPath: /etc/boundary/tls
+            readOnly: true
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tls-certs
+            secret:
+              secretName: boundary-controller-tls
+        template: templates/deployment.yaml
+  - it: does not render TLS secret volume or mount when TLS is disabled
+    set:
+      tls:
+        disabled: true
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tls-certs
+        template: templates/deployment.yaml
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: tls-certs
+        template: templates/deployment.yaml
