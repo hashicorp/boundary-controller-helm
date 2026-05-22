@@ -63,9 +63,9 @@ secretRefs:
     adminUsername: "admin-username"
     adminPassword: "admin-password"
 
-  # --------------------------------------------------
-  # Controller
-  # --------------------------------------------------
+# --------------------------------------------------
+# Controller
+# --------------------------------------------------
 
 # Controller deployment configuration
 controller:
