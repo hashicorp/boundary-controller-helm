@@ -48,7 +48,8 @@ tls:
 # Secret keys consumed by Boundary via environment variables.
 secretRefs:
   secretName: "boundary-controller-secrets"
-  # When true templates validate that the Secret exists in the release namespace and contains all configured keys.
+  # When true templates validate that the Secret exists in the effective chart namespace
+  # (the release namespace unless overridden by .Values.namespace) and contains all configured keys.
   # Keep false for offline rendering (helm template) without cluster access.
   validateExisting: false
   keys:
@@ -59,7 +60,6 @@ secretRefs:
     # migrationUrl: "migration-url"
     # https://developer.hashicorp.com/boundary/docs/configuration/controller#license
     license: "license"
-    # Login name value used by `boundary accounts create password -login-name`.
     adminUsername: "admin-username"
     adminPassword: "admin-password"
 

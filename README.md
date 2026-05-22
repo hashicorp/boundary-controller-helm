@@ -64,7 +64,7 @@ The chart uses an existing ServiceAccount and does not create ServiceAccount res
 
 Ensure the following exist before installing:
 
-- **Kubernetes Secret** in the release namespace containing the database URL credentials and Boundary Enterprise license (add admin credentials when `bootstrapAdmin.enabled=true`). Create it manually or sync it using the [Vault Secrets Operator](https://developer.hashicorp.com/vault/docs/platform/k8s/vso) or the [External Secrets Operator](https://external-secrets.io).
+ - **Kubernetes Secret** in the same namespace the chart resources are rendered into (the release namespace by default, unless overridden with `.Values.namespace`) containing the database URL credentials and Boundary Enterprise license (add admin credentials when `bootstrapAdmin.enabled=true`). Create it manually or sync it using the [Vault Secrets Operator](https://developer.hashicorp.com/vault/docs/platform/k8s/vso) or the [External Secrets Operator](https://external-secrets.io).
 - **PostgreSQL database** reachable from the cluster, with a user that has permission to create tables.
 - **KMS provider** — choose one: Vault Transit (`transit` stanza, requires Vault 1.11+), AWS KMS (`awskms`), GCP Cloud KMS (`gcpckms`), or Azure Key Vault (`azurekeyvault`). Cloud KMS providers require IAM/RBAC permissions granting the controller access to the key.
 - **Kubernetes TLS Secret** containing `tls.crt` and `tls.key` when `tls.disabled=false`.
