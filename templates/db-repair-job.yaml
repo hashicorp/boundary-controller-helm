@@ -1,4 +1,5 @@
 # Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
 
 {{- if and .Values.database.migrate.enabled (ne (printf "%v" (default "" .Values.database.repair.version) | trim) "") }}
 apiVersion: batch/v1

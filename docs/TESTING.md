@@ -22,6 +22,21 @@ Acceptance tests require:
 
 ## Acceptance Tests
 
+### Quick Test Commands
+
+Run these from the chart root:
+
+```bash
+# Cluster smoke test
+bash tests/acceptance/cluster-smoke-test.sh
+
+# Controller API test
+bash tests/acceptance/controller-api-test.sh
+
+# KIND version matrix test
+bash tests/acceptance/kind-version-matrix-test.sh
+```
+
 ### Setup
 
 Create a `.env` file in the chart root directory:

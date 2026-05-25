@@ -1,4 +1,7 @@
 #!/bin/sh
+# Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
+
 set -eu
 
 export BOUNDARY_RECOVERY_CONFIG=/etc/boundary/controller.hcl

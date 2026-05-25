@@ -40,9 +40,10 @@ The chart does not manage worker resources, Boundary scopes, HCP Boundary connec
 By default, a release renders the following resources:
 
 - One Deployment with two controller replicas and a RollingUpdate strategy
-- One API Service (`LoadBalancer`) for client traffic on port 9200
-- One cluster Service (`LoadBalancer` by default) for worker registration traffic on port 9201
-- One ops Service (`ClusterIP`) for health and metrics traffic on port 9203
+- Three Services for controller traffic:
+  - **API Service** (`boundary-controller`): LoadBalancer on port 9200 for client API traffic
+  - **Cluster Service** (`boundary-controller-cluster`): LoadBalancer on port 9201 for worker registration
+  - **Ops Service** (`boundary-controller-ops`): ClusterIP on port 9203 for health checks and metrics
 - One ConfigMap containing the rendered Boundary controller configuration file
 - One PodDisruptionBudget ensuring at least one replica stays available during voluntary disruptions
 - Helm hook Jobs for database initialization (`pre-install`), optional database migration (`pre-upgrade`), optional database repair (`pre-upgrade`), and optional admin bootstrap (`post-install`)

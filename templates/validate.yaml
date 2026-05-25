@@ -1,4 +1,7 @@
 {{- /*
+# Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
+
 validate.yaml — Chart-wide validation. Produces no Kubernetes resources.
 All three helpers use {{- ... -}} trimming and only call fail on invalid
 configuration, so when validation passes this template renders to an empty
