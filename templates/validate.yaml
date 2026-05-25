@@ -1,3 +1,5 @@
+# Copyright IBM Corp. 2026
+
 {{- /*
 validate.yaml — Chart-wide validation. Produces no Kubernetes resources.
 All three helpers use {{- ... -}} trimming and only call fail on invalid
