@@ -1,7 +1,17 @@
 name: Lint Pipeline
 on:
   pull_request:
-    branches: [main, controller-helm-0.1.0-version]
+    branches: [main]
+    paths:
+      - '.github/**'
+      - 'scripts/**'
+      - 'templates/**'
+      - 'tests/**'
+      - 'Chart.yaml'
+      - 'Makefile'
+      - 'values.schema.json'
+      - 'values.yaml'
+  workflow_dispatch:
   # push:
   #   branches: []
 
@@ -123,7 +133,11 @@ jobs:
 
   acceptance-test:
     name: Acceptance Test
-    if: github.ref == 'refs/heads/main'
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.base_ref == 'main' &&
+       github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     needs: unit-test
     env:
