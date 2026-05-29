@@ -14,6 +14,7 @@ The chart includes comprehensive test coverage for validation before deployment:
 - [Prerequisites](#prerequisites)
 	- [Unit Test Prerequisites](#unit-test-prerequisites)
 	- [Acceptance Test Prerequisites](#acceptance-test-prerequisites)
+- [Recommended Test Flow](#recommended-test-flow)
 - [Unit Tests](#unit-tests)
 	- [Quick Unit Test Command](#quick-unit-test-command)
 	- [Unit Coverage Matrix](#unit-coverage-matrix)
@@ -61,6 +62,30 @@ Acceptance tests require:
 - `boundary` CLI installed
 - KIND for local cluster testing
 - `.env` file with Boundary credentials
+
+## Recommended Test Flow
+
+Use the test suite in this order when validating chart changes:
+
+1. `make unit-test`
+2. `make acceptance-setup`
+3. `make acceptance-helm`
+4. `make acceptance-test`
+
+What each step does:
+
+- `make unit-test`: validates Helm template rendering and chart logic without installing anything into a cluster.
+- `make acceptance-setup`: installs acceptance dependencies and creates the KIND cluster.
+- `make acceptance-helm`: deploys PostgreSQL, creates required secrets, runs `helm upgrade --install`, and waits for the chart installation to become ready on KIND.
+- `make acceptance-test`: runs post-install runtime checks against the deployed release.
+
+If you want the complete cluster-backed flow in one command, run:
+
+```bash
+make acceptance-full
+```
+
+`make acceptance-full` combines cluster setup, Helm installation, and post-install acceptance checks.
 
 ## Unit Tests
 
