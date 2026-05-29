@@ -1,0 +1,22 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# Never commit terraform.tfvars to version control — it contains secrets.
+
+# ---------------------------------------------------------------------------
+# Required
+# ---------------------------------------------------------------------------
+
+eks_cluster_name    = "my-eks-cluster"
+boundary_db_url     = "postgresql://boundary:changeme@rds-host:5432/boundary?sslmode=require"
+boundary_license    = "02MV4UU43BK5HGYYTOJZWFQNVMNNV2WCNKJKV2WSYJZGU4TEN..."
+boundary_admin_password = "S3cur3P@ssw0rd!"
+
+# ---------------------------------------------------------------------------
+# Optional overrides (defaults shown)
+# ---------------------------------------------------------------------------
+
+aws_region              = "us-east-1"
+release_namespace       = "boundary"
+controller_replicas     = 2
+tls_disabled            = true
+enable_nlb_annotations  = true  # requires AWS Load Balancer Controller in the cluster
+boundary_admin_username = "admin"

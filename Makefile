@@ -8,6 +8,7 @@
 .PHONY: setup-helm setup-kubeconform setup-trivy setup-kubescape setup-helm-unittest lint-helm-k8s trivy-scan kubescape-scan
 .PHONY: acceptance-setup acceptance-cluster acceptance-helm acceptance-test acceptance-full acceptance-cleanup
 .PHONY: kind-matrix-test
+.PHONY: eks-setup eks-apply eks-db-init-recovery eks-test eks-full eks-destroy
 
 # ================================
 # Help Target
@@ -41,6 +42,14 @@ help:
 	@echo "  make acceptance-full         - Full acceptance workflow (setup + helm + test)"
 	@echo "  make acceptance-cleanup      - Delete acceptance KIND cluster and cached KIND binaries"
 	@echo "  make kind-matrix-test        - Run controller-api-test.sh across 2 KIND versions prior to latest"
+	@echo ""
+	@echo "EKS Integration Testing targets:"
+	@echo "  make eks-setup               - Initialise Terraform for EKS integration tests"
+	@echo "  make eks-apply               - Provision EKS cluster (phase 1), update kubeconfig, then deploy chart (phase 2)"
+	@echo "  make eks-db-init-recovery    - Reinstall Helm release only when controller reports uninitialized DB"
+	@echo "  make eks-test                - Run eks-integration-test.sh against the provisioned cluster"
+	@echo "  make eks-full                - Full EKS integration workflow (setup + apply + test)"
+	@echo "  make eks-destroy             - Destroy all EKS integration resources via Terraform"
 	@echo "================================"
 
 # ================================
@@ -453,3 +462,122 @@ kind-matrix-test:
 	fi
 	@bash tests/acceptance/kind-version-matrix-test.sh
 
+# ================================
+# EKS Integration Testing Targets
+# ================================
+
+INTEGRATION_DIR := tests/integration/terraform/aws
+INTEGRATION_ENV := tests/integration/.env
+
+# Load .env if it exists
+ifneq (,$(wildcard $(INTEGRATION_ENV)))
+  include $(INTEGRATION_ENV)
+  export
+endif
+
+eks-setup:
+	@echo "================================"
+	@echo "Initialising Terraform (EKS Integration)"
+	@echo "================================"
+	@command -v terraform >/dev/null 2>&1 || (echo "❌ terraform not found. Install from https://developer.hashicorp.com/terraform/downloads"; exit 1)
+	@command -v aws >/dev/null 2>&1 || (echo "❌ aws CLI not found. Install from https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html"; exit 1)
+	@[ -f "$(INTEGRATION_ENV)" ] || (echo "❌ $(INTEGRATION_ENV) not found. Copy tests/integration/.env.example to tests/integration/.env and fill in your values."; exit 1)
+	@terraform -chdir=$(INTEGRATION_DIR) init
+	@echo "✅ Terraform initialised"
+	@echo ""
+
+eks-apply: eks-setup
+	@echo "================================"
+	@echo "Provisioning EKS Cluster + Helm Install"
+	@echo "================================"
+	@[ -n "$${TF_VAR_boundary_license}" ]        || (echo "❌ TF_VAR_boundary_license is not set in $(INTEGRATION_ENV)";        exit 1)
+	@[ -n "$${TF_VAR_boundary_admin_password}" ]  || (echo "❌ TF_VAR_boundary_admin_password is not set in $(INTEGRATION_ENV)"; exit 1)
+	@echo ""
+	@echo "--- Step 1/2: Provision VPC + EKS cluster + node group ---"
+	@terraform -chdir=$(INTEGRATION_DIR) apply -auto-approve \
+		-target=aws_vpc.this \
+		-target=aws_subnet.public \
+		-target=aws_subnet.private \
+		-target=aws_internet_gateway.this \
+		-target=aws_eip.nat \
+		-target=aws_nat_gateway.this \
+		-target=aws_route_table.public \
+		-target=aws_route_table_association.public \
+		-target=aws_route_table.private \
+		-target=aws_route_table_association.private \
+		-target=aws_iam_role.eks_cluster \
+		-target=aws_iam_role_policy_attachment.eks_cluster_policy \
+		-target=aws_iam_role.eks_nodes \
+		-target=aws_iam_role_policy_attachment.eks_worker_node_policy \
+		-target=aws_iam_role_policy_attachment.eks_cni_policy \
+		-target=aws_iam_role_policy_attachment.eks_ecr_read \
+		-target=aws_eks_cluster.this \
+		-target=aws_eks_node_group.this \
+		-target=aws_iam_openid_connect_provider.eks
+	@echo "✅ EKS cluster ready"
+	@echo ""
+	@echo "--- Updating kubeconfig ---"
+	@aws eks update-kubeconfig \
+		--region "$${TF_VAR_aws_region:-us-east-1}" \
+		--name "$${TF_VAR_eks_cluster_name:-boundary-controller-cluster}" \
+		--alias "eks-$${TF_VAR_eks_cluster_name:-boundary-controller-cluster}"
+	@echo "✅ kubeconfig updated"
+	@echo ""
+	@echo "--- Step 2/2: Apply remaining resources (KMS, IAM, Kubernetes, Helm) ---"
+	@terraform -chdir=$(INTEGRATION_DIR) apply -auto-approve
+	@$(MAKE) eks-db-init-recovery
+	@echo "✅ Terraform apply complete (infrastructure, PostgreSQL, and Helm chart)"
+	@echo ""
+
+eks-db-init-recovery:
+	@echo "--- Optional recovery: checking for DB init miss ---"
+	@KCTX="eks-$${TF_VAR_eks_cluster_name:-boundary-controller-cluster}"; \
+	POD=$$(kubectl get pods -n "$${BOUNDARY_NAMESPACE:-boundary}" --context "$$KCTX" \
+		-l "app.kubernetes.io/name=boundary-controller,app.kubernetes.io/component=controller" \
+		-o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true); \
+	if [ -z "$$POD" ]; then \
+		echo "ℹ️  No controller pod yet; skipping DB-init recovery check"; \
+		exit 0; \
+	fi; \
+	LOGS=$$(kubectl logs -n "$${BOUNDARY_NAMESPACE:-boundary}" --context "$$KCTX" "$$POD" --previous 2>/dev/null || \
+		kubectl logs -n "$${BOUNDARY_NAMESPACE:-boundary}" --context "$$KCTX" "$$POD" 2>/dev/null || true); \
+	if echo "$$LOGS" | grep -qi "database has not been initialized"; then \
+		echo "⚠️  Detected uninitialized Boundary DB. Replacing Helm release to re-run pre-install init hooks..."; \
+		terraform -chdir=$(INTEGRATION_DIR) apply -auto-approve -replace=helm_release.boundary_controller; \
+		echo "✅ Recovery apply completed"; \
+	else \
+		echo "✅ DB-init recovery not needed"; \
+	fi
+
+eks-test:
+	@echo "================================"
+	@echo "Running EKS Integration Tests"
+	@echo "================================"
+	@bash tests/integration/eks-integration-test.sh \
+		--cluster-name "$${TF_VAR_eks_cluster_name:-boundary-controller-cluster}" \
+		--region "$${AWS_REGION:-us-east-1}" \
+		--namespace "$${BOUNDARY_NAMESPACE:-boundary}" \
+		--release "$${HELM_RELEASE:-boundary-controller}" \
+		--timeout "$${TIMEOUT:-300}"
+	@echo "✅ EKS integration tests completed successfully"
+	@echo ""
+
+eks-full:
+	@echo "================================"
+	@echo "Full EKS Integration Workflow"
+	@echo "================================"
+	@$(MAKE) eks-apply
+	@$(MAKE) eks-test
+	@echo ""
+	@echo "✅ EKS integration workflow completed successfully"
+	@echo ""
+	@echo "To destroy resources: make eks-destroy"
+	@echo ""
+
+eks-destroy:
+	@echo "================================"
+	@echo "Destroying EKS Integration Resources"
+	@echo "================================"
+	@terraform -chdir=$(INTEGRATION_DIR) destroy -auto-approve
+	@echo "✅ All EKS integration resources destroyed"
+	@echo ""
