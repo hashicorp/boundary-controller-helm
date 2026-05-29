@@ -6,10 +6,52 @@ This document describes the test suite for the Boundary Controller Helm chart.
 
 The chart includes comprehensive test coverage for validation before deployment:
 
+- **Unit Tests**: Helm template rendering and validation checks via [`helm-unittest`](https://github.com/helm-unittest/helm-unittest)
 - **Acceptance Tests**: Local KIND cluster tests that validate controller functionality
-- **Unit Tests**: Helm template rendering validation (future)
+
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+	- [Unit Test Prerequisites](#unit-test-prerequisites)
+	- [Acceptance Test Prerequisites](#acceptance-test-prerequisites)
+- [Unit Tests](#unit-tests)
+	- [Quick Unit Test Command](#quick-unit-test-command)
+	- [Unit Coverage Matrix](#unit-coverage-matrix)
+	- [Known Unit-Test Gap](#known-unit-test-gap)
+- [Acceptance Tests](#acceptance-tests)
+	- [Quick Test Commands](#quick-test-commands)
+	- [Setup](#setup)
+	- [Cluster Smoke Test](#cluster-smoke-test)
+	- [Controller API Test](#controller-api-test)
+	- [KIND Version Matrix Test](#kind-version-matrix-test)
+- [Test Configuration](#test-configuration)
+	- [Test Values](#test-values)
+	- [In-Cluster PostgreSQL](#in-cluster-postgresql)
+- [Troubleshooting](#troubleshooting)
+	- [Test Failures](#test-failures)
+	- [Cleanup](#cleanup)
+- [CI/CD Integration](#cicd-integration)
+- [Adding New Tests](#adding-new-tests)
+- [Test Maintenance](#test-maintenance)
+	- [Updating KIND Versions](#updating-kind-versions)
+	- [Updating Test Values](#updating-test-values)
 
 ## Prerequisites
+
+### Unit Test Prerequisites
+
+Unit tests (`make unit-test`) require:
+
+- `helm` CLI installed (v3+)
+- Helm `unittest` plugin installed
+
+Install/check plugin:
+
+```bash
+helm plugin list | grep unittest || helm plugin install https://github.com/helm-unittest/helm-unittest.git
+```
+
+### Acceptance Test Prerequisites
 
 Acceptance tests require:
 
@@ -19,6 +61,46 @@ Acceptance tests require:
 - `boundary` CLI installed
 - KIND for local cluster testing
 - `.env` file with Boundary credentials
+
+## Unit Tests
+
+### Quick Unit Test Command
+
+Run from the chart root:
+
+```bash
+make unit-test
+```
+
+### Unit Coverage Matrix
+
+This matrix maps major values groups to the current unit test suites.
+
+| Values group | Primary templates affected | Unit test coverage |
+| --- | --- | --- |
+| `nameOverride`, `namespace` | deployment, services, jobs, configmap, pdb | [tests/unit/helpers_test.yaml](../tests/unit/helpers_test.yaml), [tests/unit/service_test.yaml](../tests/unit/service_test.yaml), [tests/unit/db-init-job_test.yaml](../tests/unit/db-init-job_test.yaml), [tests/unit/db-migrate-job_test.yaml](../tests/unit/db-migrate-job_test.yaml), [tests/unit/db-repair-job_test.yaml](../tests/unit/db-repair-job_test.yaml), [tests/unit/bootstrap-admin-job_test.yaml](../tests/unit/bootstrap-admin-job_test.yaml), [tests/unit/configmap_test.yaml](../tests/unit/configmap_test.yaml), [tests/unit/pdb_test.yaml](../tests/unit/pdb_test.yaml) |
+| `image.repository`, `image.tag`, `image.pullPolicy` | deployment, all jobs | [tests/unit/deployment_test.yaml](../tests/unit/deployment_test.yaml), [tests/unit/db-init-job_test.yaml](../tests/unit/db-init-job_test.yaml), [tests/unit/db-migrate-job_test.yaml](../tests/unit/db-migrate-job_test.yaml), [tests/unit/db-repair-job_test.yaml](../tests/unit/db-repair-job_test.yaml), [tests/unit/bootstrap-admin-job_test.yaml](../tests/unit/bootstrap-admin-job_test.yaml) |
+| `imagePullSecrets` | deployment, jobs | [tests/unit/deployment_test.yaml](../tests/unit/deployment_test.yaml), [tests/unit/db-init-job_test.yaml](../tests/unit/db-init-job_test.yaml), [tests/unit/db-migrate-job_test.yaml](../tests/unit/db-migrate-job_test.yaml), [tests/unit/db-repair-job_test.yaml](../tests/unit/db-repair-job_test.yaml), [tests/unit/bootstrap-admin-job_test.yaml](../tests/unit/bootstrap-admin-job_test.yaml) |
+| `serviceAccount.name`, `serviceAccount.automountServiceAccountToken` | deployment, all jobs | [tests/unit/deployment_test.yaml](../tests/unit/deployment_test.yaml), [tests/unit/db-init-job_test.yaml](../tests/unit/db-init-job_test.yaml), [tests/unit/db-migrate-job_test.yaml](../tests/unit/db-migrate-job_test.yaml), [tests/unit/db-repair-job_test.yaml](../tests/unit/db-repair-job_test.yaml), [tests/unit/bootstrap-admin-job_test.yaml](../tests/unit/bootstrap-admin-job_test.yaml), [tests/unit/helpers_test.yaml](../tests/unit/helpers_test.yaml) |
+| `tls.disabled`, `tls.mountPath`, `tls.secretName` | deployment, services, jobs, validate | [tests/unit/deployment_test.yaml](../tests/unit/deployment_test.yaml), [tests/unit/db-init-job_test.yaml](../tests/unit/db-init-job_test.yaml), [tests/unit/db-migrate-job_test.yaml](../tests/unit/db-migrate-job_test.yaml), [tests/unit/db-repair-job_test.yaml](../tests/unit/db-repair-job_test.yaml), [tests/unit/bootstrap-admin-job_test.yaml](../tests/unit/bootstrap-admin-job_test.yaml), [tests/unit/validate_test.yaml](../tests/unit/validate_test.yaml), [tests/unit/configmap_test.yaml](../tests/unit/configmap_test.yaml) |
+| `secretRefs.secretName`, `secretRefs.keys.*` | deployment, jobs, bootstrap | [tests/unit/helpers_test.yaml](../tests/unit/helpers_test.yaml), [tests/unit/deployment_test.yaml](../tests/unit/deployment_test.yaml), [tests/unit/db-init-job_test.yaml](../tests/unit/db-init-job_test.yaml), [tests/unit/db-migrate-job_test.yaml](../tests/unit/db-migrate-job_test.yaml), [tests/unit/db-repair-job_test.yaml](../tests/unit/db-repair-job_test.yaml), [tests/unit/bootstrap-admin-job_test.yaml](../tests/unit/bootstrap-admin-job_test.yaml) |
+| `secretRefs.validateExisting` | validate helper (`lookup`) | [tests/unit/validate_test.yaml](../tests/unit/validate_test.yaml) (missing-secret negative path) |
+| `controller.replicas`, `controller.rollingUpdate.*` | deployment | [tests/unit/deployment_test.yaml](../tests/unit/deployment_test.yaml) |
+| `controller.livenessProbe.*`, `controller.readinessProbe.*` | deployment | [tests/unit/deployment_test.yaml](../tests/unit/deployment_test.yaml) |
+| `controller.resources` | deployment | [tests/unit/deployment_test.yaml](../tests/unit/deployment_test.yaml) |
+| `controller.service.*` (type/ports/targetPort/annotations) | services, deployment container ports | [tests/unit/service_test.yaml](../tests/unit/service_test.yaml), [tests/unit/deployment_test.yaml](../tests/unit/deployment_test.yaml) |
+| `database.init.enabled`, `database.migrate.enabled`, `database.repair.version` | db jobs | [tests/unit/db-init-job_test.yaml](../tests/unit/db-init-job_test.yaml), [tests/unit/db-migrate-job_test.yaml](../tests/unit/db-migrate-job_test.yaml), [tests/unit/db-repair-job_test.yaml](../tests/unit/db-repair-job_test.yaml) |
+| `database.resources` | db jobs | [tests/unit/db-init-job_test.yaml](../tests/unit/db-init-job_test.yaml), [tests/unit/db-migrate-job_test.yaml](../tests/unit/db-migrate-job_test.yaml), [tests/unit/db-repair-job_test.yaml](../tests/unit/db-repair-job_test.yaml) |
+| `bootstrapAdmin.*` (enabled, runOnUpgrade, timeout/name fields, resources) | bootstrap job | [tests/unit/bootstrap-admin-job_test.yaml](../tests/unit/bootstrap-admin-job_test.yaml) |
+| `podSecurityContext`, `containerSecurityContext` | deployment and jobs | [tests/unit/deployment_test.yaml](../tests/unit/deployment_test.yaml) (explicit asserts), plus render verification in job suites |
+| `podAnnotations`, `nodeSelector`, `tolerations`, `affinity` | deployment | [tests/unit/deployment_test.yaml](../tests/unit/deployment_test.yaml) |
+| `podDisruptionBudget.*` | pdb | [tests/unit/pdb_test.yaml](../tests/unit/pdb_test.yaml) |
+| `terminationGracePeriodSeconds` | deployment | [tests/unit/deployment_test.yaml](../tests/unit/deployment_test.yaml) |
+| `controller.config` validation behavior | validate helper | [tests/unit/validate_test.yaml](../tests/unit/validate_test.yaml), [tests/unit/configmap_test.yaml](../tests/unit/configmap_test.yaml) |
+
+### Known Unit-Test Gap
+
+`lookup`-based secret key validation (`secretRefs.validateExisting=true` where the Secret exists but is missing keys) requires live cluster state and is not fully unit-testable with pure `helm-unittest` fixtures.
 
 ## Acceptance Tests
 

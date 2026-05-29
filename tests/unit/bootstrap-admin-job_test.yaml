@@ -11,6 +11,18 @@ tests:
           path: spec.template.spec.containers[0].image
           value: hashicorp/boundary-enterprise:0.21-ent
       - equal:
+          path: metadata.annotations["helm.sh/hook-weight"]
+          value: "5"
+      - equal:
+          path: metadata.annotations["helm.sh/hook-delete-policy"]
+          value: before-hook-creation
+      - equal:
+          path: spec.backoffLimit
+          value: 3
+      - equal:
+          path: spec.ttlSecondsAfterFinished
+          value: 3600
+      - equal:
           path: spec.template.spec.automountServiceAccountToken
           value: false
       - equal:
@@ -21,6 +33,28 @@ tests:
           content:
             name: BOUNDARY_ADDR
             value: http://boundary-controller-api:9200
+  - it: renders custom image repository and pull policy in bootstrap job
+    set:
+      image:
+        repository: registry.example.com/boundary-enterprise
+        tag: 1.2.3
+        pullPolicy: Always
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example.com/boundary-enterprise:1.2.3
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+  - it: renders imagePullSecrets in bootstrap job when configured
+    set:
+      imagePullSecrets:
+        - name: regcred
+    asserts:
+      - contains:
+          path: spec.template.spec.imagePullSecrets
+          content:
+            name: regcred
   - it: renders a custom tag when image.tag is overridden
     set:
       image:
@@ -37,6 +71,14 @@ tests:
       - equal:
           path: spec.template.spec.serviceAccountName
           value: boundary-custom-sa
+  - it: renders automountServiceAccountToken when enabled in bootstrap job
+    set:
+      serviceAccount:
+        automountServiceAccountToken: true
+    asserts:
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: true
   - it: does not render bootstrap job when disabled
     set:
       bootstrapAdmin:
@@ -76,3 +118,126 @@ tests:
           content:
             name: BOUNDARY_CACERT
             value: /etc/boundary/tls/tls.crt
+  - it: renders custom TLS mountPath in bootstrap job when TLS is enabled
+    set:
+      tls:
+        disabled: false
+        mountPath: /custom/tls
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_CACERT
+            value: /custom/tls/tls.crt
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tls-certs
+            mountPath: /custom/tls
+            readOnly: true
+  - it: renders migration URL env var in bootstrap job when config uses env migration URL
+    set:
+      controller:
+        config: |
+          controller {
+            database {
+              migration_url = "env://BOUNDARY_PG_MIGRATION_URL"
+            }
+          }
+      secretRefs:
+        keys:
+          migrationUrl: migration-url
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_PG_MIGRATION_URL
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: migration-url
+  - it: renders secretRefs key remapping for bootstrap admin credentials
+    set:
+      secretRefs:
+        keys:
+          adminUsername: custom-admin-user
+          adminPassword: custom-admin-pass
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_ADMIN_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: custom-admin-user
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_ADMIN_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: custom-admin-pass
+  - it: renders custom bootstrap resources
+    set:
+      bootstrapAdmin:
+        resources:
+          limits:
+            cpu: 900m
+            memory: 1Gi
+          requests:
+            cpu: 200m
+            memory: 256Mi
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 900m
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 256Mi
+  - it: renders nameOverride and namespace in bootstrap job metadata
+    set:
+      nameOverride: custom
+      namespace: boundary
+    asserts:
+      - equal:
+          path: metadata.name
+          value: custom-bootstrap-admin
+      - equal:
+          path: metadata.namespace
+          value: boundary
+  - it: renders bootstrap admin env values from bootstrapAdmin overrides
+    set:
+      bootstrapAdmin:
+        waitTimeoutSeconds: 240
+        authMethodName: custom-auth-method
+        userResourceName: custom-user-resource
+        accountResourceName: custom-account-resource
+        roleName: custom-role
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: WAIT_TIMEOUT
+            value: "240"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_AUTH_METHOD_NAME
+            value: custom-auth-method
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_USER_RESOURCE_NAME
+            value: custom-user-resource
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_ACCOUNT_RESOURCE_NAME
+            value: custom-account-resource
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_ROLE_NAME
+            value: custom-role

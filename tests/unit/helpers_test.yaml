@@ -80,3 +80,29 @@ tests:
           path: spec.template.spec.serviceAccountName
           value: default
         template: templates/deployment.yaml
+
+  - it: renders remapped secretRefs keys for database URL and license
+    set:
+      secretRefs:
+        keys:
+          databaseUrl: db-url-key
+          license: lic-key
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_PG_URL
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: db-url-key
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_LICENSE
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: lic-key
+        template: templates/deployment.yaml
