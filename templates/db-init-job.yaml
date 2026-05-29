@@ -1,13 +1,12 @@
 # Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
 
-{{- if .Release.IsInstall }}
+{{- if and .Release.IsInstall .Values.database.init.enabled }}
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ include "boundary.controller.serviceName" . }}-init-db
-  {{- if .Values.namespace }}
-  namespace: {{ .Values.namespace }}
-  {{- end }}
+  namespace: {{ include "boundary.namespace" . }}
   labels:
     {{- include "boundary.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller-init
@@ -29,13 +28,14 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       serviceAccountName: {{ include "boundary.controller.serviceAccountName" . }}
       restartPolicy: OnFailure
       containers:
         - name: init-db
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: "{{ include "boundary.controller.image" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
@@ -46,56 +46,41 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
-                  key: {{ .Values.controller.secretRefs.keys.databaseUrl }}
+                  key: {{ .Values.secretRefs.keys.databaseUrl }}
             {{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" }}
             - name: BOUNDARY_PG_MIGRATION_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
-                  key: {{ .Values.controller.secretRefs.keys.migrationUrl }}
+                  key: {{ .Values.secretRefs.keys.migrationUrl }}
             {{- end }}
             - name: BOUNDARY_LICENSE
               valueFrom:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
-                  key: {{ .Values.controller.secretRefs.keys.license }}
+                  key: {{ .Values.secretRefs.keys.license }}
             {{- if eq (include "boundary.controller.usesEnvAeadKms" . | trim) "true" }}
             - name: BOUNDARY_KMS_ROOT
               valueFrom:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
-                  key: {{ .Values.controller.secretRefs.keys.kmsRoot }}
+                  key: {{ .Values.secretRefs.keys.kmsRoot }}
             - name: BOUNDARY_KMS_WORKER_AUTH
               valueFrom:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
-                  key: {{ .Values.controller.secretRefs.keys.kmsWorkerAuth }}
+                  key: {{ .Values.secretRefs.keys.kmsWorkerAuth }}
             - name: BOUNDARY_KMS_RECOVERY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
-                  key: {{ .Values.controller.secretRefs.keys.kmsRecovery }}
+                  key: {{ .Values.secretRefs.keys.kmsRecovery }}
             {{- end }}
           command:
             - "sh"
-            - "-c"
-            - |
-              OUTPUT_FILE=/tmp/output.log
-              boundary database init -skip-initial-authenticated-user-role-creation -skip-auth-method-creation -skip-host-resources-creation -skip-scopes-creation -skip-target-creation -config /etc/boundary/controller.hcl >"$OUTPUT_FILE" 2>&1
-              EXIT_CODE=$?
-
-              if [ $EXIT_CODE -eq 0 ]; then
-                cat "$OUTPUT_FILE"
-                exit 0
-              elif grep -q "already been initialized\|already initialized" "$OUTPUT_FILE"; then
-                cat "$OUTPUT_FILE"
-                exit 0
-              else
-                cat "$OUTPUT_FILE"
-                exit 1
-              fi
+            - "/etc/boundary/db-init.sh"
           resources:
-            {{- toYaml .Values.controller.database.resources | nindent 12 }}
+            {{- toYaml .Values.database.resources | nindent 12 }}
           volumeMounts:
             - name: config
               mountPath: /etc/boundary

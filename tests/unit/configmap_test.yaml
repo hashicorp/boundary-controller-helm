@@ -1,0 +1,26 @@
+# Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
+
+suite: Controller configmap
+templates:
+  - templates/configmap.yaml
+tests:
+  - it: renders the controller config and embedded scripts
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.name
+          value: boundary-controller-config
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: pre-install,pre-upgrade
+      - matchRegex:
+          path: data["controller.hcl"]
+          pattern: disable_mlock = true
+      - matchRegex:
+          path: data["db-init.sh"]
+          pattern: boundary database init
+      - matchRegex:
+          path: data["bootstrap-admin.sh"]
+          pattern: Bootstrap admin completed successfully

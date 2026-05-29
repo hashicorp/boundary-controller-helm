@@ -1,0 +1,24 @@
+# Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
+
+suite: Controller PDB
+templates:
+  - templates/pdb.yaml
+tests:
+  - it: renders a pod disruption budget with minAvailable
+    asserts:
+      - isKind:
+          of: PodDisruptionBudget
+      - equal:
+          path: metadata.name
+          value: boundary-controller
+      - equal:
+          path: spec.minAvailable
+          value: 1
+  - it: does not render a pod disruption budget when disabled
+    set:
+      podDisruptionBudget:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

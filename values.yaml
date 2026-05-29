@@ -1,13 +1,22 @@
 # Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
 
 # Default values for Boundary Controller Helm Chart
 
-# Override chart name (used in resource naming)
-nameOverride: ""
-fullnameOverride: ""
+# --------------------------------------------------
+# Naming and Namespace
+# --------------------------------------------------
 
-# Namespace to deploy resources into (leave empty to use release namespace)
+# Override chart-generated resource names. Ex: if set to "custom", resources will be named custom-api, custom-cluster, etc.
+nameOverride: ""
+
+# Namespace to deploy resources into, keep empty to use the namespace provided via --namespace flag during helm install/upgrade
+# If set, all resources will be deployed into the specified namespace regardless of the Helm release namespace.
 namespace: ""
+
+# --------------------------------------------------
+# Image
+# --------------------------------------------------
 
 # Boundary image configuration
 image:
@@ -15,16 +24,51 @@ image:
   tag: "0.21-ent"
   pullPolicy: IfNotPresent
 
-# Image pull secrets
+# https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry
+# Image pull secret to use for registry authentication.
 imagePullSecrets: []
-# - name: regcred
+# imagePullSecrets:
+#   - name: image-pull-secret
+
+# --------------------------------------------------
+# TLS
+# --------------------------------------------------
 
 tls:
-  disabled: true # Set to false to enable TLS for API and Ops listeners
-  secretName: "boundary-controller-tls" # Name of K8s tls Secret containing tls.crt and tls.key
-  mountPath: "/etc/boundary/tls" # Path where TLS certs are mounted inside the container
+  # Set to false to enable TLS for API and Ops listeners
+  disabled: true
+  # Name of the Kubernetes TLS Secret containing tls.crt and tls.key
+  secretName: "boundary-controller-tls"
+  # Path where TLS certs are mounted inside the container
+  mountPath: "/etc/boundary/tls"
 
-# Controller configuration
+# --------------------------------------------------
+# Secret References
+# --------------------------------------------------
+
+# Secret keys consumed by Boundary via environment variables.
+secretRefs:
+  secretName: "boundary-controller-secrets"
+  # When true templates validate that the Secret exists in the effective chart namespace
+  # (the release namespace unless overridden by .Values.namespace) and contains all configured keys.
+  # Keep false for offline rendering (helm template) without cluster access.
+  validateExisting: false
+  keys:
+    # https://developer.hashicorp.com/boundary/docs/configuration/controller
+    # postgresql://<username>:<password>@<hostname>:5432/boundary?sslmode=require
+    databaseUrl: "database-url"
+    # Optional alternate URL for migration/repair workflows.
+    # migrationUrl: "migration-url"
+    # https://developer.hashicorp.com/boundary/docs/configuration/controller#license
+    license: "license"
+    adminUsername: "admin-username"
+    adminPassword: "admin-password"
+
+# --------------------------------------------------
+# Controller
+# --------------------------------------------------
+
+# Controller deployment configuration
 controller:
   replicas: 2
   rollingUpdate:
@@ -131,61 +175,10 @@ controller:
       }
     }
 
-
-  # Secret keys consumed by Boundary via environment variables.
-  secretRefs:
-    secretName: "boundary-controller-secrets"  # Name of the Kubernetes Secret to read values from
-    # When true templates validate that the Secret exists in the release namespace and contains all configured keys.
-    # Keep false for offline rendering (helm template) without cluster access.
-    validateExisting: false
-    keys:
-      # https://developer.hashicorp.com/boundary/docs/configuration/controller
-      # postgresql://<username>:<password>@<hostname>:5432/boundary?sslmode=require
-      databaseUrl: "database-url"
-      # Optional alternate URL for migration/repair workflows.
-      # migrationUrl: "migration-url"
-      # https://developer.hashicorp.com/boundary/docs/configuration/controller#license
-      license: "license"
-      # Login name value used by `boundary accounts create password -login-name`.
-      adminUsername: "admin-username"
-      adminPassword: "admin-password"
-
-  bootstrapAdmin:
-    enabled: true
-    runOnUpgrade: false
-    waitTimeoutSeconds: 120
-    authMethodName: "bootstrap-password"
-    # Boundary user resource display name (from `boundary users create -name`), not the login credential.
-    userResourceName: "bootstrap-admin"
-    # Boundary account resource display name (from `boundary accounts create password -name`).
-    accountResourceName: "bootstrap-admin"
-    roleName: "bootstrap-global-admin"
-    # Resource limits and requests for bootstrap admin job
-    resources:
-      limits:
-        cpu: 500m
-        memory: 512Mi
-      requests:
-        cpu: 100m
-        memory: 128Mi
-
-  database:
-    migrate:
-      enabled: false  # Enable database migration job during upgrades
-    # Resource limits and requests for database init job
-    resources:
-      limits:
-        cpu: 500m
-        memory: 512Mi
-      requests:
-        cpu: 100m
-        memory: 128Mi
-    repair:
-      version: ""    # If set, runs the repair function for the provided migration version
-
   # Liveness probe configuration
   livenessProbe:
-    scheme: HTTP # Use HTTP if TLS is disabled, HTTPS otherwise. Helm template will render the appropriate scheme based on .Values.tls.disabled
+    # Set this to HTTPS when tls.disabled=false
+    scheme: HTTP
     initialDelaySeconds: 60
     periodSeconds: 10
     failureThreshold: 3
@@ -193,7 +186,8 @@ controller:
 
   # Readiness probe configuration
   readinessProbe:
-    scheme: HTTP # Use HTTP if TLS is disabled, HTTPS otherwise. Helm template will render the appropriate scheme based on .Values.tls.disabled
+    # Set this to HTTPS when tls.disabled=false
+    scheme: HTTP
     initialDelaySeconds: 15
     periodSeconds: 10
     failureThreshold: 3
@@ -239,17 +233,74 @@ controller:
       # https://learn.microsoft.com/en-us/azure/aks/configure-load-balancer-standard?tabs=create-cluster-ip-based%2Ccreate-cluster-managed-outbound-ips%2Ccreate-cluster-custom-ips%2Ccreate-cluster-custom-ip-prefixes%2Ccreate-cluster-outbound-ports-ips%2Ccreate-cluster-idle-timeout#customizations-via-kubernetes-annotations
       #  service.beta.kubernetes.io/azure-load-balancer-tcp-idle-timeout: "30"
 
+    # https://developer.hashicorp.com/boundary/docs/monitor/listeners#cluster
     cluster:
       type: LoadBalancer
       port: 9201
       targetPort: 9201
       annotations: {}
 
+    # https://developer.hashicorp.com/boundary/docs/monitor/listeners#ops
     ops:
-       type: ClusterIP
-       port: 9203
-       targetPort: 9203
-       annotations: {}
+      type: ClusterIP
+      port: 9203
+      targetPort: 9203
+      annotations: {}
+
+# --------------------------------------------------
+# Database Jobs
+# --------------------------------------------------
+
+# Database configuration and jobs
+database:
+  init:
+    # Run database init job during install
+    enabled: true
+  migrate:
+    # Enable database migration job during upgrades
+    enabled: false
+  # Resource limits and requests for database init/migration jobs
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  repair:
+    # If set, runs the repair function for the provided migration version
+    version: ""
+
+# --------------------------------------------------
+# Bootstrap Admin
+# --------------------------------------------------
+
+# Bootstrap admin user configuration.
+# When enabled, a bootstrap admin user is created on initial install and optionally during upgrades.
+# This can be used for initial login and setup of Boundary.
+bootstrapAdmin:
+  enabled: true
+  runOnUpgrade: false
+  # Max job wait time for the Boundary API to become reachable before failing
+  waitTimeoutSeconds: 120
+  authMethodName: "bootstrap-password"
+  # Boundary user resource display name (from `boundary users create -name`), not the login credential.
+  userResourceName: "bootstrap-admin"
+  # Boundary account resource display name (from `boundary accounts create password -name`).
+  accountResourceName: "bootstrap-admin"
+  roleName: "bootstrap-global-admin"
+  # Resource limits and requests for bootstrap admin job
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# --------------------------------------------------
+# Pod and Container Security
+# --------------------------------------------------
 
 # Pod security context
 podSecurityContext:
@@ -269,6 +320,10 @@ containerSecurityContext:
   seccompProfile:
     type: RuntimeDefault
 
+# --------------------------------------------------
+# Scheduling and Metadata
+# --------------------------------------------------
+
 # Pod annotations
 podAnnotations: {}
 
@@ -281,13 +336,20 @@ tolerations: []
 # Affinity rules
 affinity: {}
 
+# --------------------------------------------------
+# Service Account
+# --------------------------------------------------
+
 # ServiceAccount configuration
-# Annotate with eks.amazonaws.com/role-arn for IRSA (AWS KMS access)
+# Chart does not create ServiceAccounts. Provide an existing ServiceAccount name.
 serviceAccount:
-  create: false
-  name: "default"  # Defaults to the chart name when empty
-  # annotations: {}
-  # eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/boundary-controller-role
+  # Existing ServiceAccount used by controller and hook jobs
+  name: "default"
+  automountServiceAccountToken: false
+
+# --------------------------------------------------
+# Availability and Shutdown
+# --------------------------------------------------
 
 # PodDisruptionBudget — prevents both replicas being evicted simultaneously
 podDisruptionBudget:

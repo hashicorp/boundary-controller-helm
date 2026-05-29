@@ -1,9 +1,11 @@
 # Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
 
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "boundary.controller.serviceName" . }}
+  name: {{ include "boundary.controller.apiServiceName" . }}
+  namespace: {{ include "boundary.namespace" . }}
   labels:
     {{- include "boundary.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller
@@ -26,6 +28,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "boundary.controller.clusterServiceName" . }}
+  namespace: {{ include "boundary.namespace" . }}
   labels:
     {{- include "boundary.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller
@@ -48,6 +51,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "boundary.controller.opsServiceName" . }}
+  namespace: {{ include "boundary.namespace" . }}
   labels:
     {{- include "boundary.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller

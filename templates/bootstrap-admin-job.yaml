@@ -1,18 +1,17 @@
 # Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
 
-{{- if and .Values.controller.bootstrapAdmin.enabled (or .Release.IsInstall (and .Release.IsUpgrade .Values.controller.bootstrapAdmin.runOnUpgrade)) }}
+{{- if and .Values.bootstrapAdmin.enabled (or .Release.IsInstall (and .Release.IsUpgrade .Values.bootstrapAdmin.runOnUpgrade)) }}
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ include "boundary.controller.serviceName" . }}-bootstrap-admin
-  {{- if .Values.namespace }}
-  namespace: {{ .Values.namespace }}
-  {{- end }}
+  namespace: {{ include "boundary.namespace" . }}
   labels:
     {{- include "boundary.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller-bootstrap-admin
   annotations:
-    "helm.sh/hook": {{ if .Values.controller.bootstrapAdmin.runOnUpgrade }}post-install,post-upgrade{{ else }}post-install{{ end }}
+    "helm.sh/hook": {{ if .Values.bootstrapAdmin.runOnUpgrade }}post-install,post-upgrade{{ else }}post-install{{ end }}
     "helm.sh/hook-weight": "5"
     "helm.sh/hook-delete-policy": before-hook-creation
 spec:
@@ -28,13 +27,14 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       serviceAccountName: {{ include "boundary.controller.serviceAccountName" . }}
       restartPolicy: OnFailure
       containers:
         - name: bootstrap-admin
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: "{{ include "boundary.controller.image" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
@@ -42,7 +42,7 @@ spec:
             - name: SKIP_SETCAP
               value: "1"
             - name: BOUNDARY_ADDR
-              value: "{{ if not .Values.tls.disabled }}https{{ else }}http{{ end }}://{{ include "boundary.controller.serviceName" . }}:{{ .Values.controller.service.api.port }}"
+              value: "{{ if not .Values.tls.disabled }}https{{ else }}http{{ end }}://{{ include "boundary.controller.apiServiceName" . }}:{{ .Values.controller.service.api.port }}"
             {{- if not .Values.tls.disabled }}
             - name: BOUNDARY_CACERT
               value: "{{ .Values.tls.mountPath }}/tls.crt"
@@ -51,190 +51,34 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
-                  key: {{ .Values.controller.secretRefs.keys.adminUsername }}
+                  key: {{ .Values.secretRefs.keys.adminUsername }}
             - name: BOUNDARY_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
-                  key: {{ .Values.controller.secretRefs.keys.adminPassword }}
+                  key: {{ .Values.secretRefs.keys.adminPassword }}
+            - name: WAIT_TIMEOUT
+              value: {{ .Values.bootstrapAdmin.waitTimeoutSeconds | quote }}
+            - name: BOUNDARY_AUTH_METHOD_NAME
+              value: {{ .Values.bootstrapAdmin.authMethodName | quote }}
+            - name: BOUNDARY_USER_RESOURCE_NAME
+              value: {{ .Values.bootstrapAdmin.userResourceName | quote }}
+            - name: BOUNDARY_ACCOUNT_RESOURCE_NAME
+              value: {{ .Values.bootstrapAdmin.accountResourceName | quote }}
+            - name: BOUNDARY_ROLE_NAME
+              value: {{ .Values.bootstrapAdmin.roleName | quote }}
             {{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" }}
             - name: BOUNDARY_PG_MIGRATION_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
-                  key: {{ .Values.controller.secretRefs.keys.migrationUrl }}
+                  key: {{ .Values.secretRefs.keys.migrationUrl }}
             {{- end }}
           command:
             - "sh"
-            - "-c"
-            - |
-              set -eu
-
-              export BOUNDARY_RECOVERY_CONFIG=/etc/boundary/controller.hcl
-              export BOUNDARY_ADDR="{{ if not .Values.tls.disabled }}https{{ else }}http{{ end }}://{{ include "boundary.controller.serviceName" . }}:{{ .Values.controller.service.api.port }}"
-
-              if [ -z "${BOUNDARY_ADMIN_USERNAME}" ] || [ -z "${BOUNDARY_ADMIN_PASSWORD}" ]; then
-                echo "bootstrap admin username/password are required"
-                exit 1
-              fi
-
-              echo "bootstrap admin username: ${BOUNDARY_ADMIN_USERNAME}"
-              echo "BOUNDARY_ADDR: ${BOUNDARY_ADDR}"
-              echo "BOUNDARY_RECOVERY_CONFIG: ${BOUNDARY_RECOVERY_CONFIG}"
-
-              WAIT_TIMEOUT={{ .Values.controller.bootstrapAdmin.waitTimeoutSeconds }}
-              START_TS=$(date +%s)
-              while true; do
-                if boundary scopes list -scope-id global -addr "$BOUNDARY_ADDR" -recovery-config "$BOUNDARY_RECOVERY_CONFIG" -format json >/dev/null 2>&1; then
-                  break
-                fi
-                NOW_TS=$(date +%s)
-                if [ $((NOW_TS - START_TS)) -ge "$WAIT_TIMEOUT" ]; then
-                  echo "controller API did not become reachable within ${WAIT_TIMEOUT}s"
-                  exit 1
-                fi
-                sleep 5
-              done
-
-              echo "Creating or fetching password auth method..."
-              AUTH_METHOD_OUTPUT=$(boundary auth-methods create password \
-                -scope-id global \
-                -name "{{ .Values.controller.bootstrapAdmin.authMethodName }}" \
-                -description "Bootstrap password auth method" \
-                -addr "$BOUNDARY_ADDR" \
-                -recovery-config "$BOUNDARY_RECOVERY_CONFIG" \
-                -format json 2>&1 || true)
-
-              if echo "$AUTH_METHOD_OUTPUT" | grep -q "must be unique"; then
-                echo "Auth method already exists, fetching..."
-                AUTH_METHOD_ID=$(boundary auth-methods list -scope-id global -addr "$BOUNDARY_ADDR" -recovery-config "$BOUNDARY_RECOVERY_CONFIG" -format json | grep -B2 '"name":"{{ .Values.controller.bootstrapAdmin.authMethodName }}"' | grep -o '"id":"ampw_[^"]*"' | head -1 | cut -d'"' -f4)
-              else
-                AUTH_METHOD_ID=$(echo "$AUTH_METHOD_OUTPUT" | grep -o '"id":"ampw_[^"]*"' | head -1 | cut -d'"' -f4)
-              fi
-
-              if [ -z "$AUTH_METHOD_ID" ]; then
-                echo "ERROR: Failed to resolve auth method ID"
-                echo "$AUTH_METHOD_OUTPUT"
-                exit 1
-              fi
-              echo "Auth method ID: $AUTH_METHOD_ID"
-
-              echo "Setting global primary auth method..."
-              boundary scopes update \
-                -id global \
-                -primary-auth-method-id "$AUTH_METHOD_ID" \
-                -addr "$BOUNDARY_ADDR" \
-                -recovery-config "$BOUNDARY_RECOVERY_CONFIG" >/dev/null 2>&1 || echo "Primary auth method may already be set"
-
-              echo "Creating or fetching user..."
-              USER_OUTPUT=$(boundary users create \
-                -scope-id global \
-                -name "{{ .Values.controller.bootstrapAdmin.userResourceName }}" \
-                -description "Bootstrap admin user" \
-                -addr "$BOUNDARY_ADDR" \
-                -recovery-config "$BOUNDARY_RECOVERY_CONFIG" \
-                -format json 2>&1 || true)
-
-              if echo "$USER_OUTPUT" | grep -q "must be unique"; then
-                echo "User already exists, fetching..."
-                USER_ID=$(boundary users list -scope-id global -addr "$BOUNDARY_ADDR" -recovery-config "$BOUNDARY_RECOVERY_CONFIG" -format json | grep -B2 '"name":"{{ .Values.controller.bootstrapAdmin.userResourceName }}"' | grep -o '"id":"u_[^"]*"' | head -1 | cut -d'"' -f4)
-              else
-                USER_ID=$(echo "$USER_OUTPUT" | grep -o '"id":"u_[^"]*"' | head -1 | cut -d'"' -f4)
-              fi
-
-              if [ -z "$USER_ID" ]; then
-                echo "ERROR: Failed to resolve user ID"
-                echo "$USER_OUTPUT"
-                exit 1
-              fi
-              echo "User ID: $USER_ID"
-
-              echo "Creating or fetching password account..."
-              ACCOUNT_OUTPUT=$(boundary accounts create password \
-                -auth-method-id "$AUTH_METHOD_ID" \
-                -name "{{ .Values.controller.bootstrapAdmin.accountResourceName }}" \
-                -description "Bootstrap admin account" \
-                -login-name "$BOUNDARY_ADMIN_USERNAME" \
-                -password env://BOUNDARY_ADMIN_PASSWORD \
-                -addr "$BOUNDARY_ADDR" \
-                -recovery-config "$BOUNDARY_RECOVERY_CONFIG" \
-                -format json 2>&1 || true)
-
-              if echo "$ACCOUNT_OUTPUT" | grep -q "must be unique\|already exists"; then
-                echo "Account already exists, fetching..."
-                ACCOUNT_ID=$(boundary accounts list -auth-method-id "$AUTH_METHOD_ID" -addr "$BOUNDARY_ADDR" -recovery-config "$BOUNDARY_RECOVERY_CONFIG" -format json | grep -B2 '"login_name":"'"$BOUNDARY_ADMIN_USERNAME"'"' | grep -o '"id":"acctpw_[^"]*"' | head -1 | cut -d'"' -f4)
-                if [ -n "$ACCOUNT_ID" ]; then
-                  boundary accounts update password \
-                    -id "$ACCOUNT_ID" \
-                    -name "{{ .Values.controller.bootstrapAdmin.accountResourceName }}" \
-                    -description "Bootstrap admin account" \
-                    -login-name "$BOUNDARY_ADMIN_USERNAME" \
-                    -addr "$BOUNDARY_ADDR" \
-                    -recovery-config "$BOUNDARY_RECOVERY_CONFIG" >/dev/null
-                  boundary accounts set-password \
-                    -id "$ACCOUNT_ID" \
-                    -password env://BOUNDARY_ADMIN_PASSWORD \
-                    -addr "$BOUNDARY_ADDR" \
-                    -recovery-config "$BOUNDARY_RECOVERY_CONFIG" >/dev/null
-                fi
-              else
-                ACCOUNT_ID=$(echo "$ACCOUNT_OUTPUT" | grep -o '"id":"acctpw_[^"]*"' | head -1 | cut -d'"' -f4)
-              fi
-
-              if [ -z "$ACCOUNT_ID" ]; then
-                echo "ERROR: Failed to resolve account ID"
-                echo "$ACCOUNT_OUTPUT"
-                exit 1
-              fi
-              echo "Account ID: $ACCOUNT_ID"
-
-              echo "Linking account to user..."
-              boundary users add-accounts \
-                -id "$USER_ID" \
-                -account "$ACCOUNT_ID" \
-                -addr "$BOUNDARY_ADDR" \
-                -recovery-config "$BOUNDARY_RECOVERY_CONFIG" 2>&1 || echo "Account may already be linked"
-
-              echo "Creating or fetching admin role..."
-              ROLE_OUTPUT=$(boundary roles create \
-                -scope-id global \
-                -name "{{ .Values.controller.bootstrapAdmin.roleName }}" \
-                -description "Global admin role managed by Helm bootstrap job" \
-                -addr "$BOUNDARY_ADDR" \
-                -recovery-config "$BOUNDARY_RECOVERY_CONFIG" \
-                -format json 2>&1 || true)
-
-              if echo "$ROLE_OUTPUT" | grep -q "must be unique"; then
-                echo "Role already exists, fetching..."
-                ROLE_ID=$(boundary roles list -scope-id global -addr "$BOUNDARY_ADDR" -recovery-config "$BOUNDARY_RECOVERY_CONFIG" -format json | grep -B2 '"name":"{{ .Values.controller.bootstrapAdmin.roleName }}"' | grep -o '"id":"r_[^"]*"' | head -1 | cut -d'"' -f4)
-              else
-                ROLE_ID=$(echo "$ROLE_OUTPUT" | grep -o '"id":"r_[^"]*"' | head -1 | cut -d'"' -f4)
-              fi
-
-              if [ -z "$ROLE_ID" ]; then
-                echo "ERROR: Failed to resolve role ID"
-                echo "$ROLE_OUTPUT"
-                exit 1
-              fi
-              echo "Role ID: $ROLE_ID"
-
-              echo "Adding grants to role..."
-              boundary roles add-grants \
-                -id "$ROLE_ID" \
-                -grant 'ids=*;type=*;actions=*' \
-                -addr "$BOUNDARY_ADDR" \
-                -recovery-config "$BOUNDARY_RECOVERY_CONFIG" 2>&1 || echo "Grants may already be configured"
-
-              echo "Adding user to role..."
-              boundary roles add-principals \
-                -id "$ROLE_ID" \
-                -principal "$USER_ID" \
-                -addr "$BOUNDARY_ADDR" \
-                -recovery-config "$BOUNDARY_RECOVERY_CONFIG" 2>&1 || echo "User may already be assigned to role"
-
-              echo "bootstrap admin workflow completed"
+            - "/etc/boundary/bootstrap-admin.sh"
           resources:
-            {{- toYaml .Values.controller.bootstrapAdmin.resources | nindent 12 }}
+            {{- toYaml .Values.bootstrapAdmin.resources | nindent 12 }}
           volumeMounts:
             - name: config
               mountPath: /etc/boundary

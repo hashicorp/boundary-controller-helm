@@ -1,0 +1,57 @@
+# Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
+
+suite: Validation checks
+templates:
+  - templates/validate.yaml
+tests:
+  - it: fails when controller config uses env-based AEAD KMS keys
+    set:
+      controller:
+        config: |
+          disable_mlock = true
+
+          kms "aead" {
+            purpose = "root"
+            key = "env://BOUNDARY_KMS_ROOT"
+            key_id = "global_root"
+          }
+    asserts:
+      - failedTemplate:
+          errorPattern: "controller.config uses env://BOUNDARY_KMS_\\*"
+  - it: fails when TLS is enabled but cert path does not match tls.mountPath
+    set:
+      tls:
+        disabled: false
+      controller:
+        config: |
+          disable_mlock = true
+
+          listener "tcp" {
+            address = "0.0.0.0:9200"
+            purpose = "api"
+            tls_disable   = false
+            tls_cert_file = "/wrong/path/tls.crt"
+            tls_key_file  = "/etc/boundary/tls/tls.key"
+          }
+    asserts:
+      - failedTemplate:
+          errorPattern: "missing expected cert path"
+  - it: fails when TLS is enabled but key path does not match tls.mountPath
+    set:
+      tls:
+        disabled: false
+      controller:
+        config: |
+          disable_mlock = true
+
+          listener "tcp" {
+            address = "0.0.0.0:9200"
+            purpose = "api"
+            tls_disable   = false
+            tls_cert_file = "/etc/boundary/tls/tls.crt"
+            tls_key_file  = "/wrong/path/tls.key"
+          }
+    asserts:
+      - failedTemplate:
+          errorPattern: "missing expected key path"

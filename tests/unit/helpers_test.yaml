@@ -1,0 +1,82 @@
+# Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
+
+suite: Helper templates behavior
+templates:
+  - templates/configmap.yaml
+  - templates/deployment.yaml
+  - templates/service.yaml
+tests:
+  - it: uses chart appVersion when image.tag is empty
+    set:
+      image:
+        tag: ""
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: hashicorp/boundary-enterprise:0.21-ent
+        template: templates/deployment.yaml
+
+  - it: uses overridden image tag via image helper
+    set:
+      image:
+        tag: 9.9.9
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: hashicorp/boundary-enterprise:9.9.9
+        template: templates/deployment.yaml
+
+  - it: applies nameOverride to deployment and service names
+    set:
+      nameOverride: custom
+    asserts:
+      - equal:
+          path: metadata.name
+          value: custom
+        template: templates/deployment.yaml
+      - equal:
+          path: metadata.name
+          value: custom-api
+        template: templates/service.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: custom-cluster
+        template: templates/service.yaml
+        documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: custom-ops
+        template: templates/service.yaml
+        documentIndex: 2
+
+  - it: falls back to generated secret name when secretRefs.secretName is empty
+    set:
+      secretRefs:
+        secretName: ""
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[1].valueFrom.secretKeyRef.name
+          value: boundary-controller-secrets
+        template: templates/deployment.yaml
+
+  - it: uses explicit secretRefs.secretName when provided
+    set:
+      secretRefs:
+        secretName: custom-boundary-secrets
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[1].valueFrom.secretKeyRef.name
+          value: custom-boundary-secrets
+        template: templates/deployment.yaml
+
+  - it: falls back to default service account name when empty
+    set:
+      serviceAccount:
+        name: ""
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: default
+        template: templates/deployment.yaml

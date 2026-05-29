@@ -1,0 +1,78 @@
+# Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
+
+suite: Bootstrap admin job
+templates:
+  - templates/bootstrap-admin-job.yaml
+tests:
+  - it: renders the default image tag for the bootstrap job
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: hashicorp/boundary-enterprise:0.21-ent
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: default
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_ADDR
+            value: http://boundary-controller-api:9200
+  - it: renders a custom tag when image.tag is overridden
+    set:
+      image:
+        tag: 9.9.9
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: hashicorp/boundary-enterprise:9.9.9
+  - it: uses serviceAccount.name override in bootstrap hook job
+    set:
+      serviceAccount:
+        name: boundary-custom-sa
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: boundary-custom-sa
+  - it: does not render bootstrap job when disabled
+    set:
+      bootstrapAdmin:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: renders post-install and post-upgrade hooks when runOnUpgrade is true
+    set:
+      bootstrapAdmin:
+        runOnUpgrade: true
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade
+  - it: does not render bootstrap job on upgrade when runOnUpgrade is false
+    release:
+      upgrade: true
+    set:
+      bootstrapAdmin:
+        runOnUpgrade: false
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: renders HTTPS boundary address and cacert when TLS is enabled
+    set:
+      tls:
+        disabled: false
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_ADDR
+            value: https://boundary-controller-api:9200
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_CACERT
+            value: /etc/boundary/tls/tls.crt

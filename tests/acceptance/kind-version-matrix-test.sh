@@ -1,5 +1,6 @@
 #!/bin/bash
 # Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
 
 # KIND Version Matrix Test
 # Tests controller-api-test.sh against multiple KIND versions.

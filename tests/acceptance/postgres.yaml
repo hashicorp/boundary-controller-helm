@@ -1,4 +1,5 @@
 # Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
 # In-cluster PostgreSQL for acceptance testing only.
 # Ephemeral storage: data is lost when the pod restarts (intentional for tests).
 ---
