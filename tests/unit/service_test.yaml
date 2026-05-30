@@ -29,7 +29,7 @@ tests:
           value: boundary-controller-cluster
       - equal:
           path: spec.type
-          value: LoadBalancer
+          value: ClusterIP
       - equal:
           path: spec.ports[0].port
           value: 9201
