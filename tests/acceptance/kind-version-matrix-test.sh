@@ -2,12 +2,13 @@
 # Copyright IBM Corp. 2026
 # SPDX-License-Identifier: MPL-2.0
 
-# KIND Version Matrix Test
-# Tests controller-api-test.sh against multiple KIND versions.
+# Kubernetes Version Matrix Test
+# Tests controller-api-test.sh across configured kindest/node Kubernetes versions.
+# Available tags reference: https://hub.docker.com/r/kindest/node
 
 set -euo pipefail
 
-# -- Helpers --------------------------------------------------------------------
+# Helper functions for output formatting and error handling
 pass()   { echo "   ✅ $1" >&2; }
 fail()   { echo "❌ FAILED: $1" >&2; exit 1; }
 info()   { echo "   $1" >&2; }
@@ -17,54 +18,45 @@ header() {
     echo "  $1" >&2
 }
 
-# -- Fallback versions ----------------------------------------------------------
-_FALLBACK_KIND_VERSIONS=("v0.30.0" "v0.29.0")
-
-# -- resolve_kind_versions ------------------------------------------------------
-resolve_kind_versions() {
-    local raw
-    raw="$(curl -fsSL --retry 2 --connect-timeout 10 \
-        "https://api.github.com/repos/kubernetes-sigs/kind/releases" 2>/dev/null)" || true
-
-    if [ -z "${raw}" ]; then
-        warn "GitHub Releases API unreachable — using fallback KIND versions: ${_FALLBACK_KIND_VERSIONS[*]}"
-        echo "${_FALLBACK_KIND_VERSIONS[@]}"
-        return
+# - K8S_VERSIONS: explicit one-off override (comma or space separated)
+# - K8S_MATRIX_VERSIONS: ordered repository-configured list
+k8s_versions() {
+    if [ -n "${K8S_VERSIONS:-}" ]; then
+        local normalized
+        normalized="$(echo "${K8S_VERSIONS}" | tr ',' ' ' | xargs)"
+        local count
+        count="$(echo "${normalized}" | wc -w | tr -d ' ')"
+        if [ "${count}" -ge 1 ]; then
+            info "Using explicit versions from K8S_VERSIONS: ${normalized}"
+            echo "${normalized}"
+            return
+        fi
     fi
 
-    local output
-    output="$(printf '%s' "${raw}" | python3 -c "
-import json, sys
-releases = json.load(sys.stdin)
-tags = sorted(
-    [r['tag_name'] for r in releases
-     if not r.get('prerelease', False) and r.get('tag_name', '').startswith('v')],
-    key=lambda v: [int(x) if x.isdigit() else 0 for x in v.lstrip('v').split('.')],
-    reverse=True
-)
-print(' '.join(tags[1:3]))
-" 2>/dev/null)" || true
+    local configured="${K8S_MATRIX_VERSIONS:-}"
+    [ -n "${configured}" ] || fail "Set K8S_MATRIX_VERSIONS or K8S_VERSIONS before running. See https://hub.docker.com/r/kindest/node for available tags."
 
-    local word_count
-    word_count="$(echo "${output}" | wc -w | tr -d ' ')"
-    if [ -z "${output}" ] || [ "${word_count}" -lt 2 ]; then
-        warn "Could not parse KIND releases — using fallback: ${_FALLBACK_KIND_VERSIONS[*]}"
-        echo "${_FALLBACK_KIND_VERSIONS[@]}"
-        return
-    fi
+    local normalized
+    normalized="$(echo "${configured}" | tr ',' ' ' | xargs)"
+    local count
+    count="$(echo "${normalized}" | wc -w | tr -d ' ')"
+    [ "${count}" -ge 1 ] || fail "K8S_MATRIX_VERSIONS did not contain any usable versions. See https://hub.docker.com/r/kindest/node for available tags."
 
-    echo "${output}"
+    echo "${normalized}"
 }
 
-# -- Configuration --------------------------------------------------------------
-read -ra KIND_VERSIONS <<< "$(resolve_kind_versions)"
+# Configuration and environment setup
+read -ra MATRIX_K8S_VERSIONS <<< "$(k8s_versions)"
 KIND_CLUSTER_NAME="acceptance"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHART_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-KIND_CONFIG="${SCRIPT_DIR}/kind-acceptance-config.yaml"
 API_TEST="${SCRIPT_DIR}/controller-api-test.sh"
 TEST_VALUES="${SCRIPT_DIR}/test-values.yaml"
-KIND_CACHE_DIR="${TMPDIR:-/tmp}"
+
+if [ "${PRINT_RESOLVED_K8S_VERSIONS:-false}" = "true" ]; then
+    echo "${MATRIX_K8S_VERSIONS[*]}"
+    exit 0
+fi
 
 NAMESPACE="boundary"
 POSTGRES_USER="boundary"
@@ -73,19 +65,8 @@ POSTGRES_DB="boundary"
 POSTGRES_HOST="postgres.${NAMESPACE}.svc.cluster.local"
 POSTGRES_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:5432/${POSTGRES_DB}?sslmode=disable"
 
-# -- OS / Architecture detection -----------------------------------------------
-_OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
-_ARCH="$(uname -m)"
-case "${_ARCH}" in
-    x86_64)         _ARCH="amd64"  ;;
-    arm64|aarch64)  _ARCH="arm64"  ;;
-    *) fail "Unsupported architecture: ${_ARCH}" ;;
-esac
-KIND_PLATFORM="${_OS}-${_ARCH}"
-
-# -- Pre-flight checks ----------------------------------------------------------
 header "Pre-flight Checks"
-for cmd in kubectl helm curl python3 docker; do
+for cmd in kubectl helm curl docker kind; do
     command -v "${cmd}" >/dev/null 2>&1 \
         || fail "'${cmd}' is required but not installed. Run: make acceptance-setup"
     pass "${cmd} found"
@@ -96,10 +77,12 @@ docker info >/dev/null 2>&1 \
     || fail "Docker daemon is not running."
 pass "Docker daemon is running"
 
-[ -f "${KIND_CONFIG}" ]  || fail "Kind config not found: ${KIND_CONFIG}"
 [ -f "${API_TEST}" ]     || fail "Controller API test not found: ${API_TEST}"
-[ -f "${TEST_VALUES}" ]  || fail "Test values not found: ${TEST_VALUES}"
-pass "Test scripts and values present"
+if [ -f "${TEST_VALUES}" ]; then
+    pass "Test scripts and values present"
+else
+    warn "Test values not found at ${TEST_VALUES}; chart defaults will be used"
+fi
 
 # Check required environment variables
 for var in BOUNDARY_LICENSE BOOTSTRAP_ADMIN_PASSWORD; do
@@ -115,30 +98,11 @@ RESULTS=()
 RESULT_NOTES=()
 VERSION_IDX=0
 
-# -- download_kind: fetch a pinned KIND binary, cache it in /tmp ----------------
-download_kind() {
-    local version="$1"
-    local bin_path="${KIND_CACHE_DIR}/kind-${version}"
-
-    if [ -x "${bin_path}" ]; then
-        info "Using cached KIND ${version} at ${bin_path}"
-    else
-        info "Downloading KIND ${version} for ${KIND_PLATFORM}..."
-        curl -fsSL \
-            "https://kind.sigs.k8s.io/dl/${version}/kind-${KIND_PLATFORM}" \
-            -o "${bin_path}"
-        chmod +x "${bin_path}"
-        pass "Downloaded KIND ${version}"
-    fi
-
-    echo "${bin_path}"
-}
-
-# -- preload_controller_image: pull image locally then load into KIND node ------
-preload_controller_image() {
-    local kind_bin="$1"
-    local image="${BOUNDARY_CONTROLLER_IMAGE:-hashicorp/boundary-enterprise:0.21-ent}"
-    info "Pre-loading controller image into KIND cluster: ${image}"
+# -- preload_kind_image: pull image locally then load into KIND node ------------
+preload_kind_image() {
+    local image="$1"
+    local label="$2"
+    info "Pre-loading ${label} image into KIND cluster: ${image}"
 
     if ! docker image inspect "${image}" >/dev/null 2>&1; then
         info "Image not in local daemon — pulling..."
@@ -148,27 +112,53 @@ preload_controller_image() {
         fi
     fi
 
-    if ! "${kind_bin}" load docker-image "${image}" \
+    if ! kind load docker-image "${image}" \
             --name "${KIND_CLUSTER_NAME}" >/dev/null 2>&1; then
         warn "kind load docker-image failed — pod will pull from registry (may be slow)"
         return 0
     fi
-    pass "Controller image pre-loaded: ${image}"
+    pass "${label} image pre-loaded: ${image}"
+}
+
+# -- preload_controller_image: pull image locally then load into KIND node ------
+preload_controller_image() {
+    local image="${BOUNDARY_CONTROLLER_IMAGE:-hashicorp/boundary-enterprise:0.21-ent}"
+    preload_kind_image "${image}" "Controller"
 }
 
 # -- cleanup_cluster: delete the acceptance cluster if it exists ---------------
 cleanup_cluster() {
-    local kind_bin="$1"
-    if "${kind_bin}" get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
+        if kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
         info "Deleting existing KIND cluster '${KIND_CLUSTER_NAME}'..."
-        "${kind_bin}" delete cluster --name "${KIND_CLUSTER_NAME}" >/dev/null 2>&1
+                kind delete cluster --name "${KIND_CLUSTER_NAME}" >/dev/null 2>&1
         pass "Cluster '${KIND_CLUSTER_NAME}' deleted"
     fi
 }
 
+create_kind_config_for_k8s() {
+        local k8s_version="$1"
+        local cfg
+        cfg="$(mktemp)" || fail "Failed to create temp kind config"
+        cat >"${cfg}" <<EOF
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    image: kindest/node:${k8s_version}
+  - role: worker
+    image: kindest/node:${k8s_version}
+  - role: worker
+    image: kindest/node:${k8s_version}
+EOF
+        echo "${cfg}"
+}
+
 # -- setup_postgres: deploy official postgres:16 in-cluster -------------------
 setup_postgres() {
-    info "Deploying in-cluster PostgreSQL (official postgres:16)..."
+    local postgres_image="${POSTGRES_IMAGE:-postgres:16}"
+    info "Deploying in-cluster PostgreSQL (${postgres_image})..."
+
+    preload_kind_image "${postgres_image}" "PostgreSQL"
 
     kubectl create namespace "${NAMESPACE}" \
         --context "kind-${KIND_CLUSTER_NAME}" \
@@ -184,8 +174,8 @@ setup_postgres() {
         -n "${NAMESPACE}" \
         --context "kind-${KIND_CLUSTER_NAME}" \
         -l "app=postgres" \
-        --timeout=120s >/dev/null 2>&1 \
-        || fail "PostgreSQL pod did not become ready within 120s"
+        --timeout=300s >/dev/null 2>&1 \
+        || fail "PostgreSQL pod did not become ready within 300s"
     pass "PostgreSQL is ready"
 }
 
@@ -223,12 +213,17 @@ install_helm_chart() {
 
     HELM_OUT=$(mktemp) || fail "Failed to create temp file for helm output"
     [ -n "${HELM_OUT}" ] || fail "mktemp returned empty path"
+    local values_args=()
+    if [ -f "${TEST_VALUES}" ]; then
+        values_args=(--values "${TEST_VALUES}")
+    fi
+
     if ! helm install boundary-controller "${CHART_DIR}" \
         --namespace "${NAMESPACE}" \
         --create-namespace \
         --kube-context "kind-${KIND_CLUSTER_NAME}" \
-        --values "${TEST_VALUES}" \
-        "${image_flags[@]+"${image_flags[@]}"}" \
+        "${values_args[@]}" \
+        "${image_flags[@]}" \
         --timeout 10m >"${HELM_OUT}" 2>&1; then
         echo "" >&2
         echo "❌ helm install failed. Output:" >&2
@@ -254,69 +249,65 @@ install_helm_chart() {
     pass "Helm chart installed — ${POD_COUNT} pod(s) scheduled (readiness handled by API test)"
 }
 
-# -- Main matrix loop -----------------------------------------------------------
-header "KIND Version Matrix Test — Controller API"
-echo "  Platform  : ${KIND_PLATFORM}"
-echo "  Versions  : ${KIND_VERSIONS[*]}"
+# K8s version matrix test
+header "Kubernetes Version Matrix Test — Controller API"
+echo "  Versions  : ${MATRIX_K8S_VERSIONS[*]}"
 echo "  Chart dir : ${CHART_DIR}"
 
-for VERSION in "${KIND_VERSIONS[@]}"; do
+for VERSION in "${MATRIX_K8S_VERSIONS[@]}"; do
 
-    header "Testing with KIND ${VERSION}"
-
-    # 1. Download pinned KIND binary
-    KIND_BIN="$(download_kind "${VERSION}")"
-
-    # 2. Confirm binary reports the expected version
-    DETECTED="$("${KIND_BIN}" version 2>&1)"
-    info "Binary reports: ${DETECTED}"
+    header "Testing with Kubernetes ${VERSION}"
+    info "Using node image: kindest/node:${VERSION}"
     echo ""
 
-    # 3. Remove any leftover cluster from a previous run
-    cleanup_cluster "${KIND_BIN}"
+    # 1. Remove any leftover cluster from a previous run
+    cleanup_cluster
 
-    # 4-9. Run cluster setup and API test in a subshell so a failure records FAIL
+    # 2-7. Run cluster setup and API test in a subshell so a failure records FAIL
     #       and continues to the next version instead of aborting the whole matrix.
     set +e
     (
         set -euo pipefail
 
-        # 4. Create a fresh cluster with this KIND version
-        info "Creating KIND cluster '${KIND_CLUSTER_NAME}' using KIND ${VERSION}..."
+        # 2. Create a fresh cluster with this Kubernetes version
+        local_kind_cfg="$(create_kind_config_for_k8s "${VERSION}")"
+        info "Creating KIND cluster '${KIND_CLUSTER_NAME}' using kindest/node:${VERSION}..."
         CREATE_OUT=$(mktemp) || fail "Failed to create temp file for cluster creation output"
         [ -n "${CREATE_OUT}" ] || fail "mktemp returned empty path"
-        if ! "${KIND_BIN}" create cluster \
+        if ! kind create cluster \
             --name "${KIND_CLUSTER_NAME}" \
-            --config "${KIND_CONFIG}" >"${CREATE_OUT}" 2>&1; then
+            --config "${local_kind_cfg}" >"${CREATE_OUT}" 2>&1; then
             echo "" >&2
             echo "❌ kind create cluster failed. Output:" >&2
             cat "${CREATE_OUT}" >&2
+            rm -f "${local_kind_cfg}"
             rm -f "${CREATE_OUT}"
-            fail "KIND cluster creation failed for ${VERSION}"
+            fail "KIND cluster creation failed for Kubernetes ${VERSION}"
         fi
+        rm -f "${local_kind_cfg}"
         rm -f "${CREATE_OUT}"
-        pass "Cluster '${KIND_CLUSTER_NAME}' created with KIND ${VERSION}"
+        pass "Cluster '${KIND_CLUSTER_NAME}' created with Kubernetes ${VERSION}"
         echo ""
 
-        # 5. Pre-load the controller image into the KIND node to avoid cold pull
-        preload_controller_image "${KIND_BIN}"
+        # 3. Pre-load the controller image into the KIND node to avoid cold pull
+        preload_controller_image
         echo ""
 
-        # 6. Deploy in-cluster PostgreSQL
+        # 4. Deploy in-cluster PostgreSQL
         setup_postgres
         echo ""
 
-        # 7. Create the controller K8s Secret
+        # 5. Create the controller K8s Secret
         create_controller_secrets
         echo ""
 
-        # 8. Install the Helm chart
+        # 6. Install the Helm chart
         install_helm_chart
         echo ""
 
-        # 9. Run the controller API test with an extended timeout.
+        # 7. Run the controller API test with an extended timeout.
         # TIMEOUT=600 gives 10 min — enough for image load + db-init + bootstrap jobs.
-        info "Running controller-api-test.sh for KIND ${VERSION} (TIMEOUT=600s)..."
+        info "Running controller-api-test.sh for Kubernetes ${VERSION} (TIMEOUT=600s)..."
         echo ""
         TIMEOUT=600 \
         BOOTSTRAP_ADMIN_USERNAME="${BOOTSTRAP_ADMIN_USERNAME}" \
@@ -329,31 +320,31 @@ for VERSION in "${KIND_VERSIONS[@]}"; do
     if [ "${VERSION_EXIT}" -eq 0 ]; then
         RESULTS[$VERSION_IDX]="PASS"
         RESULT_NOTES[$VERSION_IDX]=""
-        pass "KIND ${VERSION}: Controller API test PASSED"
+        pass "Kubernetes ${VERSION}: Controller API test PASSED"
     else
         RESULTS[$VERSION_IDX]="FAIL"
         RESULT_NOTES[$VERSION_IDX]="exited with code ${VERSION_EXIT}"
-        warn "KIND ${VERSION}: Controller API test FAILED (exit code ${VERSION_EXIT})"
+        warn "Kubernetes ${VERSION}: Controller API test FAILED (exit code ${VERSION_EXIT})"
     fi
 
-    # 10. Tear down the cluster
+    # 8. Tear down the cluster
     echo ""
-    info "Tearing down cluster for KIND ${VERSION}..."
-    cleanup_cluster "${KIND_BIN}"
-    pass "Cleanup complete for KIND ${VERSION}"
+    info "Tearing down cluster for Kubernetes ${VERSION}..."
+    cleanup_cluster
+    pass "Cleanup complete for Kubernetes ${VERSION}"
 
     VERSION_IDX=$(( VERSION_IDX + 1 ))
 
 done
 
-# -- Summary --------------------------------------------------------------------
+# Summary of results
 header "Matrix Test Summary"
-printf "  %-14s  %-8s  %s\n" "KIND Version" "Result" "Notes"
+printf "  %-14s  %-8s  %s\n" "K8s Version" "Result" "Notes"
 printf "  %-14s  %-8s  %s\n" "--------------" "--------" "-----"
 
 OVERALL_PASS=true
 _IDX=0
-for VERSION in "${KIND_VERSIONS[@]}"; do
+for VERSION in "${MATRIX_K8S_VERSIONS[@]}"; do
     RESULT="${RESULTS[$_IDX]:-SKIP}"
     NOTE="${RESULT_NOTES[$_IDX]:-}"
     if [ "${RESULT}" = "PASS" ]; then
@@ -367,8 +358,8 @@ done
 
 echo ""
 if [ "${OVERALL_PASS}" = "true" ]; then
-    pass "All KIND versions passed the Controller API test!"
+    pass "All Kubernetes versions passed the Controller API test!"
     exit 0
 else
-    fail "One or more KIND versions failed — see summary above."
+    fail "One or more Kubernetes versions failed — see summary above."
 fi

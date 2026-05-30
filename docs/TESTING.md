@@ -34,7 +34,7 @@ The chart includes comprehensive test coverage for validation before deployment:
 - [CI/CD Integration](#cicd-integration)
 - [Adding New Tests](#adding-new-tests)
 - [Test Maintenance](#test-maintenance)
-	- [Updating KIND Versions](#updating-kind-versions)
+	- [Updating Matrix Versions](#updating-matrix-versions)
 	- [Updating Test Values](#updating-test-values)
 
 ## Prerequisites
@@ -198,7 +198,7 @@ bash tests/acceptance/controller-api-test.sh
 
 ### KIND Version Matrix Test
 
-Tests controller-api-test.sh across multiple KIND versions for compatibility validation.
+Tests controller-api-test.sh across configured Kubernetes versions backed by `kindest/node` images.
 
 ```bash
 cd boundary-controller-helm
@@ -207,21 +207,42 @@ bash tests/acceptance/kind-version-matrix-test.sh
 
 **What it tests:**
 - Controller functionality across different Kubernetes versions
-- Automatically resolves latest stable KIND releases
-- Falls back to hardcoded versions when offline
-- Tests against two most recent KIND versions
+- Uses the exact versions provided in `K8S_MATRIX_VERSIONS`
+- Supports a one-off local override via `K8S_VERSIONS`
 
-**Duration:** ~15-20 minutes (runs full test suite twice)
+**Version source:**
+
+- Local and CI default: `K8S_MATRIX_VERSIONS="v1.35.1,v1.34.3,v1.33.7"`
+- Local one-off override: `K8S_VERSIONS="v1.35.1"`
+- Available tags reference: https://hub.docker.com/r/kindest/node
+
+**Examples:**
+
+```bash
+# Run all configured versions
+export K8S_MATRIX_VERSIONS="v1.35.1,v1.34.3,v1.33.7"
+make kind-matrix-test
+
+# Run a single version locally
+K8S_VERSIONS="v1.35.1" make kind-matrix-test
+
+# Print the resolved version list without creating clusters
+PRINT_RESOLVED_K8S_VERSIONS=true \
+K8S_MATRIX_VERSIONS="v1.35.1,v1.34.3,v1.33.7" \
+bash tests/acceptance/kind-version-matrix-test.sh
+```
 
 **Process:**
-1. Downloads pinned KIND binaries (cached in `/tmp`)
+1. Reads configured Kubernetes versions from `K8S_MATRIX_VERSIONS` or `K8S_VERSIONS`
 2. Creates fresh KIND cluster for each version
-3. Deploys in-cluster PostgreSQL
-4. Creates controller secrets
-5. Installs Helm chart with test values
-6. Runs controller-api-test.sh
-7. Tears down cluster
-8. Repeats for next version
+3. Pre-loads the controller image into KIND
+4. Pre-loads PostgreSQL 16 into KIND
+5. Deploys in-cluster PostgreSQL and waits until ready
+6. Creates controller secrets
+7. Installs Helm chart with test values
+8. Runs controller-api-test.sh
+9. Tears down cluster
+10. Repeats for the next configured version
 
 ## Test Configuration
 
@@ -231,7 +252,8 @@ The acceptance tests use `tests/acceptance/test-values.yaml` which configures:
 
 - TLS disabled for testing
 - 2 controller replicas
-- AEAD KMS (no cloud credentials required)
+- Inline AEAD KMS test keys (no cloud credentials required)
+- Complete controller config with database, license, and events blocks
 - Extended bootstrap timeout (300s)
 
 ### In-Cluster PostgreSQL
@@ -285,9 +307,17 @@ rm -f /tmp/kind-v*
 
 The tests are integrated into GitHub Actions workflows:
 
-- **PR validation**: Runs on pull requests
-- **Push validation**: Runs on pushes to main branches
-- **Release validation**: Runs before creating releases
+- **PR validation**: Runs on non-draft pull requests targeting `main`
+- **Manual dispatch**: Supports optional `k8s_versions` input to override the configured matrix
+- **Acceptance fan-out**: Resolves the configured Kubernetes versions once, then runs one acceptance job per version in parallel
+
+The acceptance workflow reads Kubernetes versions from the repository variable `K8S_MATRIX_VERSIONS` when the manual `k8s_versions` input is empty.
+
+Example repository variable:
+
+```text
+K8S_MATRIX_VERSIONS=v1.35.1,v1.34.3,v1.33.7
+```
 
 See `.github/workflows/ci.yaml` for configuration.
 
@@ -303,15 +333,19 @@ When adding new acceptance tests:
 
 ## Test Maintenance
 
-### Updating KIND Versions
+### Updating Matrix Versions
 
-The matrix test automatically resolves latest KIND versions. To update fallback versions:
+Update the repository variable `K8S_MATRIX_VERSIONS` with the ordered `kindest/node` tags you want to test.
 
-Edit `tests/acceptance/kind-version-matrix-test.sh`:
+Example:
 
-```bash
-_FALLBACK_KIND_VERSIONS=("v0.30.0" "v0.29.0")
+```text
+K8S_MATRIX_VERSIONS=v1.35.1,v1.34.3,v1.33.7
 ```
+
+For one-off local runs, override with `K8S_VERSIONS` instead of editing files.
+
+Reference available tags: https://hub.docker.com/r/kindest/node
 
 ### Updating Test Values
 
