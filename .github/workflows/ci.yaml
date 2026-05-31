@@ -2,7 +2,7 @@ name: Lint Pipeline
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       run_acceptance:
@@ -130,13 +130,6 @@ jobs:
 
   acceptance-test:
     name: Acceptance Test
-    # Runs automatically on pushes to main.
-    # On a PR: apply the 'run-acceptance' label — the workflow re-triggers on labeling.
-    # Manual: use "Run workflow" in Actions with run_acceptance=true.
-    if: >
-      github.ref == 'refs/heads/main' ||
-      github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.run_acceptance) ||
-      contains(github.event.pull_request.labels.*.name, 'run-acceptance')
     runs-on: ubuntu-latest
     needs: unit-test
     env:
