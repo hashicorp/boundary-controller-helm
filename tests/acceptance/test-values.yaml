@@ -1,0 +1,74 @@
+# Copyright IBM Corp. 2026
+
+# Test-only values for Boundary Controller acceptance tests in KIND.
+# These values override the default chart values to make the controller
+# work in a local KIND cluster using AEAD KMS (no cloud KMS required).
+#
+# WARNING: The KMS keys in this file are for acceptance testing ONLY.
+# Do NOT use these keys in production.
+
+tls:
+  disabled: true
+
+controller:
+  # 2 replicas matches the production default and tests HA / PDB behaviour.
+  # Reduce to 1 locally if startup speed matters more than coverage.
+  replicas: 2
+
+  bootstrapAdmin:
+    # Give both replicas time to start before the bootstrap job polls the API.
+    waitTimeoutSeconds: 300
+
+  # Override with AEAD KMS so the controller starts without cloud credentials.
+  # The keys below are fixed test-only values; rotate them for any real deployment.
+  config: |
+    disable_mlock = true
+
+    listener "tcp" {
+      address = "0.0.0.0:9200"
+      purpose = "api"
+      tls_disable = true
+    }
+
+    listener "tcp" {
+      address = "0.0.0.0:9201"
+      purpose = "cluster"
+    }
+
+    listener "tcp" {
+      address = "0.0.0.0:9203"
+      purpose = "ops"
+      tls_disable = true
+    }
+
+    controller {
+      name        = "boundary-controller"
+      description = "Boundary Controller (acceptance test)"
+      public_cluster_addr = "{{ printf "%s:9201" (include "boundary.controller.clusterServiceName" .) }}"
+      license     = "env://BOUNDARY_LICENSE"
+      database {
+        url = "env://BOUNDARY_PG_URL"
+      }
+      graceful_shutdown_wait_duration = "10s"
+    }
+
+    kms "aead" {
+      purpose   = "root"
+      aead_type = "aes-gcm"
+      key       = "sP1fnF5Xz85RrXyELHFeZg9Ad2qt4Z4asCFKi3Oia08="
+      key_id    = "global_root"
+    }
+
+    kms "aead" {
+      purpose   = "worker-auth"
+      aead_type = "aes-gcm"
+      key       = "8fZBjCUfN0TzjEGLQldGY4+iE9AkOvCfjh7+p0GtRBQ="
+      key_id    = "global_worker-auth"
+    }
+
+    kms "aead" {
+      purpose   = "recovery"
+      aead_type = "aes-gcm"
+      key       = "HSMs9CRCq9cpuFBV+YFh0K71Y0BZKdyWcNS5GkxNfAY="
+      key_id    = "global_recovery"
+    }
