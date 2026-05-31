@@ -4,9 +4,9 @@
 # ================================
 # PHONY Declarations
 # ================================
-.PHONY: help format deps clean lint test unit-test worker-config
+.PHONY: help format deps clean lint test unit-test
 .PHONY: setup-helm setup-kubeconform setup-trivy setup-kubescape setup-helm-unittest lint-helm-k8s trivy-scan kubescape-scan
-.PHONY: acceptance-setup acceptance-cluster acceptance-helm acceptance-test acceptance-full acceptance-cleanup
+.PHONY: acceptance-setup acceptance-helm acceptance-test acceptance-full acceptance-cleanup
 .PHONY: kind-matrix-test
 
 # ================================
