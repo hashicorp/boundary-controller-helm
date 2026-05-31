@@ -35,7 +35,8 @@ imagePullSecrets: []
 # --------------------------------------------------
 
 tls:
-  # Set to false to enable TLS for API and Ops listeners
+  # ⚠️ SECURITY WARNING: TLS is disabled by default for convenience only.
+  # Set disabled to false and supply a valid certificate via secretName for all non-development environments.
   disabled: true
   # Name of the Kubernetes TLS Secret containing tls.crt and tls.key
   secretName: "boundary-controller-tls"
@@ -145,23 +146,46 @@ controller:
     }
 
     # https://developer.hashicorp.com/boundary/docs/configuration/kms#configuration
+    # IMPORTANT: The KMS configuration below is an EXAMPLE ONLY and will NOT work in your environment.
+    # You MUST customize these values for your specific cloud provider, region, and KMS keys.
+    # For production deployments, use your cloud provider's KMS service (AWS KMS, GCP Cloud KMS, Azure Key Vault).
+    # Uncomment and configure the appropriate KMS stanza for your environment:
+    
+    # AWS KMS Example (customize region and key IDs, then uncomment):
     kms "awskms" {
       purpose    = "root"
-      region     = "us-east-1"
-      kms_key_id = "alias/boundary-root"
+      region     = "us-east-1"  # Change to your AWS region
+      kms_key_id = "alias/boundary-root"  # Change to your KMS key ID or alias
     }
 
     kms "awskms" {
       purpose    = "recovery"
-      region     = "us-east-1"
-      kms_key_id = "alias/boundary-recovery"
+      region     = "us-east-1"  # Change to your AWS region
+      kms_key_id = "alias/boundary-recovery"  # Change to your KMS key ID or alias
     }
 
     kms "awskms" {
       purpose    = "worker-auth"
-      region     = "us-east-1"
-      kms_key_id = "alias/boundary-worker-auth"
+      region     = "us-east-1"  # Change to your AWS region
+      kms_key_id = "alias/boundary-worker-auth"  # Change to your KMS key ID or alias
     }
+
+    # GCP Cloud KMS Example:
+    # kms "gcpckms" {
+    #   purpose     = "root"
+    #   project     = "your-gcp-project"
+    #   region      = "global"
+    #   key_ring    = "boundary-keyring"
+    #   crypto_key  = "boundary-root"
+    # }
+
+    # Azure Key Vault Example:
+    # kms "azurekeyvault" {
+    #   purpose       = "root"
+    #   tenant_id     = "your-tenant-id"
+    #   vault_name    = "your-vault-name"
+    #   key_name      = "boundary-root"
+    # }
 
     events {
       audit_enabled = true
@@ -204,9 +228,13 @@ controller:
 
   # Service configuration for API, Cluster, and Ops listeners
   # https://developer.hashicorp.com/boundary/docs/monitor/listeners
+  #
+  # ⚠️ SECURITY WARNING: LoadBalancer service types will create public endpoints in most cloud environments.
+  # This exposes your Boundary services to the internet. Consider using ClusterIP with an Ingress controller
+  # or internal load balancer annotations for production deployments.
   service:
     api:
-      type: LoadBalancer
+      type: LoadBalancer  # Change to ClusterIP for internal-only access
       port: 9200
       targetPort: 9200
 
@@ -234,8 +262,10 @@ controller:
       #  service.beta.kubernetes.io/azure-load-balancer-tcp-idle-timeout: "30"
 
     # https://developer.hashicorp.com/boundary/docs/monitor/listeners#cluster
+    # ⚠️ SECURITY WARNING: This service is used for worker registration and should typically
+    # be accessible to workers. Consider network policies or internal load balancer annotations.
     cluster:
-      type: LoadBalancer
+      type: LoadBalancer  # Change to ClusterIP if workers are in the same cluster
       port: 9201
       targetPort: 9201
       annotations: {}

@@ -165,13 +165,13 @@ boundary roles add-grants \
   -id "$ROLE_ID" \
   -grant "ids=*;type=*;actions=*" \
   -addr "$BOUNDARY_ADDR" \
-  -recovery-config "$BOUNDARY_RECOVERY_CONFIG" >/dev/null 2>&1 || true
+  -recovery-config "$BOUNDARY_RECOVERY_CONFIG" 2>&1 || echo "WARNING: add-grants returned non-zero; verify role grants are configured correctly"
 
 echo "Adding principal to role..."
 boundary roles add-principals \
   -id "$ROLE_ID" \
   -principal "$USER_ID" \
   -addr "$BOUNDARY_ADDR" \
-  -recovery-config "$BOUNDARY_RECOVERY_CONFIG" >/dev/null 2>&1 || true
+  -recovery-config "$BOUNDARY_RECOVERY_CONFIG" 2>&1 || echo "WARNING: add-principals returned non-zero; verify user is linked to role"
 
 echo "Bootstrap admin completed successfully"
