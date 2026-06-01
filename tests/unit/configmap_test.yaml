@@ -24,3 +24,25 @@ tests:
       - matchRegex:
           path: data["bootstrap-admin.sh"]
           pattern: Bootstrap admin completed successfully
+  - it: renders tpl-expanded TLS mount path in controller config
+    set:
+      tls:
+        mountPath: /custom/tls
+    asserts:
+      - matchRegex:
+          path: data["controller.hcl"]
+          pattern: 'tls_cert_file = "/custom/tls/tls.crt"'
+      - matchRegex:
+          path: data["controller.hcl"]
+          pattern: 'tls_key_file  = "/custom/tls/tls.key"'
+  - it: applies nameOverride and namespace in configmap metadata
+    set:
+      nameOverride: custom
+      namespace: boundary
+    asserts:
+      - equal:
+          path: metadata.name
+          value: custom-config
+      - equal:
+          path: metadata.namespace
+          value: boundary

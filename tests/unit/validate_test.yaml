@@ -5,6 +5,37 @@ suite: Validation checks
 templates:
   - templates/validate.yaml
 tests:
+  - it: renders no validation output for default valid values
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: passes validation when TLS is enabled and config paths match tls.mountPath
+    set:
+      tls:
+        disabled: false
+        mountPath: /custom/tls
+      controller:
+        config: |
+          disable_mlock = true
+
+          listener "tcp" {
+            address = "0.0.0.0:9200"
+            purpose = "api"
+            tls_disable   = false
+            tls_cert_file = "/custom/tls/tls.crt"
+            tls_key_file  = "/custom/tls/tls.key"
+          }
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: fails when secretRefs.validateExisting is true and referenced secret does not exist
+    set:
+      secretRefs:
+        validateExisting: true
+        secretName: does-not-exist
+    asserts:
+      - failedTemplate:
+          errorPattern: "Secret \"does-not-exist\" not found"
   - it: fails when controller config uses env-based AEAD KMS keys
     set:
       controller:

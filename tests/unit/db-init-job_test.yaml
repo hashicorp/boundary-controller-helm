@@ -16,6 +16,18 @@ tests:
           path: metadata.annotations["helm.sh/hook"]
           value: pre-install
       - equal:
+          path: metadata.annotations["helm.sh/hook-weight"]
+          value: "-10"
+      - equal:
+          path: metadata.annotations["helm.sh/hook-delete-policy"]
+          value: before-hook-creation
+      - equal:
+          path: spec.backoffLimit
+          value: 3
+      - equal:
+          path: spec.ttlSecondsAfterFinished
+          value: 3600
+      - equal:
           path: spec.template.spec.automountServiceAccountToken
           value: false
       - equal:
@@ -27,6 +39,36 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].command
           content: /etc/boundary/db-init.sh
+  - it: renders custom image repository and pull policy in init job
+    set:
+      image:
+        repository: registry.example.com/boundary-enterprise
+        tag: 1.2.3
+        pullPolicy: Always
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example.com/boundary-enterprise:1.2.3
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+  - it: renders imagePullSecrets in init job when configured
+    set:
+      imagePullSecrets:
+        - name: regcred
+    asserts:
+      - contains:
+          path: spec.template.spec.imagePullSecrets
+          content:
+            name: regcred
+  - it: renders automountServiceAccountToken when enabled in init job
+    set:
+      serviceAccount:
+        automountServiceAccountToken: true
+    asserts:
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: true
   - it: uses serviceAccount.name override in init hook job
     set:
       serviceAccount:
@@ -43,3 +85,112 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+  - it: renders custom TLS mountPath in init job when TLS is enabled
+    set:
+      database:
+        init:
+          enabled: true
+      tls:
+        disabled: false
+        mountPath: /custom/tls
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tls-certs
+            mountPath: /custom/tls
+            readOnly: true
+  - it: renders secretRefs key remapping for database URL and license in init job
+    set:
+      secretRefs:
+        keys:
+          databaseUrl: db-url-key
+          license: lic-key
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_PG_URL
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: db-url-key
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_LICENSE
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: lic-key
+  - it: renders AEAD env vars when config uses env based AEAD keys in init job
+    set:
+      controller:
+        config: |
+          kms "aead" {
+            purpose = "root"
+            key = "env://BOUNDARY_KMS_ROOT"
+          }
+      secretRefs:
+        keys:
+          kmsRoot: kms-root-key
+          kmsWorkerAuth: kms-worker-key
+          kmsRecovery: kms-recovery-key
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_KMS_ROOT
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: kms-root-key
+  - it: renders migration URL env var in init job when config uses env migration URL
+    set:
+      controller:
+        config: |
+          controller {
+            database {
+              migration_url = "env://BOUNDARY_PG_MIGRATION_URL"
+            }
+          }
+      secretRefs:
+        keys:
+          migrationUrl: migration-url
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_PG_MIGRATION_URL
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: migration-url
+  - it: renders custom database resources in init job
+    set:
+      database:
+        resources:
+          limits:
+            cpu: 800m
+            memory: 1Gi
+          requests:
+            cpu: 200m
+            memory: 256Mi
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 800m
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 256Mi
+  - it: renders nameOverride and namespace in init job metadata
+    set:
+      nameOverride: custom
+      namespace: boundary
+    asserts:
+      - equal:
+          path: metadata.name
+          value: custom-init-db
+      - equal:
+          path: metadata.namespace
+          value: boundary

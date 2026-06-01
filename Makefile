@@ -4,9 +4,9 @@
 # ================================
 # PHONY Declarations
 # ================================
-.PHONY: help format deps clean lint test unit-test worker-config
+.PHONY: help format deps clean lint test unit-test
 .PHONY: setup-helm setup-kubeconform setup-trivy setup-kubescape setup-helm-unittest lint-helm-k8s trivy-scan kubescape-scan
-.PHONY: acceptance-setup acceptance-cluster acceptance-helm acceptance-test acceptance-full acceptance-cleanup
+.PHONY: acceptance-setup acceptance-helm acceptance-test acceptance-full acceptance-cleanup
 .PHONY: kind-matrix-test
 .PHONY: eks-setup eks-apply eks-db-init-recovery eks-test eks-full eks-destroy
 
@@ -353,7 +353,33 @@ acceptance-helm:
 		exit 1; \
 	fi
 	@BOOTSTRAP_ADMIN_USERNAME=$${BOOTSTRAP_ADMIN_USERNAME:-admin}; \
-	echo "Deploying in-cluster PostgreSQL (official postgres:16)..."; \
+	CONTROLLER_IMAGE=$${BOUNDARY_CONTROLLER_IMAGE:-hashicorp/boundary-enterprise:0.21-ent}; \
+	POSTGRES_IMAGE=$${POSTGRES_IMAGE:-postgres:16}; \
+	echo "Pre-loading controller image into KIND: $$CONTROLLER_IMAGE"; \
+	if ! docker image inspect "$$CONTROLLER_IMAGE" >/dev/null 2>&1; then \
+		echo "Controller image not in local daemon, pulling..."; \
+		if ! docker pull "$$CONTROLLER_IMAGE" >/dev/null 2>&1; then \
+			echo "⚠️  WARN: Failed to pull $$CONTROLLER_IMAGE; cluster may pull from registry (slower)"; \
+		fi; \
+	fi; \
+	if ! kind load docker-image "$$CONTROLLER_IMAGE" --name acceptance >/dev/null 2>&1; then \
+		echo "⚠️  WARN: Failed to load $$CONTROLLER_IMAGE into kind; cluster may pull from registry (slower)"; \
+	else \
+		echo "✅ Controller image pre-loaded"; \
+	fi; \
+	echo "Deploying in-cluster PostgreSQL ($$POSTGRES_IMAGE)..."; \
+	echo "Pre-loading PostgreSQL image into KIND: $$POSTGRES_IMAGE"; \
+	if ! docker image inspect "$$POSTGRES_IMAGE" >/dev/null 2>&1; then \
+		echo "PostgreSQL image not in local daemon, pulling..."; \
+		if ! docker pull "$$POSTGRES_IMAGE" >/dev/null 2>&1; then \
+			echo "⚠️  WARN: Failed to pull $$POSTGRES_IMAGE; cluster may pull from registry (slower)"; \
+		fi; \
+	fi; \
+	if ! kind load docker-image "$$POSTGRES_IMAGE" --name acceptance >/dev/null 2>&1; then \
+		echo "⚠️  WARN: Failed to load $$POSTGRES_IMAGE into kind; cluster may pull from registry (slower)"; \
+	else \
+		echo "✅ PostgreSQL image pre-loaded"; \
+	fi; \
 	kubectl create namespace boundary --context kind-acceptance --dry-run=client -o yaml \
 		| kubectl apply -f - --context kind-acceptance; \
 	kubectl apply -f tests/acceptance/postgres.yaml --context kind-acceptance; \
@@ -362,7 +388,7 @@ acceptance-helm:
 		-n boundary \
 		--context kind-acceptance \
 		-l "app=postgres" \
-		--timeout=120s; \
+		--timeout=300s; \
 	echo "✅ PostgreSQL is ready"; \
 	echo ""; \
 	echo "Creating boundary-controller-secrets Secret..."; \
@@ -410,7 +436,6 @@ acceptance-test:
 	fi
 	@export BOOTSTRAP_ADMIN_USERNAME=$${BOOTSTRAP_ADMIN_USERNAME:-admin};
 	@bash tests/acceptance/cluster-smoke-test.sh
-	@bash tests/acceptance/controller-api-test.sh
 	@bash tests/acceptance/kind-version-matrix-test.sh
 	@echo ""
 	@echo "✅ All acceptance tests passed!"

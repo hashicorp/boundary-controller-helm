@@ -29,7 +29,7 @@ tests:
           value: boundary-controller-cluster
       - equal:
           path: spec.type
-          value: LoadBalancer
+          value: ClusterIP
       - equal:
           path: spec.ports[0].port
           value: 9201
@@ -55,3 +55,67 @@ tests:
       - equal:
           path: metadata.namespace
           value: boundary
+  - it: renders service annotations and targetPort overrides for all services
+    set:
+      controller:
+        service:
+          api:
+            targetPort: 19200
+            annotations:
+              service.beta.kubernetes.io/aws-load-balancer-type: external
+          cluster:
+            targetPort: 19201
+            annotations:
+              cloud.google.com/l4-rbs: enabled
+          ops:
+            targetPort: 19203
+            annotations:
+              service.beta.kubernetes.io/azure-load-balancer-tcp-idle-timeout: "30"
+    asserts:
+      - equal:
+          path: spec.ports[0].targetPort
+          value: 19200
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["service.beta.kubernetes.io/aws-load-balancer-type"]
+          value: external
+        documentIndex: 0
+      - equal:
+          path: spec.ports[0].targetPort
+          value: 19201
+        documentIndex: 1
+      - equal:
+          path: metadata.annotations["cloud.google.com/l4-rbs"]
+          value: enabled
+        documentIndex: 1
+      - equal:
+          path: spec.ports[0].targetPort
+          value: 19203
+        documentIndex: 2
+      - equal:
+          path: metadata.annotations["service.beta.kubernetes.io/azure-load-balancer-tcp-idle-timeout"]
+          value: "30"
+        documentIndex: 2
+  - it: renders service type overrides for api, cluster, and ops services
+    set:
+      controller:
+        service:
+          api:
+            type: ClusterIP
+          cluster:
+            type: NodePort
+          ops:
+            type: LoadBalancer
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP
+        documentIndex: 0
+      - equal:
+          path: spec.type
+          value: NodePort
+        documentIndex: 1
+      - equal:
+          path: spec.type
+          value: LoadBalancer
+        documentIndex: 2

@@ -42,7 +42,7 @@ By default, a release renders the following resources:
 - One Deployment with two controller replicas and a RollingUpdate strategy
 - Three Services for controller traffic:
   - **API Service** (`boundary-controller`): LoadBalancer on port 9200 for client API traffic
-  - **Cluster Service** (`boundary-controller-cluster`): LoadBalancer on port 9201 for worker registration
+  - **Cluster Service** (`boundary-controller-cluster`): ClusterIP on port 9201 for worker registration
   - **Ops Service** (`boundary-controller-ops`): ClusterIP on port 9203 for health checks and metrics
 - One ConfigMap containing the rendered Boundary controller configuration file
 - One PodDisruptionBudget ensuring at least one replica stays available during voluntary disruptions
