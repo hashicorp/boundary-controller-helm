@@ -206,7 +206,7 @@ controller:
   # https://developer.hashicorp.com/boundary/docs/monitor/listeners
   service:
     api:
-      type: LoadBalancer
+      type: LoadBalancer  # Change to ClusterIP for internal-only access
       port: 9200
       targetPort: 9200
 
@@ -235,7 +235,7 @@ controller:
 
     # https://developer.hashicorp.com/boundary/docs/monitor/listeners#cluster
     cluster:
-      type: ClusterIP
+      type: ClusterIP  # Change to LoadBalancer for public access
       port: 9201
       targetPort: 9201
       annotations: {}

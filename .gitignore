@@ -6,6 +6,9 @@ my-values.yaml
 override-values.yaml
 local-values.yaml
 
+# Acceptance test fixture values are safe to commit (test-only AEAD keys, no real secrets)
+!tests/acceptance/test-values.yaml
+
 # Helm chart build artifacts
 *.tgz
 charts/
