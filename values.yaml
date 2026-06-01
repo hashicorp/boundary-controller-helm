@@ -265,7 +265,7 @@ controller:
     # ⚠️ SECURITY WARNING: This service is used for worker registration and should typically
     # be accessible to workers. Consider network policies or internal load balancer annotations.
     cluster:
-      type: LoadBalancer  # Change to ClusterIP if workers are in the same cluster
+      type: ClusterIP
       port: 9201
       targetPort: 9201
       annotations: {}

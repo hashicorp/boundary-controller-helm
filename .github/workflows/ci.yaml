@@ -1,16 +1,28 @@
-name: Lint Pipeline
+name: CI Validation and Test Pipeline
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/**'
+      - 'scripts/**'
+      - 'templates/**'
+      - 'tests/**'
+      - 'Chart.yaml'
+      - 'Makefile'
+      - 'values.schema.json'
+      - 'values.yaml'
   workflow_dispatch:
     inputs:
-      run_acceptance:
-        description: "Run acceptance tests"
-        type: boolean
-        default: false
+      k8s_versions:
+        description: "Optional explicit Kubernetes versions (comma-separated, e.g. v1.35.1,v1.34.3,v1.33.7)"
+        required: false
+        default: ""
   # push:
   #   branches: []
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -82,7 +94,7 @@ jobs:
   unit-test:
     name: Unit Test
     runs-on: ubuntu-latest
-    needs: [lint, security]
+    needs: lint
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -117,8 +129,8 @@ jobs:
           echo "Testing chart with custom values..."
           helm template boundary-controller . \
             --set image.tag=$TEST_IMAGE_TAG \
-            --set worker.resources.limits.cpu=$TEST_CPU_LIMIT \
-            --set worker.resources.limits.memory=$TEST_MEMORY_LIMIT
+            --set controller.resources.limits.cpu=$TEST_CPU_LIMIT \
+            --set controller.resources.limits.memory=$TEST_MEMORY_LIMIT
           echo ""
           echo "Custom values test passed!"
 
@@ -128,14 +140,62 @@ jobs:
           echo "✅ All tests completed successfully!"
           echo "================================"
 
-  acceptance-test:
-    name: Acceptance Test
+  acceptance-matrix:
+    name: Acceptance Matrix
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.base_ref == 'main' &&
+       github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
-    needs: unit-test
+    needs: [unit-test, security]
+    outputs:
+      versions: ${{ steps.resolve.outputs.versions }}
+    steps:
+      - name: Resolve configured Kubernetes versions
+        id: resolve
+        env:
+          INPUT_K8S_VERSIONS: ${{ github.event.inputs.k8s_versions || '' }}
+          REPO_K8S_MATRIX_VERSIONS: ${{ vars.K8S_MATRIX_VERSIONS }}
+        run: |
+          # Configure repository variables with ordered kindest/node tags.
+          # Available tags: https://hub.docker.com/r/kindest/node
+          raw_versions="${INPUT_K8S_VERSIONS:-${REPO_K8S_MATRIX_VERSIONS:-}}"
+          normalized_versions="$(echo "${raw_versions}" | tr ',' ' ' | xargs)"
+          if [ -z "${normalized_versions}" ]; then
+            echo "K8S_MATRIX_VERSIONS repository variable is required when workflow_dispatch input k8s_versions is empty." >&2
+            exit 1
+          fi
+
+          read -ra versions <<< "${normalized_versions}"
+
+          json="["
+          for version in "${versions[@]}"; do
+            printf -v json '%s"%s",' "${json}" "${version}"
+          done
+          json="${json%,}]"
+
+          echo "versions=${json}" >> "${GITHUB_OUTPUT}"
+          echo "Resolved acceptance matrix: ${json}"
+
+  acceptance-test:
+    name: Acceptance Test (${{ matrix.k8s_version }})
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.base_ref == 'main' &&
+       github.event.pull_request.draft == false)
+    runs-on: ubuntu-latest
+    needs: acceptance-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        k8s_version: ${{ fromJSON(needs.acceptance-matrix.outputs.versions) }}
     env:
       BOUNDARY_LICENSE: ${{ secrets.BOUNDARY_LICENSE }}
       BOOTSTRAP_ADMIN_USERNAME: ${{ secrets.BOOTSTRAP_ADMIN_USERNAME }}
       BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
+      K8S_VERSIONS: ${{ matrix.k8s_version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -143,11 +203,8 @@ jobs:
       - name: Setup acceptance environment
         run: make acceptance-setup
 
-      - name: Install Helm chart
-        run: make acceptance-helm
-
-      - name: Run acceptance tests
-        run: make acceptance-test
+      - name: Run Kubernetes acceptance test for selected version
+        run: make kind-matrix-test
 
       - name: Cleanup
         if: always()

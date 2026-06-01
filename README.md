@@ -1,5 +1,9 @@
 # Boundary Controller Helm Chart
 
+Boundary controllers are the control-plane component of Boundary — they manage authentication, authorization, sessions, and worker registration. Because controller state lives in PostgreSQL, the controller Deployment is stateless and can run multiple replicas behind a load balancer.
+
+This chart packages the Kubernetes resources required to run one or more Boundary controller replicas backed by a PostgreSQL database. It is intended for operator-managed Boundary deployments where you control the control plane infrastructure.
+
 ## What The Chart Deploys
 
 By default, this chart deploys:
@@ -19,7 +23,7 @@ By default, this chart deploys:
 | Component | Version | 
 | --- | --- | 
 | Kubernetes | 1.34 and above |
-| Helm | v3 and above |
+| Helm | v4 |
 | PostgreSQL | 15 and above |
 
 ### Required Resources
