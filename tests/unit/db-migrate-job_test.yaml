@@ -20,6 +20,18 @@ tests:
           path: metadata.annotations["helm.sh/hook"]
           value: pre-upgrade
       - equal:
+          path: metadata.annotations["helm.sh/hook-weight"]
+          value: "-5"
+      - equal:
+          path: metadata.annotations["helm.sh/hook-delete-policy"]
+          value: before-hook-creation
+      - equal:
+          path: spec.backoffLimit
+          value: 3
+      - equal:
+          path: spec.ttlSecondsAfterFinished
+          value: 3600
+      - equal:
           path: spec.template.spec.automountServiceAccountToken
           value: false
       - equal:
@@ -31,6 +43,45 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].command
           content: migrate
+  - it: renders custom image repository and pull policy in migrate job
+    set:
+      database:
+        migrate:
+          enabled: true
+      image:
+        repository: registry.example.com/boundary-enterprise
+        tag: 1.2.3
+        pullPolicy: Always
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example.com/boundary-enterprise:1.2.3
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+  - it: renders imagePullSecrets in migrate job when configured
+    set:
+      database:
+        migrate:
+          enabled: true
+      imagePullSecrets:
+        - name: regcred
+    asserts:
+      - contains:
+          path: spec.template.spec.imagePullSecrets
+          content:
+            name: regcred
+  - it: renders automountServiceAccountToken when enabled in migrate job
+    set:
+      database:
+        migrate:
+          enabled: true
+      serviceAccount:
+        automountServiceAccountToken: true
+    asserts:
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: true
   - it: does not render migration job when migrate is disabled
     set:
       database:
@@ -39,3 +90,100 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+  - it: renders custom TLS secret in migrate job when TLS is enabled
+    set:
+      database:
+        migrate:
+          enabled: true
+      tls:
+        disabled: false
+        secretName: custom-tls-secret
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tls-certs
+            secret:
+              secretName: custom-tls-secret
+  - it: renders migration URL env var when controller config uses env migration URL
+    set:
+      database:
+        migrate:
+          enabled: true
+      controller:
+        config: |
+          controller {
+            database {
+              migration_url = "env://BOUNDARY_PG_MIGRATION_URL"
+            }
+          }
+      secretRefs:
+        keys:
+          migrationUrl: migration-url
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_PG_MIGRATION_URL
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: migration-url
+  - it: renders AEAD env vars when config uses env based AEAD keys in migrate job
+    set:
+      database:
+        migrate:
+          enabled: true
+      controller:
+        config: |
+          kms "aead" {
+            purpose = "root"
+            key = "env://BOUNDARY_KMS_ROOT"
+          }
+      secretRefs:
+        keys:
+          kmsRoot: kms-root-key
+          kmsWorkerAuth: kms-worker-key
+          kmsRecovery: kms-recovery-key
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_KMS_ROOT
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: kms-root-key
+  - it: renders custom database resources in migrate job
+    set:
+      database:
+        migrate:
+          enabled: true
+        resources:
+          limits:
+            cpu: 900m
+            memory: 1Gi
+          requests:
+            cpu: 200m
+            memory: 256Mi
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 900m
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 256Mi
+  - it: renders nameOverride and namespace in migrate job metadata
+    set:
+      database:
+        migrate:
+          enabled: true
+      nameOverride: custom
+      namespace: boundary
+    asserts:
+      - equal:
+          path: metadata.name
+          value: custom-database-migration
+      - equal:
+          path: metadata.namespace
+          value: boundary

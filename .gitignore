@@ -3,7 +3,6 @@
 
 # Local values override files — never commit environment-specific secrets
 my-values.yaml
-*-values.yaml
 override-values.yaml
 local-values.yaml
 

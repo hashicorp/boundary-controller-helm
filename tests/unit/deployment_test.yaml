@@ -37,6 +37,21 @@ tests:
           path: spec.template.spec.containers[0].image
           value: hashicorp/boundary-enterprise:9.9.9
         template: templates/deployment.yaml
+  - it: renders custom image repository and pull policy
+    set:
+      image:
+        repository: registry.example.com/boundary-enterprise
+        tag: 1.2.3
+        pullPolicy: Always
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example.com/boundary-enterprise:1.2.3
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+        template: templates/deployment.yaml
   - it: uses serviceAccount.name override in deployment
     set:
       serviceAccount:
@@ -45,6 +60,15 @@ tests:
       - equal:
           path: spec.template.spec.serviceAccountName
           value: boundary-custom-sa
+        template: templates/deployment.yaml
+  - it: renders automountServiceAccountToken when enabled
+    set:
+      serviceAccount:
+        automountServiceAccountToken: true
+    asserts:
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: true
         template: templates/deployment.yaml
   - it: renders imagePullSecrets when configured
     set:
@@ -87,6 +111,294 @@ tests:
             name: tls-certs
             secret:
               secretName: boundary-controller-tls
+        template: templates/deployment.yaml
+  - it: renders custom TLS mountPath and secretName when TLS is enabled
+    set:
+      tls:
+        disabled: false
+        mountPath: /custom/tls
+        secretName: custom-tls-secret
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tls-certs
+            mountPath: /custom/tls
+            readOnly: true
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tls-certs
+            secret:
+              secretName: custom-tls-secret
+        template: templates/deployment.yaml
+  - it: renders migration URL env var when controller config uses env migration URL
+    set:
+      controller:
+        config: |
+          controller {
+            database {
+              migration_url = "env://BOUNDARY_PG_MIGRATION_URL"
+            }
+          }
+      secretRefs:
+        keys:
+          migrationUrl: migration-url
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_PG_MIGRATION_URL
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: migration-url
+        template: templates/deployment.yaml
+  - it: renders secretRefs key remapping in deployment env vars
+    set:
+      secretRefs:
+        keys:
+          databaseUrl: db-url-key
+          license: lic-key
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_PG_URL
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: db-url-key
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_LICENSE
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: lic-key
+        template: templates/deployment.yaml
+  - it: renders AEAD env vars when controller config uses env based AEAD keys
+    set:
+      controller:
+        config: |
+          kms "aead" {
+            purpose = "root"
+            key = "env://BOUNDARY_KMS_ROOT"
+          }
+          kms "aead" {
+            purpose = "worker-auth"
+            key = "env://BOUNDARY_KMS_WORKER_AUTH"
+          }
+          kms "aead" {
+            purpose = "recovery"
+            key = "env://BOUNDARY_KMS_RECOVERY"
+          }
+      secretRefs:
+        keys:
+          kmsRoot: kms-root-key
+          kmsWorkerAuth: kms-worker-key
+          kmsRecovery: kms-recovery-key
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_KMS_ROOT
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: kms-root-key
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_KMS_WORKER_AUTH
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: kms-worker-key
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_KMS_RECOVERY
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: kms-recovery-key
+        template: templates/deployment.yaml
+  - it: renders replicas and rolling update fields from values
+    set:
+      controller:
+        replicas: 3
+        rollingUpdate:
+          maxUnavailable: 0
+          maxSurge: 2
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.strategy.rollingUpdate.maxUnavailable
+          value: 0
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.strategy.rollingUpdate.maxSurge
+          value: 2
+        template: templates/deployment.yaml
+  - it: maps deployment container ports from controller service targetPort overrides
+    set:
+      controller:
+        service:
+          api:
+            targetPort: 19200
+          cluster:
+            targetPort: 19201
+          ops:
+            targetPort: 19203
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 19200
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].ports[1].containerPort
+          value: 19201
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].ports[2].containerPort
+          value: 19203
+        template: templates/deployment.yaml
+  - it: renders custom liveness and readiness probe timings
+    set:
+      controller:
+        livenessProbe:
+          scheme: HTTP
+          initialDelaySeconds: 11
+          periodSeconds: 12
+          failureThreshold: 13
+          timeoutSeconds: 14
+        readinessProbe:
+          scheme: HTTP
+          initialDelaySeconds: 21
+          periodSeconds: 22
+          failureThreshold: 23
+          timeoutSeconds: 24
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.initialDelaySeconds
+          value: 11
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.periodSeconds
+          value: 12
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.failureThreshold
+          value: 13
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.timeoutSeconds
+          value: 14
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.initialDelaySeconds
+          value: 21
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.periodSeconds
+          value: 22
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.failureThreshold
+          value: 23
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.timeoutSeconds
+          value: 24
+        template: templates/deployment.yaml
+  - it: renders security and scheduling fields from values
+    set:
+      terminationGracePeriodSeconds: 45
+      podSecurityContext:
+        runAsUser: 200
+      containerSecurityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+      podAnnotations:
+        test-annotation: test-value
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+        - key: dedicated
+          operator: Exists
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values:
+                      - boundary-controller
+              topologyKey: kubernetes.io/hostname
+    asserts:
+      - equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 45
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 200
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.nodeSelector["kubernetes.io/os"]
+          value: linux
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.tolerations[0].key
+          value: dedicated
+        template: templates/deployment.yaml
+      - exists:
+          path: spec.template.spec.affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution[0]
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.metadata.annotations["test-annotation"]
+          value: test-value
+        template: templates/deployment.yaml
+  - it: renders custom controller resources
+    set:
+      controller:
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+          requests:
+            cpu: 300m
+            memory: 700Mi
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 1000m
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 2Gi
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+          value: 300m
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 700Mi
         template: templates/deployment.yaml
   - it: does not render TLS secret volume or mount when TLS is disabled
     set:
