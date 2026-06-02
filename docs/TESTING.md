@@ -25,6 +25,12 @@ The chart includes comprehensive test coverage for validation before deployment:
 	- [Cluster Smoke Test](#cluster-smoke-test)
 	- [Controller API Test](#controller-api-test)
 	- [KIND Version Matrix Test](#kind-version-matrix-test)
+- [Cloud Integration Tests (EKS/AKS)](#cloud-integration-tests-eksaks)
+	- [Prerequisites](#prerequisites-1)
+	- [Environment Keys](#environment-keys)
+	- [Run EKS Integration](#run-eks-integration)
+	- [Run AKS Integration](#run-aks-integration)
+	- [Expected Runtime](#expected-runtime)
 - [Test Configuration](#test-configuration)
 	- [Test Values](#test-values)
 	- [In-Cluster PostgreSQL](#in-cluster-postgresql)
@@ -243,6 +249,88 @@ bash tests/acceptance/kind-version-matrix-test.sh
 8. Runs controller-api-test.sh
 9. Tears down cluster
 10. Repeats for the next configured version
+
+## Cloud Integration Tests (EKS/AKS)
+
+Cloud integration tests provision real managed Kubernetes clusters, deploy the chart, and run runtime validation checks.
+
+### Prerequisites
+
+- Terraform CLI
+- kubectl CLI
+- Helm CLI
+- For EKS: aws CLI with valid credentials
+- For AKS: az CLI with valid login (`az login`)
+- A populated integration environment file at `tests/integration/.env`
+
+### Environment Keys
+
+At minimum, configure the shared values below in `tests/integration/.env`:
+
+- `TF_VAR_boundary_license`
+- `TF_VAR_boundary_admin_password`
+- `TF_VAR_boundary_db_url`
+
+EKS-specific keys:
+
+- `TF_VAR_aws_region`
+- `TF_VAR_eks_cluster_name`
+
+AKS-specific keys:
+
+- `TF_VAR_aks_cluster_name`
+- `TF_VAR_resource_group_name`
+- Optional: `TF_VAR_azure_subscription_id`
+- Optional: `TF_VAR_azure_location`
+- Optional sizing: `TF_VAR_node_vm_size`, `TF_VAR_node_count`
+
+You can copy starter keys from `tests/integration/.env.example`.
+
+### Run EKS Integration
+
+```bash
+# Provision + deploy
+make eks-apply
+
+# Validate runtime health
+make eks-test
+
+# Or run end-to-end
+make eks-full
+
+# Cleanup (default: uninstall Helm release only)
+make eks-destroy
+
+# Cleanup (destroy EKS infrastructure as well)
+make eks-destroy DESTROY_EKS_RESOURCES=true
+```
+
+### Run AKS Integration
+
+```bash
+# Provision + deploy
+make aks-apply
+
+# Validate runtime health
+make aks-test
+
+# Or run end-to-end
+make aks-full
+
+# Cleanup (default: uninstall Helm release only)
+make aks-destroy
+
+# Cleanup (destroy AKS infrastructure as well)
+make aks-destroy DESTROY_AKS_RESOURCES=true
+```
+
+### Expected Runtime
+
+- `make eks-apply`: typically 20-40 minutes (varies by region and account limits)
+- `make aks-apply`: typically 15-35 minutes (varies by region and subscription quotas)
+- `make eks-test` / `make aks-test`: typically 2-8 minutes
+
+For cost control, destroy infrastructure after validation (`make eks-destroy DESTROY_EKS_RESOURCES=true` or `make aks-destroy DESTROY_AKS_RESOURCES=true`).
 
 ## Test Configuration
 

@@ -29,3 +29,7 @@ tests/integration/terraform/aws/.terraform/
 tests/integration/terraform/aws/.terraform.lock.hcl
 tests/integration/terraform/aws/terraform.tfstate
 tests/integration/terraform/aws/terraform.tfstate.backup
+tests/integration/terraform/azure/.terraform/
+tests/integration/terraform/azure/.terraform.lock.hcl
+tests/integration/terraform/azure/terraform.tfstate
+tests/integration/terraform/azure/terraform.tfstate.backup
