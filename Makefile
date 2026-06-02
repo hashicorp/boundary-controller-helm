@@ -596,7 +596,6 @@ eks-test:
 		--namespace "$${BOUNDARY_NAMESPACE:-boundary}" \
 		--release "$${HELM_RELEASE:-boundary-controller}" \
 		--timeout "$${TIMEOUT:-300}"
-	@echo "✅ EKS integration tests completed successfully"
 	@echo ""
 
 eks-full:

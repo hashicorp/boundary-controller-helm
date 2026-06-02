@@ -29,6 +29,8 @@ The chart includes comprehensive test coverage for validation before deployment:
 	- [Prerequisites](#prerequisites-1)
 	- [Environment Keys](#environment-keys)
 	- [Run EKS Integration](#run-eks-integration)
+		- [Run With Local Repo Chart](#run-with-local-repo-chart)
+		- [Run With Released Chart](#run-with-released-chart)
 	- [Run AKS Integration](#run-aks-integration)
 	- [Expected Runtime](#expected-runtime)
 - [Test Configuration](#test-configuration)
@@ -304,6 +306,45 @@ make eks-destroy
 # Cleanup (destroy EKS infrastructure as well)
 make eks-destroy DESTROY_EKS_RESOURCES=true
 ```
+
+#### Run With Local Repo Chart
+
+Use these values in `tests/integration/.env` (default behavior):
+
+```bash
+TF_VAR_chart_path=../../../../
+TF_VAR_chart_repository=
+TF_VAR_chart_version=
+```
+
+Then run:
+
+```bash
+make eks-apply
+make eks-test
+```
+
+#### Run With Released Chart
+
+Use these values in `tests/integration/.env` to install from a Helm repository:
+
+```bash
+TF_VAR_chart_path=boundary-controller
+TF_VAR_chart_repository=https://<your-helm-repository>
+TF_VAR_chart_version=<released-version>
+```
+
+Then run:
+
+```bash
+make eks-apply
+make eks-test
+```
+
+Notes:
+
+- Keep `TF_VAR_chart_version` set when using `TF_VAR_chart_repository`.
+- `eks-integration-test.sh` does not change for either mode; it validates the deployed release in-cluster.
 
 ### Run AKS Integration
 

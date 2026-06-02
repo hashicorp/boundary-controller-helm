@@ -44,10 +44,13 @@ helm repo update
 
 Please see the many options supported in the values.yaml file. These are also fully documented directly on the [boundary website](https://developer.hashicorp.com/boundary/docs) along with more detailed installation instructions.
 
+For operational guidance such as upgrades, backups, and uninstall procedures, see [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
 Install with custom values:
 
 ```bash
 helm install boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0
   --namespace boundary \
   -f my-values.yaml
 ```
@@ -58,6 +61,7 @@ Standard upgrade:
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0
   --namespace boundary \
   -f my-values.yaml
 ```
@@ -68,6 +72,7 @@ Step 1: scale controllers to zero.
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0
   --namespace boundary \
   -f my-values.yaml \
   --set controller.replicas=0
@@ -79,6 +84,7 @@ Step 3: run migration and bring controllers back.
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0
   --namespace boundary \
   -f my-values.yaml \
   --set database.migrate.enabled=true
@@ -88,6 +94,7 @@ Optional: run migration with repair version.
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0
   --namespace boundary \
   -f my-values.yaml \
   --set database.migrate.enabled=true \

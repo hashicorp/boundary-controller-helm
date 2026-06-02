@@ -155,17 +155,26 @@ helm repo add hashicorp https://helm.releases.hashicorp.com
 helm repo update
 ```
 
-Install using the default values:
+Install using the default values from the published release:
 
 ```bash
-helm install boundary-controller hashicorp/boundary-controller . \
+helm install boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0
   --namespace boundary
 ```
 
-Install with an additional values file:
+With additional values file:
+```bash
+helm install boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0
+  --namespace boundary
+  -f my-values.yaml
+```
+
+Install from this repo checkout instead:
 
 ```bash
-helm install boundary-controller hashicorp/boundary-controller . \
+helm install boundary-controller . \
   --namespace boundary \
   -f my-values.yaml
 ```
@@ -537,6 +546,15 @@ Before upgrading the chart or Boundary version:
 ```bash
 # Perform the upgrade
 helm upgrade boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0
+  --namespace boundary \
+  -f my-values.yaml
+```
+
+When using this repo locally, replace `hashicorp/boundary-controller` with `.`:
+
+```bash
+helm upgrade boundary-controller . \
   --namespace boundary \
   -f my-values.yaml
 ```
@@ -550,7 +568,8 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
 **Step 1 — scale controllers to zero:**
 
 ```bash
-helm upgrade boundary-controller hashicorp/boundary-controller . \
+helm upgrade boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0
   --namespace boundary \
   -f my-values.yaml \
   --set controller.replicas=0
@@ -561,7 +580,8 @@ helm upgrade boundary-controller hashicorp/boundary-controller . \
 Pass `--set database.migrate.enabled=true` on the upgrade command. Do not set this in your values file — it is a one-time flag. Helm runs the `pre-upgrade` migration job first, then rolls out the Deployment using the replica count from your values file, bringing the controllers back up automatically.
 
 ```bash
-helm upgrade boundary-controller hashicorp/boundary-controller . \
+helm upgrade boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0
   --namespace boundary \
   -f my-values.yaml \
   --set database.migrate.enabled=true
@@ -586,6 +606,7 @@ Use repair only after reviewing Boundary migration failure output and identifyin
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0
   --namespace boundary \
   -f my-values.yaml \
   --set database.migrate.enabled=true \
