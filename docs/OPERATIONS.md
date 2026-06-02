@@ -155,7 +155,7 @@ helm repo add hashicorp https://helm.releases.hashicorp.com
 helm repo update
 ```
 
-Install using the default values:
+Install using the default values from the published release:
 
 ```bash
 helm install boundary-controller hashicorp/boundary-controller \
@@ -163,11 +163,18 @@ helm install boundary-controller hashicorp/boundary-controller \
   --namespace boundary
 ```
 
-Install with an additional values file:
-
+With additional values file:
 ```bash
 helm install boundary-controller hashicorp/boundary-controller \
   --version 0.1.0
+  --namespace boundary
+  -f my-values.yaml
+```
+
+Install from this repo checkout instead:
+
+```bash
+helm install boundary-controller . \
   --namespace boundary \
   -f my-values.yaml
 ```
@@ -540,6 +547,14 @@ Before upgrading the chart or Boundary version:
 # Perform the upgrade
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0
+  --namespace boundary \
+  -f my-values.yaml
+```
+
+When using this repo locally, replace `hashicorp/boundary-controller` with `.`:
+
+```bash
+helm upgrade boundary-controller . \
   --namespace boundary \
   -f my-values.yaml
 ```

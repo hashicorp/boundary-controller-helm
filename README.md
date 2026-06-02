@@ -44,6 +44,8 @@ helm repo update
 
 Please see the many options supported in the values.yaml file. These are also fully documented directly on the [boundary website](https://developer.hashicorp.com/boundary/docs) along with more detailed installation instructions.
 
+For operational guidance such as upgrades, backups, and uninstall procedures, see [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
 Install with custom values:
 
 ```bash
