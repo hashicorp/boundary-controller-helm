@@ -55,9 +55,15 @@ variable "node_max_size" {
 # ---------------------------------------------------------------------------
 
 variable "chart_path" {
-  description = "Path to the boundary-controller Helm chart directory (relative to this module or absolute)."
+  description = "Local chart path or chart name (for repository-based installs)."
   type        = string
   default     = "../../../../"
+}
+
+variable "chart_repository" {
+  description = "Helm repository URL used when deploying a released chart (leave blank for local path installs)."
+  type        = string
+  default     = ""
 }
 
 variable "release_name" {
@@ -73,7 +79,7 @@ variable "release_namespace" {
 }
 
 variable "chart_version" {
-  description = "Chart version to deploy (leave blank when using a local path)."
+  description = "Chart version to deploy (typically set for repository-based installs)."
   type        = string
   default     = ""
 }

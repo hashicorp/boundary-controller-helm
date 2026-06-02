@@ -72,7 +72,7 @@ resource "aws_kms_key" "root" {
   enable_key_rotation     = true
 
   tags = {
-    Name    = "boundary-root"
+    Name      = "boundary-root"
     ManagedBy = "terraform"
   }
 }
@@ -196,7 +196,7 @@ resource "kubernetes_service_account_v1" "boundary_controller" {
 
     labels = {
       "app.kubernetes.io/managed-by" = "terraform"
-      "app.kubernetes.io/name"        = var.release_name
+      "app.kubernetes.io/name"       = var.release_name
     }
   }
 }
@@ -228,10 +228,10 @@ resource "kubernetes_secret_v1" "boundary_controller" {
 
 locals {
   nlb_api_annotations = var.enable_nlb_annotations ? {
-    "service.beta.kubernetes.io/aws-load-balancer-type"                  = "external"
-    "service.beta.kubernetes.io/aws-load-balancer-nlb-target-type"       = "ip"
-    "service.beta.kubernetes.io/aws-load-balancer-scheme"                = "internet-facing"
-    "service.beta.kubernetes.io/aws-load-balancer-attributes"            = "load_balancing.cross_zone.enabled=true"
+    "service.beta.kubernetes.io/aws-load-balancer-type"            = "external"
+    "service.beta.kubernetes.io/aws-load-balancer-nlb-target-type" = "ip"
+    "service.beta.kubernetes.io/aws-load-balancer-scheme"          = "internet-facing"
+    "service.beta.kubernetes.io/aws-load-balancer-attributes"      = "load_balancing.cross_zone.enabled=true"
   } : {}
 
   nlb_cluster_annotations = var.enable_nlb_annotations ? {
@@ -281,12 +281,13 @@ resource "helm_release" "boundary_controller" {
   name             = var.release_name
   namespace        = kubernetes_namespace_v1.boundary.metadata[0].name
   chart            = var.chart_path
+  repository       = var.chart_repository != "" ? var.chart_repository : null
   version          = var.chart_version != "" ? var.chart_version : null
-  create_namespace = false   # Namespace managed by kubernetes_namespace above
-  wait             = false  # Integration test uses port-forward; LoadBalancer IPs are not needed
-  timeout          = 900  # 15 min — allows for EKS image pull on initial deploy
-  upgrade_install  = true    # Allow install-or-upgrade (handles stale failed releases)
-  cleanup_on_fail  = true    # Clean up on failure to avoid stale releases blocking retries
+  create_namespace = false # Namespace managed by kubernetes_namespace above
+  wait             = false # Integration test uses port-forward; LoadBalancer IPs are not needed
+  timeout          = 900   # 15 min — allows for EKS image pull on initial deploy
+  upgrade_install  = true  # Allow install-or-upgrade (handles stale failed releases)
+  cleanup_on_fail  = true  # Clean up on failure to avoid stale releases blocking retries
 
   # Ensure secrets, service account, and PostgreSQL exist before the chart deploys
   depends_on = [
