@@ -21,3 +21,11 @@ tests/unit/__snapshot__/
 .vscode/
 *.swp
 *.swo
+
+# EKS integration — secrets and ephemeral Terraform artefacts
+tests/integration/.env
+tests/integration/.env.example
+tests/integration/terraform/aws/.terraform/
+tests/integration/terraform/aws/.terraform.lock.hcl
+tests/integration/terraform/aws/terraform.tfstate
+tests/integration/terraform/aws/terraform.tfstate.backup

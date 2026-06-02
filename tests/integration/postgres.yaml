@@ -1,0 +1,103 @@
+# Copyright IBM Corp. 2026
+# In-cluster PostgreSQL for EKS integration testing only.
+# Ephemeral storage: data is lost when the pod restarts (intentional for tests).
+# NOT for production use.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: boundary
+  labels:
+    app: postgres
+    app.kubernetes.io/part-of: boundary-integration-test
+spec:
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: boundary
+  labels:
+    app: postgres
+    app.kubernetes.io/part-of: boundary-integration-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        app.kubernetes.io/part-of: boundary-integration-test
+    spec:
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        runAsNonRoot: true
+      containers:
+        - name: postgres
+          image: postgres:16
+          env:
+            - name: POSTGRES_USER
+              value: boundary
+            - name: POSTGRES_PASSWORD
+              value: boundary-test-pw
+            - name: POSTGRES_DB
+              value: boundary
+            # Store data in tmpfs so no PVC is required on EKS
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - boundary
+                - -d
+                - boundary
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 10
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - boundary
+                - -d
+                - boundary
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        # emptyDir keeps data in memory/node-local storage — no PVC needed.
+        # Data is intentionally lost on pod restart.
+        - name: pgdata
+          emptyDir: {}

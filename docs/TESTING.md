@@ -25,6 +25,9 @@ The chart includes comprehensive test coverage for validation before deployment:
 	- [Cluster Smoke Test](#cluster-smoke-test)
 	- [Controller API Test](#controller-api-test)
 	- [KIND Version Matrix Test](#kind-version-matrix-test)
+- [EKS Integration Tests](#eks-integration-tests)
+	- [Run With Local Repo Chart](#run-with-local-repo-chart)
+	- [Run With Released Chart](#run-with-released-chart)
 - [Test Configuration](#test-configuration)
 	- [Test Values](#test-values)
 	- [In-Cluster PostgreSQL](#in-cluster-postgresql)
@@ -243,6 +246,61 @@ bash tests/acceptance/kind-version-matrix-test.sh
 8. Runs controller-api-test.sh
 9. Tears down cluster
 10. Repeats for the next configured version
+
+## EKS Integration Tests
+
+Run EKS integration from the chart root:
+
+```bash
+make eks-full
+```
+
+This flow provisions EKS with Terraform, installs the chart, then runs `tests/integration/eks-integration-test.sh`.
+
+Before running, copy and fill the integration env file:
+
+```bash
+cp tests/integration/.env.example tests/integration/.env
+```
+
+### Run With Local Repo Chart
+
+Use these values in `tests/integration/.env` (default behavior):
+
+```bash
+TF_VAR_chart_path=../../../../
+TF_VAR_chart_repository=
+TF_VAR_chart_version=
+```
+
+Then run:
+
+```bash
+make eks-apply
+make eks-test
+```
+
+### Run With Released Chart
+
+Use these values in `tests/integration/.env` to install from a Helm repository:
+
+```bash
+TF_VAR_chart_path=boundary-controller
+TF_VAR_chart_repository=https://<your-helm-repository>
+TF_VAR_chart_version=<released-version>
+```
+
+Then run:
+
+```bash
+make eks-apply
+make eks-test
+```
+
+Notes:
+
+- Keep `TF_VAR_chart_version` set when using `TF_VAR_chart_repository`.
+- `eks-integration-test.sh` does not change for either mode; it validates the deployed release in-cluster.
 
 ## Test Configuration
 
