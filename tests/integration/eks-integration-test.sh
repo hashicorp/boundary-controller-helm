@@ -1,13 +1,13 @@
 #!/bin/bash
 # Copyright IBM Corp. 2026
 #
-# eks-integartion-test.sh
+# eks-integration-test.sh
 # ---------------------------------------------------------------------------
 # Validates that the boundary-controller Helm chart is correctly installed
 # and active on an EKS cluster provisioned by the Terraform in this directory.
 #
 # Usage:
-#   ./eks-integartion-test.sh [OPTIONS]
+#   ./eks-integration-test.sh [OPTIONS]
 #
 # Options:
 #   --cluster-name  NAME        EKS cluster name  (or set EKS_CLUSTER_NAME)
