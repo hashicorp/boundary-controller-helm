@@ -155,17 +155,32 @@ helm repo add hashicorp https://helm.releases.hashicorp.com
 helm repo update
 ```
 
-Install using the default values:
+Install using the default values from the published release:
 
 ```bash
-helm install boundary-controller hashicorp/boundary-controller . \
+helm install boundary-controller hashicorp/boundary-controller \
   --namespace boundary
 ```
 
-Install with an additional values file:
+Install from this repo checkout instead:
 
 ```bash
-helm install boundary-controller hashicorp/boundary-controller . \
+helm install boundary-controller . \
+  --namespace boundary
+```
+
+Install with an additional values file from the published release:
+
+```bash
+helm install boundary-controller hashicorp/boundary-controller \
+  --namespace boundary \
+  -f my-values.yaml
+```
+
+Install with an additional values file from this repo checkout instead:
+
+```bash
+helm install boundary-controller . \
   --namespace boundary \
   -f my-values.yaml
 ```
@@ -541,6 +556,14 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
   -f my-values.yaml
 ```
 
+When using this repo locally, replace `hashicorp/boundary-controller` with `.`:
+
+```bash
+helm upgrade boundary-controller . \
+  --namespace boundary \
+  -f my-values.yaml
+```
+
 #### Upgrade with database migration
 
 `boundary database migrate` uses PostgreSQL advisory locks to get exclusive access during schema changes. It cannot acquire that lock while active controllers are still connected to the database and heartbeating. Scale the Deployment to zero replicas first, then run the migration upgrade.
@@ -550,7 +573,16 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
 **Step 1 — scale controllers to zero:**
 
 ```bash
-helm upgrade boundary-controller hashicorp/boundary-controller . \
+helm upgrade boundary-controller hashicorp/boundary-controller \
+  --namespace boundary \
+  -f my-values.yaml \
+  --set controller.replicas=0
+```
+
+When using this repo locally, replace `hashicorp/boundary-controller` with `.`:
+
+```bash
+helm upgrade boundary-controller . \
   --namespace boundary \
   -f my-values.yaml \
   --set controller.replicas=0
@@ -561,7 +593,16 @@ helm upgrade boundary-controller hashicorp/boundary-controller . \
 Pass `--set database.migrate.enabled=true` on the upgrade command. Do not set this in your values file — it is a one-time flag. Helm runs the `pre-upgrade` migration job first, then rolls out the Deployment using the replica count from your values file, bringing the controllers back up automatically.
 
 ```bash
-helm upgrade boundary-controller hashicorp/boundary-controller . \
+helm upgrade boundary-controller hashicorp/boundary-controller \
+  --namespace boundary \
+  -f my-values.yaml \
+  --set database.migrate.enabled=true
+```
+
+When using this repo locally, replace `hashicorp/boundary-controller` with `.`:
+
+```bash
+helm upgrade boundary-controller . \
   --namespace boundary \
   -f my-values.yaml \
   --set database.migrate.enabled=true
