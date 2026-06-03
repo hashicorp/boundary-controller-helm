@@ -9,6 +9,7 @@
 .PHONY: acceptance-setup acceptance-helm acceptance-test acceptance-full acceptance-cleanup
 .PHONY: kind-matrix-test
 .PHONY: eks-setup eks-apply eks-db-init-recovery eks-test eks-full eks-destroy
+.PHONY: gke-setup gke-apply gke-db-init-recovery gke-test gke-full gke-destroy
 
 # ================================
 # Help Target
@@ -50,6 +51,14 @@ help:
 	@echo "  make eks-test                - Run eks-integration-test.sh against the provisioned cluster"
 	@echo "  make eks-full                - Full EKS integration workflow (setup + apply + test)"
 	@echo "  make eks-destroy             - Destroy all EKS integration resources via Terraform"
+	@echo ""
+	@echo "GKE Integration Testing targets:"
+	@echo "  make gke-setup               - Initialise Terraform for GKE integration tests"
+	@echo "  make gke-apply               - Provision GKE cluster (phase 1), update kubeconfig, then deploy chart (phase 2)"
+	@echo "  make gke-db-init-recovery    - Reinstall Helm release only when controller reports uninitialized DB"
+	@echo "  make gke-test                - Run gke-integration-test.sh against the provisioned cluster"
+	@echo "  make gke-full                - Full GKE integration workflow (setup + apply + test)"
+	@echo "  make gke-destroy             - Destroy all GKE integration resources via Terraform"
 	@echo "================================"
 
 # ================================
@@ -604,4 +613,112 @@ eks-destroy:
 	@echo "================================"
 	@terraform -chdir=$(INTEGRATION_DIR) destroy -auto-approve
 	@echo "✅ All EKS integration resources destroyed"
+	@echo ""
+
+# ================================
+# GKE Integration Testing Targets
+# ================================
+
+GKE_INTEGRATION_DIR := tests/integration/terraform/gcp
+GKE_INTEGRATION_ENV := tests/integration/.env.gke
+
+# Load GKE .env if it exists
+ifneq (,$(wildcard $(GKE_INTEGRATION_ENV)))
+  include $(GKE_INTEGRATION_ENV)
+  export
+endif
+
+gke-setup:
+	@echo "================================"
+	@echo "Initialising Terraform (GKE Integration)"
+	@echo "================================"
+	@command -v terraform >/dev/null 2>&1 || (echo "❌ terraform not found. Install from https://developer.hashicorp.com/terraform/downloads"; exit 1)
+	@command -v gcloud >/dev/null 2>&1 || (echo "❌ gcloud CLI not found. Install from https://cloud.google.com/sdk/docs/install"; exit 1)
+	@[ -f "$(GKE_INTEGRATION_ENV)" ] || (echo "❌ $(GKE_INTEGRATION_ENV) not found. Copy tests/integration/.env.gke.example to tests/integration/.env.gke and fill in your values."; exit 1)
+	@terraform -chdir=$(GKE_INTEGRATION_DIR) init
+	@echo "✅ Terraform initialised"
+	@echo ""
+
+gke-apply: gke-setup
+	@echo "================================"
+	@echo "Provisioning GKE Cluster + Helm Install"
+	@echo "================================"
+	@[ -n "$${TF_VAR_boundary_license}" ]       || (echo "❌ TF_VAR_boundary_license is not set in $(GKE_INTEGRATION_ENV)";       exit 1)
+	@[ -n "$${TF_VAR_boundary_admin_password}" ] || (echo "❌ TF_VAR_boundary_admin_password is not set in $(GKE_INTEGRATION_ENV)"; exit 1)
+	@[ -n "$${TF_VAR_gcp_project_id}" ]          || (echo "❌ TF_VAR_gcp_project_id is not set in $(GKE_INTEGRATION_ENV)";          exit 1)
+	@echo ""
+	@echo "--- Step 1/2: Provision VPC + GKE cluster + node pool ---"
+	@terraform -chdir=$(GKE_INTEGRATION_DIR) apply -auto-approve \
+		-target=google_compute_network.this \
+		-target=google_compute_subnetwork.this \
+		-target=google_container_cluster.this \
+		-target=google_container_node_pool.this
+	@echo "✅ GKE cluster ready"
+	@echo ""
+	@echo "--- Updating kubeconfig ---"
+	@gcloud container clusters get-credentials \
+		"$${TF_VAR_gke_cluster_name:-boundary-controller-cluster}" \
+		--zone "$${TF_VAR_gke_zone:-us-central1-a}" \
+		--project "$${TF_VAR_gcp_project_id}"
+	@echo "✅ kubeconfig updated"
+	@echo ""
+	@echo "--- Step 2/2: Apply remaining resources (KMS, IAM, Kubernetes, Helm) ---"
+	@terraform -chdir=$(GKE_INTEGRATION_DIR) apply -auto-approve
+	@$(MAKE) gke-db-init-recovery
+	@echo "✅ Terraform apply complete (infrastructure, PostgreSQL, and Helm chart)"
+	@echo ""
+
+gke-db-init-recovery:
+	@echo "--- Optional recovery: checking for DB init miss ---"
+	@KCTX="gke_$${TF_VAR_gcp_project_id}_$${TF_VAR_gke_zone:-us-central1-a}_$${TF_VAR_gke_cluster_name:-boundary-controller-cluster}"; \
+	POD=$$(kubectl get pods -n "$${BOUNDARY_NAMESPACE:-boundary}" --context "$$KCTX" \
+		-l "app.kubernetes.io/name=boundary-controller,app.kubernetes.io/component=controller" \
+		-o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true); \
+	if [ -z "$$POD" ]; then \
+		echo "ℹ️  No controller pod yet; skipping DB-init recovery check"; \
+		exit 0; \
+	fi; \
+	LOGS=$$(kubectl logs -n "$${BOUNDARY_NAMESPACE:-boundary}" --context "$$KCTX" "$$POD" --previous 2>/dev/null || \
+		kubectl logs -n "$${BOUNDARY_NAMESPACE:-boundary}" --context "$$KCTX" "$$POD" 2>/dev/null || true); \
+	if echo "$$LOGS" | grep -qi "database has not been initialized"; then \
+		echo "⚠️  Detected uninitialized Boundary DB. Replacing Helm release to re-run pre-install init hooks..."; \
+		terraform -chdir=$(GKE_INTEGRATION_DIR) apply -auto-approve -replace=helm_release.boundary_controller; \
+		echo "✅ Recovery apply completed"; \
+	else \
+		echo "✅ DB-init recovery not needed"; \
+	fi
+
+gke-test:
+	@echo "================================"
+	@echo "Running GKE Integration Tests"
+	@echo "================================"
+	@bash tests/integration/gke-integration-test.sh \
+		--project-id "$${TF_VAR_gcp_project_id}" \
+		--zone "$${TF_VAR_gke_zone:-us-central1-a}" \
+		--cluster-name "$${TF_VAR_gke_cluster_name:-boundary-controller-cluster}" \
+		--namespace "$${BOUNDARY_NAMESPACE:-boundary}" \
+		--release "$${HELM_RELEASE:-boundary-controller}" \
+		--kms-location "$${TF_VAR_kms_location:-global}" \
+		--kms-key-ring "$${TF_VAR_kms_key_ring_name:-boundary-key-ring}" \
+		--timeout "$${TIMEOUT:-300}"
+	@echo ""
+
+gke-full:
+	@echo "================================"
+	@echo "Full GKE Integration Workflow"
+	@echo "================================"
+	@$(MAKE) gke-apply
+	@$(MAKE) gke-test
+	@echo ""
+	@echo "✅ GKE integration workflow completed successfully"
+	@echo ""
+	@echo "To destroy resources: make gke-destroy"
+	@echo ""
+
+gke-destroy:
+	@echo "================================"
+	@echo "Destroying GKE Integration Resources"
+	@echo "================================"
+	@terraform -chdir=$(GKE_INTEGRATION_DIR) destroy -auto-approve
+	@echo "✅ All GKE integration resources destroyed"
 	@echo ""
