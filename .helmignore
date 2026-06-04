@@ -16,5 +16,5 @@
 # Ignore local project-only files not needed in chart packages
 Makefile
 kubescape-exceptions.json
-tests/
+/tests/
 example-config/

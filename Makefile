@@ -4,11 +4,15 @@
 # ================================
 # PHONY Declarations
 # ================================
-.PHONY: help format deps clean lint test unit-test
+.PHONY: help format deps clean lint test unit-test chart-test
 .PHONY: setup-helm setup-kubeconform setup-trivy setup-kubescape setup-helm-unittest lint-helm-k8s trivy-scan kubescape-scan
 .PHONY: acceptance-setup acceptance-helm acceptance-test acceptance-full acceptance-cleanup
 .PHONY: kind-matrix-test
 .PHONY: eks-setup eks-apply eks-db-init-recovery eks-test eks-full eks-destroy
+
+HELM_TEST_RELEASE ?= boundary-controller
+HELM_TEST_NAMESPACE ?= boundary
+HELM_TEST_KUBE_CONTEXT ?=
 
 # ================================
 # Help Target
@@ -23,6 +27,7 @@ help:
 	@echo "  make lint              - Run all lints and scans locally (deps + lint + scans)"
 	@echo "  make test              - Run unit tests (alias for unit-test)"
 	@echo "  make unit-test         - Run Helm unit tests with helm-unittest"
+	@echo "  make chart-test        - Run Helm chart tests on a live cluster with helm test"
 	@echo "  make clean             - Clean generated files"
 	@echo ""
 	@echo "CI/CD targets:"
@@ -121,6 +126,17 @@ unit-test:
 	@echo "Running unit tests..."
 	@helm unittest . -f 'tests/unit/*_test.yaml'
 	@echo "✅ Unit tests passed!"
+
+chart-test:
+	@echo "================================"
+	@echo "Running Helm Chart Tests"
+	@echo "================================"
+	@command -v helm >/dev/null 2>&1 || (echo "❌ Helm not found"; exit 1)
+	@helm test $(HELM_TEST_RELEASE) \
+		--namespace $(HELM_TEST_NAMESPACE) \
+		$(if $(HELM_TEST_KUBE_CONTEXT),--kube-context $(HELM_TEST_KUBE_CONTEXT),) \
+		--logs
+	@echo "✅ Helm chart tests passed!"
 
 # ================================
 # CI/CD Setup Targets

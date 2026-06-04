@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       k8s_versions:
-        description: "Optional explicit Kubernetes versions (comma-separated, e.g. v1.35.1,v1.34.3,v1.33.7)"
+        description: "Optional explicit Kubernetes versions (comma-separated, e.g. v1.36.1,v1.35.5,v1.34.8)"
         required: false
         default: ""
   # push:
@@ -140,6 +140,36 @@ jobs:
           echo "✅ All tests completed successfully!"
           echo "================================"
 
+  chart-tests:
+    name: Chart Tests
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.base_ref == 'main' &&
+       github.event.pull_request.draft == false)
+    runs-on: ubuntu-latest
+    needs: [unit-test, security]
+    env:
+      BOUNDARY_LICENSE: ${{ secrets.BOUNDARY_LICENSE }}
+      BOOTSTRAP_ADMIN_USERNAME: ${{ secrets.BOOTSTRAP_ADMIN_USERNAME }}
+      BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup acceptance environment
+        run: make acceptance-setup
+
+      - name: Install chart in smoke cluster
+        run: make acceptance-helm
+
+      - name: Run Helm chart test hooks
+        run: make chart-test HELM_TEST_RELEASE=boundary-controller HELM_TEST_NAMESPACE=boundary HELM_TEST_KUBE_CONTEXT=kind-acceptance
+
+      - name: Cleanup
+        if: always()
+        run: make acceptance-cleanup
+
   acceptance-matrix:
     name: Acceptance Matrix
     if: |
@@ -148,7 +178,7 @@ jobs:
        github.base_ref == 'main' &&
        github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
-    needs: [unit-test, security]
+    needs: chart-tests
     outputs:
       versions: ${{ steps.resolve.outputs.versions }}
     steps:
