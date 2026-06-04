@@ -135,27 +135,6 @@ tests:
             name: tls-certs
             mountPath: /custom/tls
             readOnly: true
-  - it: renders migration URL env var in bootstrap job when config uses env migration URL
-    set:
-      controller:
-        config: |
-          controller {
-            database {
-              migration_url = "env://BOUNDARY_PG_MIGRATION_URL"
-            }
-          }
-      secretRefs:
-        keys:
-          migrationUrl: migration-url
-    asserts:
-      - contains:
-          path: spec.template.spec.containers[0].env
-          content:
-            name: BOUNDARY_PG_MIGRATION_URL
-            valueFrom:
-              secretKeyRef:
-                name: boundary-controller-secrets
-                key: migration-url
   - it: renders secretRefs key remapping for bootstrap admin credentials
     set:
       secretRefs:

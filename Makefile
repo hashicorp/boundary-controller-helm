@@ -46,7 +46,7 @@ help:
 	@echo "  make acceptance-test         - Run controller API acceptance tests"
 	@echo "  make acceptance-full         - Full acceptance workflow (setup + helm + test)"
 	@echo "  make acceptance-cleanup      - Delete acceptance KIND cluster and cached KIND binaries"
-	@echo "  make kind-matrix-test        - Run controller-api-test.sh across 2 KIND versions prior to latest"
+	@echo "  make kind-matrix-test        - Run controller-api-test.sh across K8s versions using KIND (requires acceptance-setup)"
 	@echo ""
 	@echo "EKS Integration Testing targets:"
 	@echo "  make eks-setup               - Initialise Terraform for EKS integration tests"
