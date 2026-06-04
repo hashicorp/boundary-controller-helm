@@ -53,12 +53,26 @@ resource "google_project_service" "cloudkms" {
   disable_on_destroy = false
 }
 
+# GCP API enablement is eventually consistent; wait 60 s for propagation before
+# creating KMS resources to avoid an immediate 403 "API not enabled" error.
+resource "time_sleep" "wait_for_kms_api" {
+  create_duration = "60s"
+  depends_on      = [google_project_service.cloudkms]
+}
+
+# Import the key ring if it already exists (GCP KMS key rings are permanent and
+# cannot be deleted, so re-runs must adopt the existing resource).
+import {
+  to = google_kms_key_ring.boundary
+  id = "projects/${var.gcp_project_id}/locations/${var.kms_location}/keyRings/${var.kms_key_ring_name}"
+}
+
 resource "google_kms_key_ring" "boundary" {
   name     = var.kms_key_ring_name
   location = var.kms_location
   project  = var.gcp_project_id
 
-  depends_on = [google_project_service.cloudkms]
+  depends_on = [time_sleep.wait_for_kms_api]
 }
 
 resource "google_kms_crypto_key" "root" {
@@ -131,6 +145,15 @@ resource "google_kms_crypto_key_iam_member" "worker_auth_access" {
   crypto_key_id = google_kms_crypto_key.worker_auth.id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
   member        = "serviceAccount:${google_service_account.boundary_controller.email}"
+}
+
+# Grant Viewer on the key ring so the GSA can call cryptoKeys.get (key-existence
+# check performed by the Boundary KMS plugin before encrypt/decrypt).
+# roles/cloudkms.cryptoKeyEncrypterDecrypter intentionally omits this permission.
+resource "google_kms_key_ring_iam_member" "kms_viewer" {
+  key_ring_id = google_kms_key_ring.boundary.id
+  role        = "roles/cloudkms.viewer"
+  member      = "serviceAccount:${google_service_account.boundary_controller.email}"
 }
 
 # Workload Identity binding: allow the K8s ServiceAccount to impersonate the GCP SA
@@ -292,8 +315,12 @@ resource "helm_release" "boundary_controller" {
       value = var.api_service_type
     },
     {
-      name  = "controller.bootstrapAdmin.runOnUpgrade"
+      name  = "bootstrapAdmin.runOnUpgrade"
       value = "true"
+    },
+    {
+      name  = "bootstrapAdmin.waitTimeoutSeconds"
+      value = "300"
     },
     {
       name  = "podDisruptionBudget.enabled"

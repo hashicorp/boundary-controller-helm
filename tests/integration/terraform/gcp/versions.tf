@@ -16,5 +16,9 @@ terraform {
       source  = "hashicorp/helm"
       version = ">= 2.12"
     }
+    time = {
+      source  = "hashicorp/time"
+      version = ">= 0.9"
+    }
   }
 }

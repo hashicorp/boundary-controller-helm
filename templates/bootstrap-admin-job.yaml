@@ -47,6 +47,40 @@ spec:
             - name: BOUNDARY_CACERT
               value: "{{ .Values.tls.mountPath }}/tls.crt"
             {{- end }}
+            - name: BOUNDARY_PG_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.secretRefs.keys.databaseUrl }}
+            {{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" }}
+            - name: BOUNDARY_PG_MIGRATION_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.secretRefs.keys.migrationUrl }}
+            {{- end }}
+            - name: BOUNDARY_LICENSE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.secretRefs.keys.license }}
+            {{- if eq (include "boundary.controller.usesEnvAeadKms" . | trim) "true" }}
+            - name: BOUNDARY_KMS_ROOT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.secretRefs.keys.kmsRoot }}
+            - name: BOUNDARY_KMS_WORKER_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.secretRefs.keys.kmsWorkerAuth }}
+            - name: BOUNDARY_KMS_RECOVERY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "boundary.controller.secretName" . }}
+                  key: {{ .Values.secretRefs.keys.kmsRecovery }}
+            {{- end }}
             - name: BOUNDARY_ADMIN_USERNAME
               valueFrom:
                 secretKeyRef:
@@ -67,13 +101,6 @@ spec:
               value: {{ .Values.bootstrapAdmin.accountResourceName | quote }}
             - name: BOUNDARY_ROLE_NAME
               value: {{ .Values.bootstrapAdmin.roleName | quote }}
-            {{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" }}
-            - name: BOUNDARY_PG_MIGRATION_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "boundary.controller.secretName" . }}
-                  key: {{ .Values.secretRefs.keys.migrationUrl }}
-            {{- end }}
           command:
             - "sh"
             - "/etc/boundary/bootstrap-admin.sh"

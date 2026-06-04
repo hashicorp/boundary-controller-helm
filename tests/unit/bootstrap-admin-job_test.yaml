@@ -33,6 +33,22 @@ tests:
           content:
             name: BOUNDARY_ADDR
             value: http://boundary-controller-api:9200
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_PG_URL
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: database-url
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_LICENSE
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: license
   - it: renders custom image repository and pull policy in bootstrap job
     set:
       image:
@@ -156,6 +172,50 @@ tests:
               secretKeyRef:
                 name: boundary-controller-secrets
                 key: migration-url
+  - it: renders AEAD KMS env vars in bootstrap job when config uses env KMS
+    set:
+      controller:
+        config: |
+          kms "aead" {
+            purpose = "root"
+            aead_type = "aes-gcm"
+            key = "env://BOUNDARY_KMS_ROOT"
+          }
+          kms "aead" {
+            purpose = "worker-auth"
+            aead_type = "aes-gcm"
+            key = "env://BOUNDARY_KMS_WORKER_AUTH"
+          }
+          kms "aead" {
+            purpose = "recovery"
+            aead_type = "aes-gcm"
+            key = "env://BOUNDARY_KMS_RECOVERY"
+          }
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_KMS_ROOT
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: kms-root
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_KMS_WORKER_AUTH
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: kms-worker-auth
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_KMS_RECOVERY
+            valueFrom:
+              secretKeyRef:
+                name: boundary-controller-secrets
+                key: kms-recovery
   - it: renders secretRefs key remapping for bootstrap admin credentials
     set:
       secretRefs:

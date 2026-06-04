@@ -4,6 +4,27 @@
 
 set -eu
 
+json_extract_first_id() {
+  prefix="$1"
+  tr -d '[:space:]' | \
+  sed -n "s/.*\"id\":\"\(${prefix}[^\"]*\)\".*/\1/p" | \
+  head -n 1
+}
+
+json_extract_id_by_field() {
+  prefix="$1"
+  field_name="$2"
+  field_value="$3"
+  tr -d '[:space:]' | \
+  sed 's/},{"id":"/\
+{"id":"/g' | \
+  grep "\"${field_name}\":\"${field_value}\"" | \
+  sed -n "s/.*\"id\":\"\(${prefix}[^\"]*\)\".*/\1/p" | \
+  head -n 1
+}
+
+export HOME=/tmp
+export XDG_CACHE_HOME=/tmp
 export BOUNDARY_RECOVERY_CONFIG=/etc/boundary/controller.hcl
 
 if [ -z "${BOUNDARY_ADMIN_USERNAME}" ] || [ -z "${BOUNDARY_ADMIN_PASSWORD}" ]; then
@@ -49,9 +70,9 @@ AUTH_METHOD_OUTPUT=$(boundary auth-methods create password \
 
 if echo "$AUTH_METHOD_OUTPUT" | grep -q "must be unique"; then
   echo "Auth method already exists, fetching..."
-  AUTH_METHOD_ID=$(boundary auth-methods list -scope-id global -addr "$BOUNDARY_ADDR" -recovery-config "$BOUNDARY_RECOVERY_CONFIG" -format json | grep -B2 '"name":"'"$BOUNDARY_AUTH_METHOD_NAME"'"' | grep -o '"id":"ampw_[^"]*"' | head -1 | cut -d'"' -f4)
+  AUTH_METHOD_ID=$(boundary auth-methods list -scope-id global -addr "$BOUNDARY_ADDR" -recovery-config "$BOUNDARY_RECOVERY_CONFIG" -format json | json_extract_id_by_field "ampw_" "name" "$BOUNDARY_AUTH_METHOD_NAME")
 else
-  AUTH_METHOD_ID=$(echo "$AUTH_METHOD_OUTPUT" | grep -o '"id":"ampw_[^"]*"' | head -1 | cut -d'"' -f4)
+  AUTH_METHOD_ID=$(printf '%s\n' "$AUTH_METHOD_OUTPUT" | json_extract_first_id "ampw_")
 fi
 
 if [ -z "$AUTH_METHOD_ID" ]; then
@@ -79,9 +100,9 @@ USER_OUTPUT=$(boundary users create \
 
 if echo "$USER_OUTPUT" | grep -q "must be unique"; then
   echo "User already exists, fetching..."
-  USER_ID=$(boundary users list -scope-id global -addr "$BOUNDARY_ADDR" -recovery-config "$BOUNDARY_RECOVERY_CONFIG" -format json | grep -B2 '"name":"'"$BOUNDARY_USER_RESOURCE_NAME"'"' | grep -o '"id":"u_[^"]*"' | head -1 | cut -d'"' -f4)
+  USER_ID=$(boundary users list -scope-id global -addr "$BOUNDARY_ADDR" -recovery-config "$BOUNDARY_RECOVERY_CONFIG" -format json | json_extract_id_by_field "u_" "name" "$BOUNDARY_USER_RESOURCE_NAME")
 else
-  USER_ID=$(echo "$USER_OUTPUT" | grep -o '"id":"u_[^"]*"' | head -1 | cut -d'"' -f4)
+  USER_ID=$(printf '%s\n' "$USER_OUTPUT" | json_extract_first_id "u_")
 fi
 
 if [ -z "$USER_ID" ]; then
@@ -104,7 +125,7 @@ ACCOUNT_OUTPUT=$(boundary accounts create password \
 
 if echo "$ACCOUNT_OUTPUT" | grep -q "must be unique\|already exists"; then
   echo "Account already exists, fetching..."
-  ACCOUNT_ID=$(boundary accounts list -auth-method-id "$AUTH_METHOD_ID" -addr "$BOUNDARY_ADDR" -recovery-config "$BOUNDARY_RECOVERY_CONFIG" -format json | grep -B2 '"login_name":"'"$BOUNDARY_ADMIN_USERNAME"'"' | grep -o '"id":"acctpw_[^"]*"' | head -1 | cut -d'"' -f4)
+  ACCOUNT_ID=$(boundary accounts list -auth-method-id "$AUTH_METHOD_ID" -addr "$BOUNDARY_ADDR" -recovery-config "$BOUNDARY_RECOVERY_CONFIG" -format json | json_extract_id_by_field "acctpw_" "login_name" "$BOUNDARY_ADMIN_USERNAME")
   if [ -n "$ACCOUNT_ID" ]; then
     boundary accounts update password \
       -id "$ACCOUNT_ID" \
@@ -120,7 +141,7 @@ if echo "$ACCOUNT_OUTPUT" | grep -q "must be unique\|already exists"; then
       -recovery-config "$BOUNDARY_RECOVERY_CONFIG" >/dev/null
   fi
 else
-  ACCOUNT_ID=$(echo "$ACCOUNT_OUTPUT" | grep -o '"id":"acctpw_[^"]*"' | head -1 | cut -d'"' -f4)
+  ACCOUNT_ID=$(printf '%s\n' "$ACCOUNT_OUTPUT" | json_extract_first_id "acctpw_")
 fi
 
 if [ -z "$ACCOUNT_ID" ]; then
@@ -148,9 +169,9 @@ ROLE_OUTPUT=$(boundary roles create \
 
 if echo "$ROLE_OUTPUT" | grep -q "must be unique"; then
   echo "Role already exists, fetching..."
-  ROLE_ID=$(boundary roles list -scope-id global -addr "$BOUNDARY_ADDR" -recovery-config "$BOUNDARY_RECOVERY_CONFIG" -format json | grep -B2 '"name":"'"$BOUNDARY_ROLE_NAME"'"' | grep -o '"id":"r_[^"]*"' | head -1 | cut -d'"' -f4)
+  ROLE_ID=$(boundary roles list -scope-id global -addr "$BOUNDARY_ADDR" -recovery-config "$BOUNDARY_RECOVERY_CONFIG" -format json | json_extract_id_by_field "r_" "name" "$BOUNDARY_ROLE_NAME")
 else
-  ROLE_ID=$(echo "$ROLE_OUTPUT" | grep -o '"id":"r_[^"]*"' | head -1 | cut -d'"' -f4)
+  ROLE_ID=$(printf '%s\n' "$ROLE_OUTPUT" | json_extract_first_id "r_")
 fi
 
 if [ -z "$ROLE_ID" ]; then

@@ -341,8 +341,12 @@ resource "helm_release" "boundary_controller" {
     },
     # Run bootstrap-admin on upgrade so it executes even after a timed-out install
     {
-      name  = "controller.bootstrapAdmin.runOnUpgrade"
+      name  = "bootstrapAdmin.runOnUpgrade"
       value = "true"
+    },
+    {
+      name  = "bootstrapAdmin.waitTimeoutSeconds"
+      value = "300"
     },
   ]
 

@@ -12,8 +12,10 @@ controller:
       address = "0.0.0.0:9200"
       purpose = "api"
       tls_disable   = ${tls_disabled}
+%{ if !tls_disabled ~}
       tls_cert_file = "/etc/boundary/tls/tls.crt"
       tls_key_file  = "/etc/boundary/tls/tls.key"
+%{ endif ~}
     }
 
     listener "tcp" {
@@ -25,8 +27,10 @@ controller:
       address = "0.0.0.0:9203"
       purpose = "ops"
       tls_disable   = ${tls_disabled}
+%{ if !tls_disabled ~}
       tls_cert_file = "/etc/boundary/tls/tls.crt"
       tls_key_file  = "/etc/boundary/tls/tls.key"
+%{ endif ~}
     }
 
     controller {
@@ -112,3 +116,9 @@ controller:
 %{ for k, v in lb_cluster_annotations ~}
         ${k}: "${v}"
 %{ endfor ~}
+
+# Workload Identity requires the projected service account token to be mounted
+# so the GKE metadata server can exchange it for a GCP identity.
+# The chart default is false; override to true for GKE + Cloud KMS deployments.
+serviceAccount:
+  automountServiceAccountToken: true

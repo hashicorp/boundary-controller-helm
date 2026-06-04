@@ -277,16 +277,62 @@ done
 # ---------------------------------------------------------------------------
 section "6. Deployment Readiness"
 
-info "Waiting for deployment to become available (timeout: ${TIMEOUT}s)..."
-if kubectl wait \
-        --for=condition=available \
-        --timeout="${TIMEOUT}s" \
+info "Waiting for deployment rollout to complete (timeout: ${TIMEOUT}s)..."
+# kubectl rollout status waits until all replicas are updated *and* ready,
+# unlike --for=condition=available which passes immediately with maxUnavailable=1.
+if kubectl rollout status \
         deployment/"${HELM_RELEASE}" \
         -n "${BOUNDARY_NAMESPACE}" \
-        --context "${KUBE_CONTEXT}" >/dev/null 2>&1; then
-    pass "Deployment is available"
+        --context "${KUBE_CONTEXT}" \
+        --timeout="${TIMEOUT}s" >/dev/null 2>&1; then
+    pass "Deployment rollout complete — all replicas ready"
 else
-    fail "Deployment did not become available within ${TIMEOUT}s"
+    fail "Deployment did not complete rollout within ${TIMEOUT}s"
+    # ---------------------------------------------------------------------------
+    # Diagnostics: dump pod state so failures are actionable without cluster access
+    # ---------------------------------------------------------------------------
+    echo ""
+    echo -e "${BOLD}${YELLOW}  ── Diagnostics ──${NC}"
+
+    # All controller pods (phase, ready status, restarts)
+    echo -e "${YELLOW}  [pods]${NC}"
+    kubectl get pods \
+        -n "${BOUNDARY_NAMESPACE}" \
+        --context "${KUBE_CONTEXT}" \
+        -l "app.kubernetes.io/name=boundary-controller" \
+        -o wide 2>/dev/null || true
+
+    # Events sorted by time (most recent last)
+    echo -e "\n${YELLOW}  [events]${NC}"
+    kubectl get events \
+        -n "${BOUNDARY_NAMESPACE}" \
+        --context "${KUBE_CONTEXT}" \
+        --sort-by='.lastTimestamp' \
+        --field-selector="involvedObject.kind=Pod" 2>/dev/null | tail -20 || true
+
+    # Logs from the most recent controller pod (all containers, previous if restarted)
+    DIAG_POD=$(kubectl get pods \
+        -n "${BOUNDARY_NAMESPACE}" \
+        --context "${KUBE_CONTEXT}" \
+        -l "app.kubernetes.io/name=boundary-controller,app.kubernetes.io/component=controller" \
+        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+    if [ -n "${DIAG_POD}" ]; then
+        echo -e "\n${YELLOW}  [logs: ${DIAG_POD} (current)]${NC}"
+        kubectl logs "${DIAG_POD}" \
+            -n "${BOUNDARY_NAMESPACE}" \
+            --context "${KUBE_CONTEXT}" \
+            --tail=60 2>/dev/null || true
+        echo -e "\n${YELLOW}  [logs: ${DIAG_POD} (previous, if restarted)]${NC}"
+        kubectl logs "${DIAG_POD}" \
+            -n "${BOUNDARY_NAMESPACE}" \
+            --context "${KUBE_CONTEXT}" \
+            --previous --tail=60 2>/dev/null || true
+        echo -e "\n${YELLOW}  [describe: ${DIAG_POD}]${NC}"
+        kubectl describe pod "${DIAG_POD}" \
+            -n "${BOUNDARY_NAMESPACE}" \
+            --context "${KUBE_CONTEXT}" 2>/dev/null | tail -40 || true
+    fi
+    echo ""
 fi
 
 DESIRED=$(kubectl get deployment "${HELM_RELEASE}" \
@@ -297,6 +343,7 @@ READY=$(kubectl get deployment "${HELM_RELEASE}" \
     -n "${BOUNDARY_NAMESPACE}" \
     --context "${KUBE_CONTEXT}" \
     -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+READY=${READY:-0}
 
 info "Replicas: ${READY}/${DESIRED} ready"
 if [ "${READY}" = "${DESIRED}" ] && [ "${DESIRED}" -gt 0 ]; then
@@ -305,18 +352,43 @@ else
     fail "Only ${READY}/${DESIRED} replica(s) ready"
 fi
 
-# Running pod (used in later sections)
+# Ready pod (used in later sections) — filter for condition=Ready so we don't
+# port-forward into a CrashLoopBackOff container that isn't listening.
 POD=$(kubectl get pods \
     -n "${BOUNDARY_NAMESPACE}" \
     --context "${KUBE_CONTEXT}" \
     -l "app.kubernetes.io/name=boundary-controller,app.kubernetes.io/component=controller" \
-    --field-selector=status.phase=Running \
-    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+    -o json 2>/dev/null | python3 -c '
+import json
+import sys
+
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+
+for item in data.get("items", []):
+    conditions = item.get("status", {}).get("conditions", [])
+    is_ready = any(
+        condition.get("type") == "Ready" and condition.get("status") == "True"
+        for condition in conditions
+    )
+    if is_ready:
+        print(item.get("metadata", {}).get("name", ""))
+        break
+' || echo "")
 
 if [ -n "${POD}" ]; then
-    pass "Running pod found: ${POD}"
+    pass "Ready pod found: ${POD}"
 else
-    fail "No running controller pod found"
+    # Even if not Ready, grab any running pod for the port-forward checks.
+    # It may still respond if Boundary is up but the probe hasn't passed yet.
+    POD=$(kubectl get pods \
+        -n "${BOUNDARY_NAMESPACE}" \
+        --context "${KUBE_CONTEXT}" \
+        -l "app.kubernetes.io/name=boundary-controller,app.kubernetes.io/component=controller" \
+        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+    fail "No ready controller pod found${POD:+ (attempting checks against ${POD} anyway)}"
 fi
 
 # ---------------------------------------------------------------------------
@@ -359,6 +431,7 @@ else
         --context "${KUBE_CONTEXT}" \
         "pod/${POD}" 19203:9203 >/dev/null 2>&1 &
     PF_OPS_PID=$!
+    sleep 2  # allow the port-forward tunnel to be established before curling
 
     OPS_STATUS=""
     for _ in $(seq 1 30); do
@@ -396,6 +469,7 @@ else
         --context "${KUBE_CONTEXT}" \
         "pod/${POD}" 19200:9200 >/dev/null 2>&1 &
     PF_API_PID=$!
+    sleep 2  # allow the port-forward tunnel to be established before curling
 
     API_HTTP_CODE="000"
     for _ in $(seq 1 30); do
