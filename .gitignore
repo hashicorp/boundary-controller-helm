@@ -37,3 +37,7 @@ tests/integration/terraform/gcp/.terraform/
 tests/integration/terraform/gcp/.terraform.lock.hcl
 tests/integration/terraform/gcp/terraform.tfstate
 tests/integration/terraform/gcp/terraform.tfstate.backup
+tests/integration/terraform/azure/.terraform/
+tests/integration/terraform/azure/.terraform.lock.hcl
+tests/integration/terraform/azure/terraform.tfstate
+tests/integration/terraform/azure/terraform.tfstate.backup

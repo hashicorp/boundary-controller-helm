@@ -10,6 +10,7 @@
 .PHONY: kind-matrix-test
 .PHONY: eks-setup eks-apply eks-db-init-recovery eks-test eks-full eks-destroy
 .PHONY: gke-setup gke-apply gke-db-init-recovery gke-test gke-full gke-destroy
+.PHONY: aks-auth-check aks-setup aks-apply aks-db-init-recovery aks-test aks-full aks-destroy
 
 # ================================
 # Help Target
@@ -59,6 +60,17 @@ help:
 	@echo "  make gke-test                - Run gke-integration-test.sh against the provisioned cluster"
 	@echo "  make gke-full                - Full GKE integration workflow (setup + apply + test)"
 	@echo "  make gke-destroy             - Destroy all GKE integration resources via Terraform"
+	@echo "  make eks-destroy             - Uninstall EKS Helm release only (default)"
+	@echo "  make eks-destroy DESTROY_EKS_RESOURCES=true - Also destroy EKS infra via Terraform"
+	@echo ""
+	@echo "AKS Integration Testing targets:"
+	@echo "  make aks-setup               - Initialise Terraform for AKS integration tests"
+	@echo "  make aks-apply               - Provision AKS cluster and deploy chart via Terraform"
+	@echo "  make aks-db-init-recovery    - Reinstall Helm release only when controller reports uninitialized DB"
+	@echo "  make aks-test                - Run aks-integration-test.sh against the provisioned AKS cluster"
+	@echo "  make aks-full                - Full AKS integration workflow (setup + apply + test)"
+	@echo "  make aks-destroy             - Uninstall AKS Helm release only (default)"
+	@echo "  make aks-destroy DESTROY_AKS_RESOURCES=true - Also destroy AKS infra via Terraform"
 	@echo "================================"
 
 # ================================
@@ -501,6 +513,7 @@ kind-matrix-test:
 # ================================
 
 INTEGRATION_DIR := tests/integration/terraform/aws
+AKS_INTEGRATION_DIR := tests/integration/terraform/azure
 INTEGRATION_ENV := tests/integration/.env
 
 # Load .env if it exists
@@ -604,15 +617,185 @@ eks-full:
 	@echo ""
 	@echo "✅ EKS integration workflow completed successfully"
 	@echo ""
-	@echo "To destroy resources: make eks-destroy"
+	@echo "To uninstall only Helm release: make eks-destroy"
+	@echo "To destroy EKS infra as well: make eks-destroy DESTROY_EKS_RESOURCES=true"
 	@echo ""
 
 eks-destroy:
 	@echo "================================"
 	@echo "Destroying EKS Integration Resources"
 	@echo "================================"
-	@terraform -chdir=$(INTEGRATION_DIR) destroy -auto-approve
-	@echo "✅ All EKS integration resources destroyed"
+	@EKS_NAME="$${TF_VAR_eks_cluster_name:-boundary-controller-cluster}"; \
+	REGION="$${AWS_REGION:-$${TF_VAR_aws_region:-us-east-1}}"; \
+	REL_NAME="$${HELM_RELEASE:-boundary-controller}"; \
+	NS_NAME="$${BOUNDARY_NAMESPACE:-boundary}"; \
+	KCTX="eks-$$EKS_NAME"; \
+	if command -v aws >/dev/null 2>&1; then \
+		aws eks update-kubeconfig --region "$$REGION" --name "$$EKS_NAME" --alias "$$KCTX" >/dev/null 2>&1 || true; \
+	fi; \
+	if helm status "$$REL_NAME" --namespace "$$NS_NAME" --kube-context "$$KCTX" >/dev/null 2>&1; then \
+		helm uninstall "$$REL_NAME" --namespace "$$NS_NAME" --kube-context "$$KCTX"; \
+		echo "✅ EKS Helm release '$$REL_NAME' uninstalled"; \
+	else \
+		echo "ℹ️  Helm release '$$REL_NAME' not found in namespace '$$NS_NAME' (context: $$KCTX)"; \
+	fi
+	@if [ "$${DESTROY_EKS_RESOURCES:-false}" = "true" ]; then \
+		echo "--- DESTROY_EKS_RESOURCES=true: destroying EKS infrastructure via Terraform ---"; \
+		terraform -chdir=$(INTEGRATION_DIR) destroy -auto-approve; \
+		echo "✅ All EKS integration resources destroyed"; \
+	else \
+		echo "ℹ️  EKS infrastructure preserved"; \
+		echo "ℹ️  Set DESTROY_EKS_RESOURCES=true to destroy EKS resources as well"; \
+	fi
+	@echo ""
+
+aks-test:
+	@echo "================================"
+	@echo "Running AKS Integration Tests"
+	@echo "================================"
+	@AKS_NAME="$${AKS_CLUSTER_NAME:-$${TF_VAR_aks_cluster_name:-}}"; \
+	RG_NAME="$${AKS_RESOURCE_GROUP:-$${TF_VAR_resource_group_name:-}}"; \
+	[ -n "$$AKS_NAME" ] || (echo "❌ AKS cluster name is not set (AKS_CLUSTER_NAME or TF_VAR_aks_cluster_name)"; exit 1); \
+	[ -n "$$RG_NAME" ]  || (echo "❌ AKS resource group is not set (AKS_RESOURCE_GROUP or TF_VAR_resource_group_name)"; exit 1); \
+	bash tests/integration/aks-integration-test.sh \
+		--cluster-name "$$AKS_NAME" \
+		--resource-group "$$RG_NAME" \
+		--subscription-id "$${AZURE_SUBSCRIPTION_ID:-$${TF_VAR_azure_subscription_id:-}}" \
+		--namespace "$${BOUNDARY_NAMESPACE:-boundary}" \
+		--release "$${HELM_RELEASE:-boundary-controller}" \
+		--timeout "$${TIMEOUT:-300}" \
+		$$( [ "$${SKIP_API:-false}" = "true" ] && echo --skip-api )
+	@echo ""
+
+aks-auth-check:
+	@echo "Checking Azure CLI authentication..."
+	@command -v az >/dev/null 2>&1 || (echo "❌ az CLI not found. Install from https://learn.microsoft.com/cli/azure/install-azure-cli"; exit 1)
+	@TENANT="$${AZURE_TENANT_ID:-$${TF_VAR_azure_tenant_id:-}}"; \
+	if [ -z "$$TENANT" ]; then \
+		TENANT=$$(az account show --query tenantId -o tsv 2>/dev/null || true); \
+	fi; \
+	if ! az account show >/dev/null 2>&1 || \
+	   ! az account get-access-token --resource-type arm >/dev/null 2>&1 || \
+	   ! az account get-access-token --scope "https://graph.microsoft.com/.default" >/dev/null 2>&1; then \
+		echo "❌ Azure CLI authentication is missing or expired"; \
+		echo "Interactive authentication must be performed manually (not inside this script)."; \
+		if [ -n "$$TENANT" ]; then \
+			echo "Please run Azure login manually for tenant: $$TENANT"; \
+		else \
+			echo "Please run Azure login manually in your terminal."; \
+		fi; \
+		exit 1; \
+	fi
+	@echo "✅ Azure CLI is authenticated"
+
+aks-setup: aks-auth-check
+	@echo "================================"
+	@echo "Initialising Terraform (AKS Integration)"
+	@echo "================================"
+	@command -v terraform >/dev/null 2>&1 || (echo "❌ terraform not found. Install from https://developer.hashicorp.com/terraform/downloads"; exit 1)
+	@[ -f "$(INTEGRATION_ENV)" ] || (echo "❌ $(INTEGRATION_ENV) not found. Copy tests/integration/.env.example to tests/integration/.env and fill in your values."; exit 1)
+	@terraform -chdir=$(AKS_INTEGRATION_DIR) init
+	@echo "✅ Terraform initialised"
+	@echo ""
+
+aks-apply: aks-setup aks-auth-check
+	@echo "================================"
+	@echo "Provisioning AKS Cluster + Helm Install"
+	@echo "================================"
+	@[ -n "$${TF_VAR_boundary_license}" ]       || (echo "❌ TF_VAR_boundary_license is not set in $(INTEGRATION_ENV)"; exit 1)
+	@[ -n "$${TF_VAR_boundary_admin_password}" ] || (echo "❌ TF_VAR_boundary_admin_password is not set in $(INTEGRATION_ENV)"; exit 1)
+	@echo ""
+	@echo "--- Step 1/3: Bootstrap AKS control plane resources ---"
+	@terraform -chdir=$(AKS_INTEGRATION_DIR) apply -auto-approve \
+		-target=azurerm_resource_group.this \
+		-target=azurerm_kubernetes_cluster.this
+	@echo "✅ AKS control plane bootstrap ready"
+	@echo ""
+	@echo "--- Updating kubeconfig ---"
+	@az account show >/dev/null 2>&1 || (echo "❌ Not logged into Azure CLI. Run: az login"; exit 1)
+	@if [ -n "$${AZURE_SUBSCRIPTION_ID:-$${TF_VAR_azure_subscription_id:-$${AKS_SUBSCRIPTION_ID:-}}}" ]; then \
+		az account set --subscription "$${AZURE_SUBSCRIPTION_ID:-$${TF_VAR_azure_subscription_id:-$${AKS_SUBSCRIPTION_ID:-}}}"; \
+	fi
+	@az aks get-credentials \
+		--resource-group "$${AKS_RESOURCE_GROUP:-$${TF_VAR_resource_group_name:-rg-boundary-controller-aks}}" \
+		--name "$${AKS_CLUSTER_NAME:-$${TF_VAR_aks_cluster_name:-boundary-controller-aks}}" \
+		--overwrite-existing \
+		--context "aks-$${AKS_CLUSTER_NAME:-$${TF_VAR_aks_cluster_name:-boundary-controller-aks}}"
+	@echo "✅ kubeconfig updated"
+	@echo ""
+	@echo "--- Step 2/3: Full Terraform apply (Kubernetes + Helm) ---"
+	@terraform -chdir=$(AKS_INTEGRATION_DIR) apply -auto-approve
+	@echo "✅ Full Terraform apply completed"
+	@echo ""
+	@echo "--- Step 3/3: Verify post-kubeconfig state ---"
+	@$(MAKE) aks-db-init-recovery
+	@echo "✅ Terraform apply complete (infrastructure, PostgreSQL, and Helm chart)"
+	@echo ""
+
+aks-db-init-recovery:
+	@echo "--- Optional recovery: checking for DB init miss ---"
+	@KCTX="aks-$${AKS_CLUSTER_NAME:-$${TF_VAR_aks_cluster_name:-boundary-controller-aks}}"; \
+	POD=$$(kubectl get pods -n "$${BOUNDARY_NAMESPACE:-boundary}" --context "$$KCTX" \
+		-l "app.kubernetes.io/name=boundary-controller,app.kubernetes.io/component=controller" \
+		-o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true); \
+	if [ -z "$$POD" ]; then \
+		echo "ℹ️  No controller pod yet; skipping DB-init recovery check"; \
+		exit 0; \
+	fi; \
+	LOGS=$$(kubectl logs -n "$${BOUNDARY_NAMESPACE:-boundary}" --context "$$KCTX" "$$POD" --previous 2>/dev/null || \
+		kubectl logs -n "$${BOUNDARY_NAMESPACE:-boundary}" --context "$$KCTX" "$$POD" 2>/dev/null || true); \
+	if echo "$$LOGS" | grep -qi "database has not been initialized"; then \
+		echo "⚠️  Detected uninitialized Boundary DB. Replacing Helm release to re-run pre-install init hooks..."; \
+		terraform -chdir=$(AKS_INTEGRATION_DIR) apply -auto-approve -replace=helm_release.boundary_controller; \
+		echo "✅ Recovery apply completed"; \
+	else \
+		echo "✅ DB-init recovery not needed"; \
+	fi
+
+aks-full:
+	@echo "================================"
+	@echo "Full AKS Integration Workflow"
+	@echo "================================"
+	@$(MAKE) aks-apply
+	@$(MAKE) aks-test
+	@echo ""
+	@echo "✅ AKS integration workflow completed successfully"
+	@echo ""
+	@echo "To uninstall only Helm release: make aks-destroy"
+	@echo "To destroy AKS infra as well: make aks-destroy DESTROY_AKS_RESOURCES=true"
+	@echo ""
+
+aks-destroy:
+	@echo "================================"
+	@echo "Destroying AKS Integration Resources"
+	@echo "================================"
+	@AKS_NAME="$${AKS_CLUSTER_NAME:-$${TF_VAR_aks_cluster_name:-}}"; \
+	RG_NAME="$${AKS_RESOURCE_GROUP:-$${TF_VAR_resource_group_name:-}}"; \
+	REL_NAME="$${HELM_RELEASE:-boundary-controller}"; \
+	NS_NAME="$${BOUNDARY_NAMESPACE:-boundary}"; \
+	KCTX="aks-$$AKS_NAME"; \
+	if [ -n "$$AKS_NAME" ] && [ -n "$$RG_NAME" ]; then \
+		if az account show >/dev/null 2>&1; then \
+			if [ -n "$${AZURE_SUBSCRIPTION_ID:-$${TF_VAR_azure_subscription_id:-$${AKS_SUBSCRIPTION_ID:-}}}" ]; then \
+				az account set --subscription "$${AZURE_SUBSCRIPTION_ID:-$${TF_VAR_azure_subscription_id:-$${AKS_SUBSCRIPTION_ID:-}}}" >/dev/null 2>&1 || true; \
+			fi; \
+			az aks get-credentials --resource-group "$$RG_NAME" --name "$$AKS_NAME" --overwrite-existing --context "$$KCTX" >/dev/null 2>&1 || true; \
+		fi; \
+	fi; \
+	if helm status "$$REL_NAME" --namespace "$$NS_NAME" --kube-context "$$KCTX" >/dev/null 2>&1; then \
+		helm uninstall "$$REL_NAME" --namespace "$$NS_NAME" --kube-context "$$KCTX"; \
+		echo "✅ AKS Helm release '$$REL_NAME' uninstalled"; \
+	else \
+		echo "ℹ️  Helm release '$$REL_NAME' not found in namespace '$$NS_NAME' (context: $$KCTX)"; \
+	fi
+	@if [ "$${DESTROY_AKS_RESOURCES:-false}" = "true" ]; then \
+		echo "--- DESTROY_AKS_RESOURCES=true: destroying AKS infrastructure via Terraform ---"; \
+		terraform -chdir=$(AKS_INTEGRATION_DIR) destroy -auto-approve; \
+		echo "✅ All AKS integration resources destroyed"; \
+	else \
+		echo "ℹ️  AKS infrastructure preserved"; \
+		echo "ℹ️  Set DESTROY_AKS_RESOURCES=true to destroy AKS resources as well"; \
+	fi
 	@echo ""
 
 # ================================

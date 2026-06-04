@@ -1,25 +1,25 @@
 #!/bin/bash
 # Copyright IBM Corp. 2026
 #
-# eks-integration-test.sh
+# aks-integration-test.sh
 # ---------------------------------------------------------------------------
 # Validates that the boundary-controller Helm chart is correctly installed
-# and active on an EKS cluster provisioned by the Terraform in this directory.
+# and active on an AKS cluster.
 #
 # Usage:
-#   ./eks-integration-test.sh [OPTIONS]
+#   ./aks-integration-test.sh [OPTIONS]
 #
 # Options:
-#   --cluster-name  NAME        EKS cluster name  (or set EKS_CLUSTER_NAME)
-#   --region        REGION      AWS region         (or set AWS_REGION, default: us-east-1)
-#   --namespace     NAMESPACE   K8s namespace      (or set BOUNDARY_NAMESPACE, default: boundary)
-#   --release       RELEASE     Helm release name  (or set HELM_RELEASE, default: boundary-controller)
-#   --timeout       SECONDS     kubectl wait timeout (default: 300)
-#   --skip-api                  Skip API / auth endpoint tests
-#   --skip-kms                  Skip AWS KMS connectivity check
+#   --cluster-name       NAME      AKS cluster name (or set AKS_CLUSTER_NAME)
+#   --resource-group     NAME      Azure resource group (or set AKS_RESOURCE_GROUP)
+#   --subscription-id    ID        Azure subscription id (or set AZURE_SUBSCRIPTION_ID)
+#   --namespace          NAME      K8s namespace (or set BOUNDARY_NAMESPACE, default: boundary)
+#   --release            NAME      Helm release name (or set HELM_RELEASE, default: boundary-controller)
+#   --timeout            SECONDS   kubectl wait timeout (default: 300)
+#   --skip-api                     Skip API / ops endpoint tests
 #
 # Prerequisites:
-#   kubectl, helm, aws CLI, curl, python3
+#   kubectl, helm, az CLI, curl, python3
 # ---------------------------------------------------------------------------
 
 set -euo pipefail
@@ -65,43 +65,48 @@ trap _cleanup EXIT
 # ---------------------------------------------------------------------------
 # Defaults / argument parsing
 # ---------------------------------------------------------------------------
-EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
-AWS_REGION="${AWS_REGION:-us-east-1}"
+AKS_CLUSTER_NAME="${AKS_CLUSTER_NAME:-}"
+AKS_RESOURCE_GROUP="${AKS_RESOURCE_GROUP:-}"
+AZURE_SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID:-}"
 BOUNDARY_NAMESPACE="${BOUNDARY_NAMESPACE:-boundary}"
 HELM_RELEASE="${HELM_RELEASE:-boundary-controller}"
 TIMEOUT="${TIMEOUT:-300}"
 SKIP_API="${SKIP_API:-false}"
-SKIP_KMS="${SKIP_KMS:-false}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --cluster-name) EKS_CLUSTER_NAME="$2"; shift 2 ;;
-        --region)       AWS_REGION="$2";       shift 2 ;;
-        --namespace)    BOUNDARY_NAMESPACE="$2"; shift 2 ;;
-        --release)      HELM_RELEASE="$2";     shift 2 ;;
-        --timeout)      TIMEOUT="$2";          shift 2 ;;
-        --skip-api)     SKIP_API="true";       shift ;;
-        --skip-kms)     SKIP_KMS="true";       shift ;;
+        --cluster-name)    AKS_CLUSTER_NAME="$2";      shift 2 ;;
+        --resource-group)  AKS_RESOURCE_GROUP="$2";    shift 2 ;;
+        --subscription-id) AZURE_SUBSCRIPTION_ID="$2"; shift 2 ;;
+        --namespace)       BOUNDARY_NAMESPACE="$2";    shift 2 ;;
+        --release)         HELM_RELEASE="$2";          shift 2 ;;
+        --timeout)         TIMEOUT="$2";               shift 2 ;;
+        --skip-api)        SKIP_API="true";            shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
 
-if [ -z "${EKS_CLUSTER_NAME}" ]; then
-    echo "ERROR: --cluster-name (or EKS_CLUSTER_NAME env var) is required."
+if [ -z "${AKS_CLUSTER_NAME}" ]; then
+    echo "ERROR: --cluster-name (or AKS_CLUSTER_NAME env var) is required."
     exit 1
 fi
 
-echo -e "\n${BOLD}Boundary Controller — EKS Installation Validation${NC}"
-echo    "  Cluster  : ${EKS_CLUSTER_NAME}"
-echo    "  Region   : ${AWS_REGION}"
-echo    "  Namespace: ${BOUNDARY_NAMESPACE}"
-echo    "  Release  : ${HELM_RELEASE}"
-echo    "  Timeout  : ${TIMEOUT}s"
+if [ -z "${AKS_RESOURCE_GROUP}" ]; then
+    echo "ERROR: --resource-group (or AKS_RESOURCE_GROUP env var) is required."
+    exit 1
+fi
+
+echo -e "\n${BOLD}Boundary Controller — AKS Installation Validation${NC}"
+echo    "  Cluster      : ${AKS_CLUSTER_NAME}"
+echo    "  ResourceGroup: ${AKS_RESOURCE_GROUP}"
+echo    "  Namespace    : ${BOUNDARY_NAMESPACE}"
+echo    "  Release      : ${HELM_RELEASE}"
+echo    "  Timeout      : ${TIMEOUT}s"
 
 # Section 1: Prerequisites
 section "1. Prerequisites..."
 
-for cmd in kubectl helm aws curl python3; do
+for cmd in kubectl helm az curl python3; do
     if command -v "${cmd}" >/dev/null 2>&1; then
         pass "'${cmd}' is available"
     else
@@ -109,20 +114,30 @@ for cmd in kubectl helm aws curl python3; do
     fi
 done
 
-# Section 2: EKS cluster connectivity
-section "2. EKS Cluster Connectivity..."
+# Section 2: AKS cluster connectivity
+section "2. AKS Cluster Connectivity..."
 
-info "Updating kubeconfig for cluster '${EKS_CLUSTER_NAME}'..."
-if aws eks update-kubeconfig \
-        --region "${AWS_REGION}" \
-        --name "${EKS_CLUSTER_NAME}" \
-        --alias "eks-${EKS_CLUSTER_NAME}" >/dev/null 2>&1; then
-    pass "kubeconfig updated"
-else
-    fail "Failed to update kubeconfig — check AWS credentials and cluster name"
+if [ -n "${AZURE_SUBSCRIPTION_ID}" ]; then
+    info "Setting Azure subscription '${AZURE_SUBSCRIPTION_ID}'..."
+    if az account set --subscription "${AZURE_SUBSCRIPTION_ID}" >/dev/null 2>&1; then
+        pass "Azure subscription set"
+    else
+        fail "Failed to set Azure subscription '${AZURE_SUBSCRIPTION_ID}'"
+    fi
 fi
 
-KUBE_CONTEXT="eks-${EKS_CLUSTER_NAME}"
+KUBE_CONTEXT="aks-${AKS_CLUSTER_NAME}"
+
+info "Updating kubeconfig for AKS cluster '${AKS_CLUSTER_NAME}'..."
+if az aks get-credentials \
+        --resource-group "${AKS_RESOURCE_GROUP}" \
+        --name "${AKS_CLUSTER_NAME}" \
+        --overwrite-existing \
+        --context "${KUBE_CONTEXT}" >/dev/null 2>&1; then
+    pass "kubeconfig updated"
+else
+    fail "Failed to update kubeconfig - check Azure login, cluster name, and resource group"
+fi
 
 info "Checking cluster API server reachability..."
 if kubectl cluster-info --context "${KUBE_CONTEXT}" >/dev/null 2>&1; then
@@ -169,7 +184,6 @@ info "Revision: ${HELM_REVISION}"
 # Section 5: Kubernetes Resources
 section "5. Kubernetes Resources..."
 
-# Deployment
 if kubectl get deployment "${HELM_RELEASE}" \
         -n "${BOUNDARY_NAMESPACE}" \
         --context "${KUBE_CONTEXT}" >/dev/null 2>&1; then
@@ -178,7 +192,6 @@ else
     fail "Deployment '${HELM_RELEASE}' not found"
 fi
 
-# ConfigMap
 if kubectl get configmap \
         -n "${BOUNDARY_NAMESPACE}" \
         --context "${KUBE_CONTEXT}" \
@@ -188,7 +201,6 @@ else
     warn "No ConfigMap with label app.kubernetes.io/name=boundary-controller found"
 fi
 
-# Secret
 if kubectl get secret boundary-controller-secrets \
         -n "${BOUNDARY_NAMESPACE}" \
         --context "${KUBE_CONTEXT}" >/dev/null 2>&1; then
@@ -197,7 +209,6 @@ else
     fail "Secret 'boundary-controller-secrets' not found"
 fi
 
-# ServiceAccount
 SA_NAME=$(kubectl get serviceaccount \
     -n "${BOUNDARY_NAMESPACE}" \
     --context "${KUBE_CONTEXT}" \
@@ -206,21 +217,20 @@ SA_NAME=$(kubectl get serviceaccount \
 
 if [ -n "${SA_NAME}" ]; then
     pass "ServiceAccount '${SA_NAME}' exists"
-    # Check IRSA annotation
-    IRSA_ARN=$(kubectl get serviceaccount "${SA_NAME}" \
+    # Azure Workload Identity uses a client-id annotation when configured.
+    AZWI_CLIENT_ID=$(kubectl get serviceaccount "${SA_NAME}" \
         -n "${BOUNDARY_NAMESPACE}" \
         --context "${KUBE_CONTEXT}" \
-        -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}' 2>/dev/null || echo "")
-    if [ -n "${IRSA_ARN}" ]; then
-        pass "IRSA annotation present: ${IRSA_ARN}"
+        -o jsonpath='{.metadata.annotations.azure\.workload\.identity/client-id}' 2>/dev/null || echo "")
+    if [ -n "${AZWI_CLIENT_ID}" ]; then
+        pass "Azure Workload Identity annotation present: ${AZWI_CLIENT_ID}"
     else
-        warn "IRSA annotation 'eks.amazonaws.com/role-arn' not set on ServiceAccount"
+        warn "Azure Workload Identity annotation 'azure.workload.identity/client-id' not set on ServiceAccount"
     fi
 else
     fail "No ServiceAccount with label app.kubernetes.io/name=boundary-controller found"
 fi
 
-# PodDisruptionBudget
 if kubectl get pdb \
         -n "${BOUNDARY_NAMESPACE}" \
         --context "${KUBE_CONTEXT}" \
@@ -230,15 +240,12 @@ else
     warn "No PodDisruptionBudget found (may be disabled in values)"
 fi
 
-# Services
 for svc_purpose in api cluster; do
-    # Primary lookup by chart naming convention: <release>-api / <release>-cluster.
     SVC=$(kubectl get svc "${HELM_RELEASE}-${svc_purpose}" \
         -n "${BOUNDARY_NAMESPACE}" \
         --context "${KUBE_CONTEXT}" \
         -o jsonpath='{.metadata.name}' 2>/dev/null || echo "")
 
-    # Backward-compatibility fallback for older label conventions.
     if [ -z "${SVC}" ]; then
         SVC=$(kubectl get svc \
             -n "${BOUNDARY_NAMESPACE}" \
@@ -269,7 +276,6 @@ else
     fail "Deployment did not become available within ${TIMEOUT}s"
 fi
 
-# Replica counts
 DESIRED=$(kubectl get deployment "${HELM_RELEASE}" \
     -n "${BOUNDARY_NAMESPACE}" \
     --context "${KUBE_CONTEXT}" \
@@ -286,7 +292,6 @@ else
     fail "Only ${READY}/${DESIRED} replica(s) ready"
 fi
 
-# Running pod
 POD=$(kubectl get pods \
     -n "${BOUNDARY_NAMESPACE}" \
     --context "${KUBE_CONTEXT}" \
@@ -300,38 +305,8 @@ else
     fail "No running controller pod found"
 fi
 
-
-# Section 7: AWS KMS connectivity
-section "7. AWS KMS Connectivity..."
-
-if [ "${SKIP_KMS}" = "true" ]; then
-    warn "KMS check skipped (--skip-kms)"
-else
-    for alias in alias/boundary-root alias/boundary-recovery alias/boundary-worker-auth; do
-        KEY_ID=$(aws kms describe-key \
-            --key-id "${alias}" \
-            --region "${AWS_REGION}" \
-            --query 'KeyMetadata.KeyId' \
-            --output text 2>/dev/null || echo "")
-        if [ -n "${KEY_ID}" ]; then
-            KEY_STATE=$(aws kms describe-key \
-                --key-id "${alias}" \
-                --region "${AWS_REGION}" \
-                --query 'KeyMetadata.KeyState' \
-                --output text 2>/dev/null || echo "Unknown")
-            if [ "${KEY_STATE}" = "Enabled" ]; then
-                pass "KMS key '${alias}' is Enabled (${KEY_ID})"
-            else
-                fail "KMS key '${alias}' state: ${KEY_STATE} (expected: Enabled)"
-            fi
-        else
-            fail "KMS key '${alias}' not found in region ${AWS_REGION}"
-        fi
-    done
-fi
-
-# Section 8: Controller health (port-forward to ops endpoint)
-section "8. Controller Ops Health Endpoint..."
+# Section 7: Controller health (port-forward to ops endpoint)
+section "7. Controller Ops Health Endpoint..."
 
 if [ "${SKIP_API}" = "true" ]; then
     warn "Ops health check skipped (--skip-api)"
@@ -366,8 +341,8 @@ else
     fi
 fi
 
-# Section 9: Controller API endpoint reachability
-section "9. Controller API Endpoint..."
+# Section 8: Controller API endpoint reachability
+section "8. Controller API Endpoint..."
 
 if [ "${SKIP_API}" = "true" ]; then
     warn "API endpoint check skipped (--skip-api)"
@@ -401,7 +376,6 @@ else
         fail "Controller API did not respond as expected (HTTP $(http_code_color "${API_HTTP_CODE}"))"
     fi
 fi
-
 
 # Summary
 echo ""
