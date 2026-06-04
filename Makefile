@@ -137,7 +137,6 @@ chart-test:
 		$(if $(HELM_TEST_KUBE_CONTEXT),--kube-context $(HELM_TEST_KUBE_CONTEXT),) \
 		--logs
 	@echo "✅ Helm chart tests passed!"
-	@echo "✅ Helm chart tests passed!"
 
 # ================================
 # CI/CD Setup Targets
