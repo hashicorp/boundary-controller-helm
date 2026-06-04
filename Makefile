@@ -132,10 +132,11 @@ chart-test:
 	@echo "Running Helm Chart Tests"
 	@echo "================================"
 	@command -v helm >/dev/null 2>&1 || (echo "❌ Helm not found"; exit 1)
-	@helm test $(HELM_TEST_RELEASE) \
+	@set -o pipefail; helm test $(HELM_TEST_RELEASE) \
 		--namespace $(HELM_TEST_NAMESPACE) \
 		$(if $(HELM_TEST_KUBE_CONTEXT),--kube-context $(HELM_TEST_KUBE_CONTEXT),) \
-		--logs
+		--logs 2>&1 \
+		| grep -E '^(TEST SUITE|Last Started|Last Completed|Phase|POD LOGS|Health endpoint|Error|FAILED)'
 	@echo "✅ Helm chart tests passed!"
 
 # ================================
@@ -424,11 +425,8 @@ acceptance-helm:
 		--create-namespace \
 		--kube-context kind-acceptance \
 		--values tests/acceptance/test-values.yaml \
-		--timeout 10m
+		--timeout 10m >/dev/null
 	@echo "✅ Helm chart installed successfully"
-	@echo ""
-	@echo "Deployed resources:"
-	@kubectl get all -n boundary --context kind-acceptance
 	@echo ""
 	@echo "Waiting for all controller replicas to be ready..."
 	@kubectl wait --for=condition=available --timeout=10m \

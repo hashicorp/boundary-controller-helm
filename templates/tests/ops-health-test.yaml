@@ -50,7 +50,6 @@ spec:
         - |
           SCHEME="{{ if .Values.tls.disabled }}http{{ else }}https{{ end }}"
           URL="${SCHEME}://{{ include "boundary.controller.opsServiceName" . }}.{{ include "boundary.namespace" . }}.svc.cluster.local:{{ .Values.controller.service.ops.port }}/health"
-          echo "Checking ${URL}"
 
           TLS_ARGS=""
           if [ "${SCHEME}" = "https" ]; then
