@@ -67,13 +67,6 @@ spec:
               value: {{ .Values.bootstrapAdmin.accountResourceName | quote }}
             - name: BOUNDARY_ROLE_NAME
               value: {{ .Values.bootstrapAdmin.roleName | quote }}
-            {{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" }}
-            - name: BOUNDARY_PG_MIGRATION_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "boundary.controller.secretName" . }}
-                  key: {{ .Values.secretRefs.keys.migrationUrl }}
-            {{- end }}
           command:
             - "sh"
             - "/etc/boundary/bootstrap-admin.sh"

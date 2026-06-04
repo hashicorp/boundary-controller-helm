@@ -7,6 +7,7 @@ This document describes the test suite for the Boundary Controller Helm chart.
 The chart includes comprehensive test coverage for validation before deployment:
 
 - **Unit Tests**: Helm template rendering and validation checks via [`helm-unittest`](https://github.com/helm-unittest/helm-unittest)
+- **Chart Tests**: Helm `test` hook resources that run inside a live Kubernetes cluster
 - **Acceptance Tests**: Local KIND cluster tests that validate controller functionality
 
 ## Table of Contents
@@ -18,7 +19,8 @@ The chart includes comprehensive test coverage for validation before deployment:
 - [Unit Tests](#unit-tests)
 	- [Quick Unit Test Command](#quick-unit-test-command)
 	- [Unit Coverage Matrix](#unit-coverage-matrix)
-	- [Known Unit-Test Gap](#known-unit-test-gap)
+- [Chart Tests](#chart-tests)
+	- [Quick Chart Test Command](#quick-chart-test-command)
 - [Acceptance Tests](#acceptance-tests)
 	- [Quick Test Commands](#quick-test-commands)
 	- [Setup](#setup)
@@ -71,6 +73,14 @@ Acceptance tests require:
 - KIND for local cluster testing
 - `.env` file with Boundary credentials
 
+### Chart Test Prerequisites
+
+Chart tests (`make chart-test`) require:
+
+- `helm` CLI installed
+- A release already installed in a live cluster
+- Access to the target namespace/context used by the installed release
+
 ## Recommended Test Flow
 
 Use the test suite in this order when validating chart changes:
@@ -78,13 +88,15 @@ Use the test suite in this order when validating chart changes:
 1. `make unit-test`
 2. `make acceptance-setup`
 3. `make acceptance-helm`
-4. `make acceptance-test`
+4. `make chart-test`
+5. `make acceptance-test`
 
 What each step does:
 
 - `make unit-test`: validates Helm template rendering and chart logic without installing anything into a cluster.
 - `make acceptance-setup`: installs acceptance dependencies and creates the KIND cluster.
 - `make acceptance-helm`: deploys PostgreSQL, creates required secrets, runs `helm upgrade --install`, and waits for the chart installation to become ready on KIND.
+- `make chart-test`: runs Helm `test` hook resources against the installed release and streams test pod logs.
 - `make acceptance-test`: runs post-install runtime checks against the deployed release.
 
 If you want the complete cluster-backed flow in one command, run:
@@ -131,9 +143,30 @@ This matrix maps major values groups to the current unit test suites.
 | `terminationGracePeriodSeconds` | deployment | [tests/unit/deployment_test.yaml](../tests/unit/deployment_test.yaml) |
 | `controller.config` validation behavior | validate helper | [tests/unit/validate_test.yaml](../tests/unit/validate_test.yaml), [tests/unit/configmap_test.yaml](../tests/unit/configmap_test.yaml) |
 
-### Known Unit-Test Gap
+## Chart Tests
 
-`lookup`-based secret key validation (`secretRefs.validateExisting=true` where the Secret exists but is missing keys) requires live cluster state and is not fully unit-testable with pure `helm-unittest` fixtures.
+The chart now includes Helm test hook resources under `templates/tests/` and can be run with `helm test` after install/upgrade.
+
+### Quick Chart Test Command
+
+Run against the default release/namespace:
+
+```bash
+make chart-test
+```
+
+Override release, namespace, or kube-context when needed:
+
+```bash
+make chart-test \
+	HELM_TEST_RELEASE=boundary-controller \
+	HELM_TEST_NAMESPACE=boundary \
+	HELM_TEST_KUBE_CONTEXT=kind-acceptance
+```
+
+Current Helm test coverage:
+
+- Ops service health endpoint reachable from inside the cluster (`/health` returns HTTP `200`)
 
 ## Acceptance Tests
 

@@ -48,6 +48,11 @@ k8s_versions() {
 # Configuration and environment setup
 read -ra MATRIX_K8S_VERSIONS <<< "$(k8s_versions)"
 KIND_CLUSTER_NAME="acceptance"
+
+# Ensure the KIND cluster is deleted if the script exits for any reason
+# (normal exit, Ctrl+C, CI cancellation, etc.)
+trap 'cleanup_cluster' EXIT
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHART_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 API_TEST="${SCRIPT_DIR}/controller-api-test.sh"
