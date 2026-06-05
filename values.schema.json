@@ -152,7 +152,7 @@
           "properties": {
             "scheme": {
               "type": "string",
-              "enum": ["HTTP", "HTTPS"]
+              "enum": ["", "HTTP", "HTTPS"]
             }
           },
           "additionalProperties": true
@@ -162,7 +162,7 @@
           "properties": {
             "scheme": {
               "type": "string",
-              "enum": ["HTTP", "HTTPS"]
+              "enum": ["", "HTTP", "HTTPS"]
             }
           },
           "additionalProperties": true

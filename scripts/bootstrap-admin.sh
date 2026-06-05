@@ -21,10 +21,6 @@ if [ -z "${WAIT_TIMEOUT:-}" ]; then
   exit 1
 fi
 
-echo "bootstrap admin username: ${BOUNDARY_ADMIN_USERNAME}"
-echo "BOUNDARY_ADDR: ${BOUNDARY_ADDR}"
-echo "BOUNDARY_RECOVERY_CONFIG: ${BOUNDARY_RECOVERY_CONFIG}"
-
 START_TS=$(date +%s)
 while true; do
   if boundary scopes list -scope-id global -addr "$BOUNDARY_ADDR" -recovery-config "$BOUNDARY_RECOVERY_CONFIG" -format json >/dev/null 2>&1; then
@@ -89,7 +85,6 @@ if [ -z "$USER_ID" ]; then
   echo "$USER_OUTPUT"
   exit 1
 fi
-echo "User ID: $USER_ID"
 
 echo "Creating or fetching password account..."
 ACCOUNT_OUTPUT=$(boundary accounts create password \
@@ -128,7 +123,6 @@ if [ -z "$ACCOUNT_ID" ]; then
   echo "$ACCOUNT_OUTPUT"
   exit 1
 fi
-echo "Account ID: $ACCOUNT_ID"
 
 echo "Linking account to user..."
 boundary users add-accounts \
@@ -158,7 +152,6 @@ if [ -z "$ROLE_ID" ]; then
   echo "$ROLE_OUTPUT"
   exit 1
 fi
-echo "Role ID: $ROLE_ID"
 
 echo "Adding grants to role..."
 boundary roles add-grants \

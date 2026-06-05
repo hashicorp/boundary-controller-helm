@@ -39,6 +39,6 @@ Next steps:
    {{ if .Values.tls.disabled }}http{{ else }}https{{ end }}://<EXTERNAL_ADDRESS>:{{ .Values.controller.service.api.port }}
 
 Note:
-- The liveness and readiness probe schemes are controlled directly by `controller.livenessProbe.scheme` and `controller.readinessProbe.scheme`. Keep them set to HTTP when `tls.disabled=true`, and set them to HTTPS when TLS is enabled.
+- The liveness and readiness probe schemes are auto-derived from `tls.disabled` (HTTPS when TLS is enabled, HTTP when disabled). You can still force an explicit scheme using `controller.livenessProbe.scheme` and `controller.readinessProbe.scheme`.
 
 For more information, visit https://www.boundaryproject.io/

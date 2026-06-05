@@ -51,12 +51,7 @@ spec:
           SCHEME="{{ if .Values.tls.disabled }}http{{ else }}https{{ end }}"
           URL="${SCHEME}://{{ include "boundary.controller.opsServiceName" . }}.{{ include "boundary.namespace" . }}.svc.cluster.local:{{ .Values.controller.service.ops.port }}/health"
 
-          TLS_ARGS=""
-          if [ "${SCHEME}" = "https" ]; then
-            TLS_ARGS="--no-check-certificate"
-          fi
-
-          if ! wget -q -O /tmp/health.out ${TLS_ARGS} "${URL}"; then
+          if ! wget -q -O /tmp/health.out "${URL}"; then
             echo "Health check failed: unable to fetch ${URL}"
             cat /tmp/health.out || true
             exit 1
