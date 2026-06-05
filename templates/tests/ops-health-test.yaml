@@ -1,0 +1,65 @@
+# Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "boundary.name" . }}-helm-test-ops-health
+  namespace: {{ include "boundary.namespace" . }}
+  labels:
+    {{- include "boundary.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/test: helm
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  volumes:
+    - name: tmp
+      emptyDir: {}
+  containers:
+    - name: ops-health
+      image: busybox:1.36
+      imagePullPolicy: IfNotPresent
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 50m
+          memory: 64Mi
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      command:
+        - /bin/sh
+        - -ec
+      args:
+        - |
+          SCHEME="{{ if .Values.tls.disabled }}http{{ else }}https{{ end }}"
+          URL="${SCHEME}://{{ include "boundary.controller.opsServiceName" . }}.{{ include "boundary.namespace" . }}.svc.cluster.local:{{ .Values.controller.service.ops.port }}/health"
+
+          TLS_ARGS=""
+          if [ "${SCHEME}" = "https" ]; then
+            TLS_ARGS="--no-check-certificate"
+          fi
+
+          if ! wget -q -O /tmp/health.out ${TLS_ARGS} "${URL}"; then
+            echo "Health check failed: unable to fetch ${URL}"
+            cat /tmp/health.out || true
+            exit 1
+          fi
+
+          echo "Health endpoint check passed"

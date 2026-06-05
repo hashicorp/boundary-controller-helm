@@ -106,6 +106,8 @@ controller:
     controller {
       name = "boundary-controller"
       description = "Boundary Controller running in Kubernetes"
+      # If controller.service.cluster.type is LoadBalancer, update this to the
+      # external LoadBalancer DNS name or IP on port 9201 after install/upgrade.
       public_cluster_addr = "{{ printf "%s:9201" (include "boundary.controller.clusterServiceName" .) }}"
       license = "env://BOUNDARY_LICENSE"
       database {
@@ -204,9 +206,10 @@ controller:
 
   # Service configuration for API, Cluster, and Ops listeners
   # https://developer.hashicorp.com/boundary/docs/monitor/listeners
+  # Choose service type LoadBalancer or ClusterIP based on requirements.
   service:
     api:
-      type: LoadBalancer  # Change to ClusterIP for internal-only access
+      type: LoadBalancer
       port: 9200
       targetPort: 9200
 
@@ -235,7 +238,7 @@ controller:
 
     # https://developer.hashicorp.com/boundary/docs/monitor/listeners#cluster
     cluster:
-      type: ClusterIP  # Change to LoadBalancer for public access
+      type: ClusterIP
       port: 9201
       targetPort: 9201
       annotations: {}
@@ -352,10 +355,11 @@ serviceAccount:
 # --------------------------------------------------
 
 # PodDisruptionBudget — prevents both replicas being evicted simultaneously
+# Use either minAvailable or maxUnavailable, not both
 podDisruptionBudget:
   enabled: true
   minAvailable: 1
-  # maxUnavailable: 1  # Use either minAvailable or maxUnavailable, not both
+  # maxUnavailable: 1 
 
 # Seconds Kubernetes waits before sending SIGKILL after SIGTERM.
 # Should exceed controller.config graceful_shutdown_wait_duration (default 10s).

@@ -4,13 +4,17 @@
 # ================================
 # PHONY Declarations
 # ================================
-.PHONY: help format deps clean lint test unit-test
+.PHONY: help format deps clean lint test unit-test chart-test
 .PHONY: setup-helm setup-kubeconform setup-trivy setup-kubescape setup-helm-unittest lint-helm-k8s trivy-scan kubescape-scan
 .PHONY: acceptance-setup acceptance-helm acceptance-test acceptance-full acceptance-cleanup
 .PHONY: kind-matrix-test
 .PHONY: eks-setup eks-apply eks-db-init-recovery eks-test eks-full eks-destroy
 .PHONY: gke-setup gke-apply gke-db-init-recovery gke-test gke-full gke-destroy
 .PHONY: aks-auth-check aks-setup aks-apply aks-db-init-recovery aks-test aks-full aks-destroy
+
+HELM_TEST_RELEASE ?= boundary-controller
+HELM_TEST_NAMESPACE ?= boundary
+HELM_TEST_KUBE_CONTEXT ?=
 
 # ================================
 # Help Target
@@ -25,6 +29,7 @@ help:
 	@echo "  make lint              - Run all lints and scans locally (deps + lint + scans)"
 	@echo "  make test              - Run unit tests (alias for unit-test)"
 	@echo "  make unit-test         - Run Helm unit tests with helm-unittest"
+	@echo "  make chart-test        - Run Helm chart tests on a live cluster with helm test"
 	@echo "  make clean             - Clean generated files"
 	@echo ""
 	@echo "CI/CD targets:"
@@ -43,7 +48,7 @@ help:
 	@echo "  make acceptance-test         - Run controller API acceptance tests"
 	@echo "  make acceptance-full         - Full acceptance workflow (setup + helm + test)"
 	@echo "  make acceptance-cleanup      - Delete acceptance KIND cluster and cached KIND binaries"
-	@echo "  make kind-matrix-test        - Run controller-api-test.sh across 2 KIND versions prior to latest"
+	@echo "  make kind-matrix-test        - Run controller-api-test.sh across K8s versions using KIND (requires acceptance-setup)"
 	@echo ""
 	@echo "EKS Integration Testing targets:"
 	@echo "  make eks-setup               - Initialise Terraform for EKS integration tests"
@@ -142,6 +147,17 @@ unit-test:
 	@echo "Running unit tests..."
 	@helm unittest . -f 'tests/unit/*_test.yaml'
 	@echo "✅ Unit tests passed!"
+
+chart-test:
+	@echo "================================"
+	@echo "Running Helm Chart Tests"
+	@echo "================================"
+	@command -v helm >/dev/null 2>&1 || (echo "❌ Helm not found"; exit 1)
+	@helm test $(HELM_TEST_RELEASE) \
+		--namespace $(HELM_TEST_NAMESPACE) \
+		$(if $(HELM_TEST_KUBE_CONTEXT),--kube-context $(HELM_TEST_KUBE_CONTEXT),) \
+		--logs
+	@echo "✅ Helm chart tests passed!"
 
 # ================================
 # CI/CD Setup Targets
@@ -429,11 +445,8 @@ acceptance-helm:
 		--create-namespace \
 		--kube-context kind-acceptance \
 		--values tests/acceptance/test-values.yaml \
-		--timeout 10m
+		--timeout 10m >/dev/null
 	@echo "✅ Helm chart installed successfully"
-	@echo ""
-	@echo "Deployed resources:"
-	@kubectl get all -n boundary --context kind-acceptance
 	@echo ""
 	@echo "Waiting for all controller replicas to be ready..."
 	@kubectl wait --for=condition=available --timeout=10m \

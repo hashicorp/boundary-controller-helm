@@ -57,14 +57,14 @@ The chart uses an existing ServiceAccount and does not create ServiceAccount res
 | Component | Version | 
 | ----- | ----- | 
 | Kubernetes | 1.34 and above |
-| Helm | v3 and above |
+| Helm | v4 |
 | PostgreSQL | 15 and above |
 
 ### Required Resources
 
 Ensure the following exist before installing:
 
- - **Kubernetes Secret** in the same namespace the chart resources are rendered into (the release namespace by default, unless overridden with `.Values.namespace`) containing the database URL credentials and Boundary Enterprise license (add admin credentials when `bootstrapAdmin.enabled=true`). Create it manually or sync it using the [Vault Secrets Operator](https://developer.hashicorp.com/vault/docs/platform/k8s/vso) or the [External Secrets Operator](https://external-secrets.io).
+ - **Kubernetes Secret** in the same namespace the chart resources are rendered into (the release namespace by default, unless overridden with `.Values.namespace`) containing the database URL credentials and Boundary Enterprise license (add admin credentials when `bootstrapAdmin.enabled=true`). The Secret name and key names are operator-defined; if you change them from defaults, update `secretRefs.secretName` and `secretRefs.keys.*` in `values.yaml` to match. Create it manually or sync it using the [Vault Secrets Operator](https://developer.hashicorp.com/vault/docs/platform/k8s/vso) or the [External Secrets Operator](https://external-secrets.io).
 - **PostgreSQL database** reachable from the cluster, with a user that has permission to create tables.
 - **KMS provider** — choose one: Vault Transit (`transit` stanza, requires Vault 1.11+), AWS KMS (`awskms`), GCP Cloud KMS (`gcpckms`), or Azure Key Vault (`azurekeyvault`). Cloud KMS providers require IAM/RBAC permissions granting the controller access to the key.
 - **Kubernetes TLS Secret** containing `tls.crt` and `tls.key` when `tls.disabled=false`.
@@ -89,7 +89,7 @@ Operational implications:
 - `disable_mlock = true` should remain set in the controller configuration when using this deployment model.
 - Sensitive values are not stored in the ConfigMap. They are sourced from an existing Kubernetes Secret via `valueFrom.secretKeyRef` in all containers. That Secret can be populated manually or synced from Vault using the Vault Secrets Operator or External Secrets Operator.
 - The ops Service defaults to `ClusterIP` and is not exposed externally.
-- The cluster Service defaults to `LoadBalancer`; set `controller.service.cluster.type=ClusterIP` for internal-only worker registration.
+- The cluster Service defaults to `ClusterIP` on port `9201` for internal worker registration. Operators can change service types and ports using `controller.service.*` values in `values.yaml`.
 - Secret validation at render time (`secretRefs.validateExisting=true`) catches missing credentials before any resources are created.
 
 ## Installation
@@ -99,6 +99,8 @@ Use this flow when you want to deploy a Boundary controller with this chart.
 ### 1. Create the Kubernetes Secret
 
 Create the Secret that the chart reads sensitive values from. At minimum it must contain the database credentials, migration database credentials (if using `env://BOUNDARY_PG_MIGRATION_URL` in `controller.config`), and enterprise license. Add admin credentials when `bootstrapAdmin.enabled=true` (the default).
+
+The Secret name and key names do not need to use the defaults shown below. Operators can use any Secret name and key names, but must update `secretRefs.secretName` and `secretRefs.keys.*` in `values.yaml` to match.
 
 ```bash
 kubectl create secret generic boundary-controller-secrets \
@@ -244,7 +246,7 @@ At minimum, a usable controller config must include:
 
 - Listener blocks for `api`, `cluster`, and `ops` traffic
 - A `controller` block with `name`, `license`, and `database.url`
-- `public_cluster_addr` so workers can reach the cluster listener
+- `public_cluster_addr` so workers can reach the cluster listener. If `controller.service.cluster.type=LoadBalancer`, set this to the externally reachable LoadBalancer address (DNS name or IP with port `9201`) after the Service is provisioned, then apply an update.
 - At least three KMS stanzas: `root`, `recovery`, and `worker-auth`
 
 Example:
@@ -484,7 +486,7 @@ The table below documents all chart values shipped in `values.yaml`.
 | `controller.service.api.port` | `9200` | Service port for the API listener. |
 | `controller.service.api.targetPort` | `9200` | Container port targeted by the API Service. |
 | `controller.service.api.annotations` | `{}` | Annotations applied to the API Service. Use for cloud load balancer configuration. |
-| `controller.service.cluster.type` | `LoadBalancer` | Service type for the cluster listener. |
+| `controller.service.cluster.type` | `ClusterIP` | Service type for the cluster listener. Operators can override this in `values.yaml` based on requirements. |
 | `controller.service.cluster.port` | `9201` | Service port for the cluster listener. |
 | `controller.service.cluster.targetPort` | `9201` | Container port targeted by the cluster Service. |
 | `controller.service.cluster.annotations` | `{}` | Annotations applied to the cluster Service (9201), typically used for NLB internal or external mode. |
