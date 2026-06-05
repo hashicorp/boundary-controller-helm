@@ -44,33 +44,3 @@ output "helm_release_status" {
   description = "Status of the Helm release."
   value       = helm_release.boundary_controller.status
 }
-
-output "kms_key_ring_id" {
-  description = "Fully-qualified ID of the GCP KMS key ring."
-  value       = google_kms_key_ring.boundary.id
-}
-
-output "kms_root_key_id" {
-  description = "Fully-qualified ID of the Boundary root KMS crypto key."
-  value       = google_kms_crypto_key.root.id
-}
-
-output "kms_recovery_key_id" {
-  description = "Fully-qualified ID of the Boundary recovery KMS crypto key."
-  value       = google_kms_crypto_key.recovery.id
-}
-
-output "kms_worker_auth_key_id" {
-  description = "Fully-qualified ID of the Boundary worker-auth KMS crypto key."
-  value       = google_kms_crypto_key.worker_auth.id
-}
-
-output "gsa_email" {
-  description = "Email address of the GCP IAM service account used by the controller pod."
-  value       = google_service_account.boundary_controller.email
-}
-
-output "service_account_name" {
-  description = "Name of the Kubernetes ServiceAccount used by the controller."
-  value       = kubernetes_service_account_v1.boundary_controller.metadata[0].name
-}

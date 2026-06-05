@@ -43,148 +43,6 @@ resource "kubernetes_namespace_v1" "boundary" {
 }
 
 # ---------------------------------------------------------------------------
-# GCP Cloud KMS — key ring + 3 crypto keys (root / recovery / worker-auth)
-# ---------------------------------------------------------------------------
-
-# Ensure the Cloud KMS API is enabled before creating any KMS resources.
-resource "google_project_service" "cloudkms" {
-  project            = var.gcp_project_id
-  service            = "cloudkms.googleapis.com"
-  disable_on_destroy = false
-}
-
-# GCP API enablement is eventually consistent; wait 60 s for propagation before
-# creating KMS resources to avoid an immediate 403 "API not enabled" error.
-resource "time_sleep" "wait_for_kms_api" {
-  create_duration = "60s"
-  depends_on      = [google_project_service.cloudkms]
-}
-
-# Import the key ring if it already exists (GCP KMS key rings are permanent and
-# cannot be deleted, so re-runs must adopt the existing resource).
-import {
-  to = google_kms_key_ring.boundary
-  id = "projects/${var.gcp_project_id}/locations/${var.kms_location}/keyRings/${var.kms_key_ring_name}"
-}
-
-resource "google_kms_key_ring" "boundary" {
-  name     = var.kms_key_ring_name
-  location = var.kms_location
-  project  = var.gcp_project_id
-
-  depends_on = [time_sleep.wait_for_kms_api]
-}
-
-resource "google_kms_crypto_key" "root" {
-  name     = var.kms_root_key_name
-  key_ring = google_kms_key_ring.boundary.id
-  purpose  = "ENCRYPT_DECRYPT"
-
-  version_template {
-    algorithm = "GOOGLE_SYMMETRIC_ENCRYPTION"
-  }
-
-  lifecycle {
-    # Allow keys to be destroyed when running terraform destroy
-    prevent_destroy = false
-  }
-}
-
-resource "google_kms_crypto_key" "recovery" {
-  name     = var.kms_recovery_key_name
-  key_ring = google_kms_key_ring.boundary.id
-  purpose  = "ENCRYPT_DECRYPT"
-
-  version_template {
-    algorithm = "GOOGLE_SYMMETRIC_ENCRYPTION"
-  }
-
-  lifecycle {
-    prevent_destroy = false
-  }
-}
-
-resource "google_kms_crypto_key" "worker_auth" {
-  name     = var.kms_worker_auth_key_name
-  key_ring = google_kms_key_ring.boundary.id
-  purpose  = "ENCRYPT_DECRYPT"
-
-  version_template {
-    algorithm = "GOOGLE_SYMMETRIC_ENCRYPTION"
-  }
-
-  lifecycle {
-    prevent_destroy = false
-  }
-}
-
-# ---------------------------------------------------------------------------
-# GCP IAM Service Account — controller pod identity via Workload Identity
-# ---------------------------------------------------------------------------
-
-resource "google_service_account" "boundary_controller" {
-  account_id   = var.gsa_name
-  display_name = "Boundary Controller GKE Service Account"
-  project      = var.gcp_project_id
-}
-
-# Grant Encrypter/Decrypter on all three KMS crypto keys
-resource "google_kms_crypto_key_iam_member" "root_access" {
-  crypto_key_id = google_kms_crypto_key.root.id
-  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
-  member        = "serviceAccount:${google_service_account.boundary_controller.email}"
-}
-
-resource "google_kms_crypto_key_iam_member" "recovery_access" {
-  crypto_key_id = google_kms_crypto_key.recovery.id
-  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
-  member        = "serviceAccount:${google_service_account.boundary_controller.email}"
-}
-
-resource "google_kms_crypto_key_iam_member" "worker_auth_access" {
-  crypto_key_id = google_kms_crypto_key.worker_auth.id
-  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
-  member        = "serviceAccount:${google_service_account.boundary_controller.email}"
-}
-
-# Grant Viewer on the key ring so the GSA can call cryptoKeys.get (key-existence
-# check performed by the Boundary KMS plugin before encrypt/decrypt).
-# roles/cloudkms.cryptoKeyEncrypterDecrypter intentionally omits this permission.
-resource "google_kms_key_ring_iam_member" "kms_viewer" {
-  key_ring_id = google_kms_key_ring.boundary.id
-  role        = "roles/cloudkms.viewer"
-  member      = "serviceAccount:${google_service_account.boundary_controller.email}"
-}
-
-# Workload Identity binding: allow the K8s ServiceAccount to impersonate the GCP SA
-resource "google_service_account_iam_member" "workload_identity" {
-  service_account_id = google_service_account.boundary_controller.name
-  role               = "roles/iam.workloadIdentityUser"
-  member             = "serviceAccount:${var.gcp_project_id}.svc.id.goog[${var.release_namespace}/${var.release_name}]"
-}
-
-# ---------------------------------------------------------------------------
-# Kubernetes ServiceAccount (annotated for Workload Identity)
-# ---------------------------------------------------------------------------
-
-resource "kubernetes_service_account_v1" "boundary_controller" {
-  metadata {
-    name      = var.release_name
-    namespace = kubernetes_namespace_v1.boundary.metadata[0].name
-
-    # This annotation links the K8s SA to the GCP SA for Workload Identity
-    annotations = {
-      "iam.gke.io/gcp-service-account" = google_service_account.boundary_controller.email
-    }
-
-    labels = {
-      "app.kubernetes.io/managed-by" = "terraform"
-      "app.kubernetes.io/name"       = var.release_name
-    }
-  }
-}
-
-# ---------------------------------------------------------------------------
 # Kubernetes Secret — Boundary runtime secrets
 # ---------------------------------------------------------------------------
 
@@ -273,7 +131,6 @@ resource "helm_release" "boundary_controller" {
 
   depends_on = [
     kubernetes_secret_v1.boundary_controller,
-    kubernetes_service_account_v1.boundary_controller,
     terraform_data.postgres,
   ]
 
@@ -303,14 +160,6 @@ resource "helm_release" "boundary_controller" {
       value = "true"
     },
     {
-      name  = "serviceAccount.create"
-      value = "false"
-    },
-    {
-      name  = "serviceAccount.name"
-      value = kubernetes_service_account_v1.boundary_controller.metadata[0].name
-    },
-    {
       name  = "controller.service.api.type"
       value = var.api_service_type
     },
@@ -329,20 +178,14 @@ resource "helm_release" "boundary_controller" {
   ]
 
   # -----------------------------------------------------------------------
-  # Rendered values: GCP KMS config + LB annotations
+  # Rendered values: AEAD KMS config + LB annotations
   # Multiline strings and annotation maps must go in `values`, not `set`.
   # -----------------------------------------------------------------------
 
   values = [
     templatefile("${path.module}/templates/helm-values.yaml.tpl", {
-      tls_disabled        = var.tls_disabled
-      gcp_project_id      = var.gcp_project_id
-      kms_location        = var.kms_location
-      kms_key_ring        = var.kms_key_ring_name
-      kms_root_key        = var.kms_root_key_name
-      kms_recovery_key    = var.kms_recovery_key_name
-      kms_worker_auth_key = var.kms_worker_auth_key_name
-      lb_api_annotations  = local.lb_api_annotations
+      tls_disabled           = var.tls_disabled
+      lb_api_annotations     = local.lb_api_annotations
       lb_cluster_annotations = local.lb_cluster_annotations
     }),
     # Caller-supplied overrides have the highest precedence (last wins in Helm).

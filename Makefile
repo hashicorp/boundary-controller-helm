@@ -845,7 +845,7 @@ gke-apply: gke-setup
 		--project "$${TF_VAR_gcp_project_id}"
 	@echo "✅ kubeconfig updated"
 	@echo ""
-	@echo "--- Step 2/2: Apply remaining resources (KMS, IAM, Kubernetes, Helm) ---"
+	@echo "--- Step 2/2: Apply remaining resources (IAM, Kubernetes, Helm) ---"
 	@terraform -chdir=$(GKE_INTEGRATION_DIR) apply -auto-approve
 	@$(MAKE) gke-db-init-recovery
 	@echo "✅ Terraform apply complete (infrastructure, PostgreSQL, and Helm chart)"
@@ -881,8 +881,6 @@ gke-test:
 		--cluster-name "$${TF_VAR_gke_cluster_name:-boundary-controller-cluster}" \
 		--namespace "$${BOUNDARY_NAMESPACE:-boundary}" \
 		--release "$${HELM_RELEASE:-boundary-controller}" \
-		--kms-location "$${TF_VAR_kms_location:-global}" \
-		--kms-key-ring "$${TF_VAR_kms_key_ring_name:-boundary-key-ring}" \
 		--timeout "$${TIMEOUT:-300}"
 	@echo ""
 

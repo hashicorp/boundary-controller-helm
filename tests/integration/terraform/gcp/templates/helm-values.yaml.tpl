@@ -1,8 +1,6 @@
 # Copyright IBM Corp. 2026
 # This file is rendered by Terraform's templatefile() function.
-# Variables: tls_disabled, gcp_project_id, kms_location, kms_key_ring,
-#            kms_root_key, kms_recovery_key, kms_worker_auth_key,
-#            lb_api_annotations, lb_cluster_annotations
+# Variables: tls_disabled, lb_api_annotations, lb_cluster_annotations
 
 controller:
   config: |
@@ -69,28 +67,26 @@ controller:
       }
     }
 
-    kms "gcpckms" {
-      purpose    = "root"
-      project    = "${gcp_project_id}"
-      region     = "${kms_location}"
-      key_ring   = "${kms_key_ring}"
-      crypto_key = "${kms_root_key}"
+    # Integration testing uses static AEAD keys to avoid external KMS dependencies.
+    kms "aead" {
+      purpose   = "root"
+      aead_type = "aes-gcm"
+      key       = "UBsMiKsMh0mIzjPx8e7e1LbC5wFvHCuFZPUlIDcTRuE="
+      key_id    = "gke-root"
     }
 
-    kms "gcpckms" {
-      purpose    = "recovery"
-      project    = "${gcp_project_id}"
-      region     = "${kms_location}"
-      key_ring   = "${kms_key_ring}"
-      crypto_key = "${kms_recovery_key}"
+    kms "aead" {
+      purpose   = "recovery"
+      aead_type = "aes-gcm"
+      key       = "QkYpNd6X4oTjcWlM2rGhFsV8zEu0Aw3Kn9qZb7PiRe5="
+      key_id    = "gke-recovery"
     }
 
-    kms "gcpckms" {
-      purpose    = "worker-auth"
-      project    = "${gcp_project_id}"
-      region     = "${kms_location}"
-      key_ring   = "${kms_key_ring}"
-      crypto_key = "${kms_worker_auth_key}"
+    kms "aead" {
+      purpose   = "worker-auth"
+      aead_type = "aes-gcm"
+      key       = "Rl3TbZ7KnP9vE4cXoUq1YmFd0sSg2wHjA6Ni8xBkLye="
+      key_id    = "gke-worker-auth"
     }
 
     events {
@@ -116,9 +112,3 @@ controller:
 %{ for k, v in lb_cluster_annotations ~}
         ${k}: "${v}"
 %{ endfor ~}
-
-# Workload Identity requires the projected service account token to be mounted
-# so the GKE metadata server can exchange it for a GCP identity.
-# The chart default is false; override to true for GKE + Cloud KMS deployments.
-serviceAccount:
-  automountServiceAccountToken: true

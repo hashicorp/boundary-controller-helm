@@ -15,11 +15,8 @@
 #   --cluster-name  NAME        GKE cluster name  (or set GKE_CLUSTER_NAME)
 #   --namespace     NAMESPACE   K8s namespace     (or set BOUNDARY_NAMESPACE, default: boundary)
 #   --release       RELEASE     Helm release name (or set HELM_RELEASE, default: boundary-controller)
-#   --kms-location  LOCATION    KMS key ring location (or set KMS_LOCATION, default: global)
-#   --kms-key-ring  KEY_RING    KMS key ring name (or set KMS_KEY_RING, default: boundary-key-ring)
 #   --timeout       SECONDS     kubectl wait timeout (default: 300)
 #   --skip-api                  Skip API / ops endpoint tests
-#   --skip-kms                  Skip GCP KMS connectivity check
 #
 # Prerequisites:
 #   kubectl, helm, gcloud, curl, python3
@@ -62,11 +59,8 @@ GKE_ZONE="${GKE_ZONE:-us-central1-a}"
 GKE_CLUSTER_NAME="${GKE_CLUSTER_NAME:-}"
 BOUNDARY_NAMESPACE="${BOUNDARY_NAMESPACE:-boundary}"
 HELM_RELEASE="${HELM_RELEASE:-boundary-controller}"
-KMS_LOCATION="${KMS_LOCATION:-global}"
-KMS_KEY_RING="${KMS_KEY_RING:-boundary-key-ring}"
 TIMEOUT="${TIMEOUT:-300}"
 SKIP_API="${SKIP_API:-false}"
-SKIP_KMS="${SKIP_KMS:-false}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -75,11 +69,8 @@ while [[ $# -gt 0 ]]; do
         --cluster-name) GKE_CLUSTER_NAME="$2";  shift 2 ;;
         --namespace)    BOUNDARY_NAMESPACE="$2"; shift 2 ;;
         --release)      HELM_RELEASE="$2";       shift 2 ;;
-        --kms-location) KMS_LOCATION="$2";       shift 2 ;;
-        --kms-key-ring) KMS_KEY_RING="$2";       shift 2 ;;
         --timeout)      TIMEOUT="$2";            shift 2 ;;
         --skip-api)     SKIP_API="true";         shift ;;
-        --skip-kms)     SKIP_KMS="true";         shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -226,16 +217,6 @@ SA_NAME=$(kubectl get serviceaccount \
 
 if [ -n "${SA_NAME}" ]; then
     pass "ServiceAccount '${SA_NAME}' exists"
-    # Check Workload Identity annotation
-    WI_GSA=$(kubectl get serviceaccount "${SA_NAME}" \
-        -n "${BOUNDARY_NAMESPACE}" \
-        --context "${KUBE_CONTEXT}" \
-        -o jsonpath='{.metadata.annotations.iam\.gke\.io/gcp-service-account}' 2>/dev/null || echo "")
-    if [ -n "${WI_GSA}" ]; then
-        pass "Workload Identity annotation present: ${WI_GSA}"
-    else
-        warn "Workload Identity annotation 'iam.gke.io/gcp-service-account' not set on ServiceAccount"
-    fi
 else
     fail "No ServiceAccount with label app.kubernetes.io/name=boundary-controller found"
 fi
@@ -392,33 +373,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Section 7: GCP Cloud KMS Connectivity
+# Section 7: Controller Ops Health Endpoint
 # ---------------------------------------------------------------------------
-section "7. GCP Cloud KMS Connectivity"
-
-if [ "${SKIP_KMS}" = "true" ]; then
-    warn "KMS check skipped (--skip-kms)"
-else
-    for key_name in boundary-root boundary-recovery boundary-worker-auth; do
-        KEY_STATE=$(gcloud kms keys describe "${key_name}" \
-            --keyring "${KMS_KEY_RING}" \
-            --location "${KMS_LOCATION}" \
-            --project "${GCP_PROJECT_ID}" \
-            --format "value(primary.state)" 2>/dev/null || echo "")
-        if [ "${KEY_STATE}" = "ENABLED" ]; then
-            pass "KMS key '${key_name}' in key ring '${KMS_KEY_RING}' is ENABLED"
-        elif [ -n "${KEY_STATE}" ]; then
-            fail "KMS key '${key_name}' state: ${KEY_STATE} (expected: ENABLED)"
-        else
-            fail "KMS key '${key_name}' not found in key ring '${KMS_KEY_RING}' (location: ${KMS_LOCATION})"
-        fi
-    done
-fi
-
-# ---------------------------------------------------------------------------
-# Section 8: Controller Ops Health Endpoint
-# ---------------------------------------------------------------------------
-section "8. Controller Ops Health Endpoint"
+section "7. Controller Ops Health Endpoint"
 
 if [ "${SKIP_API}" = "true" ]; then
     warn "Ops health check skipped (--skip-api)"
@@ -454,9 +411,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Section 9: Controller API Endpoint Reachability
+# Section 8: Controller API Endpoint Reachability
 # ---------------------------------------------------------------------------
-section "9. Controller API Endpoint"
+section "8. Controller API Endpoint"
 
 if [ "${SKIP_API}" = "true" ]; then
     warn "API endpoint check skipped (--skip-api)"

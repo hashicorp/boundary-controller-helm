@@ -119,50 +119,6 @@ variable "boundary_admin_password" {
 }
 
 # ---------------------------------------------------------------------------
-# GCP Cloud KMS
-# ---------------------------------------------------------------------------
-
-variable "kms_location" {
-  description = "Location for the GCP KMS key ring (e.g. 'global' or a GCP region like 'us-central1')."
-  type        = string
-  default     = "global"
-}
-
-variable "kms_key_ring_name" {
-  description = "Name of the GCP KMS key ring to create."
-  type        = string
-  default     = "boundary-key-ring"
-}
-
-variable "kms_root_key_name" {
-  description = "Name of the GCP KMS crypto key used for Boundary root sealing."
-  type        = string
-  default     = "boundary-root"
-}
-
-variable "kms_recovery_key_name" {
-  description = "Name of the GCP KMS crypto key used for Boundary recovery."
-  type        = string
-  default     = "boundary-recovery"
-}
-
-variable "kms_worker_auth_key_name" {
-  description = "Name of the GCP KMS crypto key used for Boundary worker authentication."
-  type        = string
-  default     = "boundary-worker-auth"
-}
-
-# ---------------------------------------------------------------------------
-# Workload Identity
-# ---------------------------------------------------------------------------
-
-variable "gsa_name" {
-  description = "Short account ID (without @project.iam.gserviceaccount.com) for the controller GCP IAM service account."
-  type        = string
-  default     = "boundary-controller-sa"
-}
-
-# ---------------------------------------------------------------------------
 # Helm values overrides
 # ---------------------------------------------------------------------------
 
