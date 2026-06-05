@@ -253,7 +253,7 @@ bash tests/acceptance/kind-version-matrix-test.sh
 
 **Version source:**
 
-- Local and CI default: `K8S_MATRIX_VERSIONS="v1.35.1,v1.34.3,v1.33.7"`
+- Local and CI default: `K8S_MATRIX_VERSIONS="v1.36.1,v1.35.5,v1.34.8"`
 - Local one-off override: `K8S_VERSIONS="v1.35.1"`
 - Available tags reference: https://hub.docker.com/r/kindest/node
 
@@ -261,7 +261,7 @@ bash tests/acceptance/kind-version-matrix-test.sh
 
 ```bash
 # Run all configured versions
-export K8S_MATRIX_VERSIONS="v1.35.1,v1.34.3,v1.33.7"
+export K8S_MATRIX_VERSIONS="v1.36.1,v1.35.5,v1.34.8"
 make kind-matrix-test
 
 # Run a single version locally
@@ -269,7 +269,7 @@ K8S_VERSIONS="v1.35.1" make kind-matrix-test
 
 # Print the resolved version list without creating clusters
 PRINT_RESOLVED_K8S_VERSIONS=true \
-K8S_MATRIX_VERSIONS="v1.35.1,v1.34.3,v1.33.7" \
+K8S_MATRIX_VERSIONS="v1.36.1,v1.35.5,v1.34.8" \
 bash tests/acceptance/kind-version-matrix-test.sh
 ```
 
@@ -478,7 +478,7 @@ The acceptance workflow reads Kubernetes versions from the repository variable `
 Example repository variable:
 
 ```text
-K8S_MATRIX_VERSIONS=v1.35.1,v1.34.3,v1.33.7
+K8S_MATRIX_VERSIONS=v1.36.1,v1.35.5,v1.34.8
 ```
 
 See `.github/workflows/ci.yaml` for configuration.
@@ -502,7 +502,7 @@ Update the repository variable `K8S_MATRIX_VERSIONS` with the ordered `kindest/n
 Example:
 
 ```text
-K8S_MATRIX_VERSIONS=v1.35.1,v1.34.3,v1.33.7
+K8S_MATRIX_VERSIONS=v1.36.1,v1.35.5,v1.34.8
 ```
 
 For one-off local runs, override with `K8S_VERSIONS` instead of editing files.
