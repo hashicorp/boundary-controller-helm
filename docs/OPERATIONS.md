@@ -161,15 +161,15 @@ Install using the default values from the published release:
 
 ```bash
 helm install boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0
+  --version 0.1.0 \
   --namespace boundary
 ```
 
 With additional values file:
 ```bash
 helm install boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0
-  --namespace boundary
+  --version 0.1.0 \
+  --namespace boundary \
   -f my-values.yaml
 ```
 
@@ -348,7 +348,13 @@ To enable TLS:
 
 1. Set `tls.disabled=false`
 2. Configure `controller.config` listeners with `tls_disable = false` and cert/key file paths under `tls.mountPath`
-3. Update liveness and readiness probe schemes to `HTTPS`:
+
+The liveness and readiness probe schemes are auto-derived from `tls.disabled`:
+
+- `HTTPS` when `tls.disabled=false`
+- `HTTP` when `tls.disabled=true`
+
+Optional explicit override:
 
 ```yaml
 tls:
@@ -468,12 +474,12 @@ The table below documents all chart values shipped in `values.yaml`.
 | `bootstrapAdmin.userResourceName` | `bootstrap-admin` | Display name for the Boundary user resource created by the bootstrap job. |
 | `bootstrapAdmin.accountResourceName` | `bootstrap-admin` | Display name for the Boundary account resource created by the bootstrap job. |
 | `bootstrapAdmin.roleName` | `bootstrap-global-admin` | Display name for the global admin role created by the bootstrap job. |
-| `controller.livenessProbe.scheme` | `HTTP` | HTTP scheme for liveness probe requests to the ops listener. |
+| `controller.livenessProbe.scheme` | `""` | Optional explicit probe scheme. When empty, auto-derived from `tls.disabled` (`HTTPS` when TLS enabled, `HTTP` when disabled). |
 | `controller.livenessProbe.initialDelaySeconds` | `60` | Seconds before the first liveness probe. |
 | `controller.livenessProbe.periodSeconds` | `10` | Liveness probe interval in seconds. |
 | `controller.livenessProbe.failureThreshold` | `3` | Consecutive failures before the pod is restarted. |
 | `controller.livenessProbe.timeoutSeconds` | `5` | Timeout in seconds for each liveness probe. |
-| `controller.readinessProbe.scheme` | `HTTP` | HTTP scheme for readiness probe requests to the ops listener. |
+| `controller.readinessProbe.scheme` | `""` | Optional explicit probe scheme. When empty, auto-derived from `tls.disabled` (`HTTPS` when TLS enabled, `HTTP` when disabled). |
 | `controller.readinessProbe.initialDelaySeconds` | `15` | Seconds before the first readiness probe. |
 | `controller.readinessProbe.periodSeconds` | `10` | Readiness probe interval in seconds. |
 | `controller.readinessProbe.failureThreshold` | `3` | Consecutive failures before the pod is removed from Service endpoints. |
@@ -548,7 +554,7 @@ Before upgrading the chart or Boundary version:
 ```bash
 # Perform the upgrade
 helm upgrade boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0
+  --version 0.1.0 \
   --namespace boundary \
   -f my-values.yaml
 ```
@@ -571,7 +577,7 @@ helm upgrade boundary-controller . \
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0
+  --version 0.1.0 \
   --namespace boundary \
   -f my-values.yaml \
   --set controller.replicas=0
@@ -583,7 +589,7 @@ Pass `--set database.migrate.enabled=true` on the upgrade command. Do not set th
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0
+  --version 0.1.0 \
   --namespace boundary \
   -f my-values.yaml \
   --set database.migrate.enabled=true
@@ -608,7 +614,7 @@ Use repair only after reviewing Boundary migration failure output and identifyin
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0
+  --version 0.1.0 \
   --namespace boundary \
   -f my-values.yaml \
   --set database.migrate.enabled=true \

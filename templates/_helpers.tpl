@@ -113,6 +113,22 @@ Build the controller image reference.
 {{- end }}
 
 {{/*
+Resolve HTTP probe scheme.
+If an explicit scheme is set (HTTP/HTTPS), use it. Otherwise derive from tls.disabled.
+*/}}
+{{- define "boundary.controller.probeScheme" -}}
+{{- $root := .root -}}
+{{- $explicit := upper (trim (default "" .explicitScheme)) -}}
+{{- if or (eq $explicit "HTTP") (eq $explicit "HTTPS") -}}
+{{- $explicit -}}
+{{- else if $root.Values.tls.disabled -}}
+HTTP
+{{- else -}}
+HTTPS
+{{- end -}}
+{{- end }}
+
+{{/*
 Returns true when controller config uses AEAD keys via env://BOUNDARY_KMS_*.
 Commented lines are ignored.
 */}}
@@ -197,12 +213,12 @@ Validate controller config patterns that Boundary cannot resolve safely at runti
 {{- fail "controller.config uses env://BOUNDARY_KMS_* inside AEAD kms blocks. Boundary AEAD keys do not support env:// indirection. Use an external KMS stanza (recommended for production) or inline AEAD keys only for dev/testing." }}
 {{- end }}
 {{- if not .Values.tls.disabled }}
-{{- $expectedCert := printf "tls_cert_file = \"%s/tls.crt\"" .Values.tls.mountPath -}}
-{{- $expectedKey := printf "tls_key_file  = \"%s/tls.key\"" .Values.tls.mountPath -}}
-{{- if not (contains $expectedCert $configNoComments) }}
+{{- $expectedCertPath := regexQuoteMeta (printf "%s/tls.crt" .Values.tls.mountPath) -}}
+{{- $expectedKeyPath := regexQuoteMeta (printf "%s/tls.key" .Values.tls.mountPath) -}}
+{{- if not (regexMatch (printf "tls_cert_file\\s*=\\s*[\"']%s[\"']" $expectedCertPath) $configNoComments) }}
 {{- fail (printf "tls.disabled=false but controller.config is missing expected cert path %q. Keep listener tls_cert_file aligned with tls.mountPath." (printf "%s/tls.crt" .Values.tls.mountPath)) }}
 {{- end }}
-{{- if not (contains $expectedKey $configNoComments) }}
+{{- if not (regexMatch (printf "tls_key_file\\s*=\\s*[\"']%s[\"']" $expectedKeyPath) $configNoComments) }}
 {{- fail (printf "tls.disabled=false but controller.config is missing expected key path %q. Keep listener tls_key_file aligned with tls.mountPath." (printf "%s/tls.key" .Values.tls.mountPath)) }}
 {{- end }}
 {{- end }}

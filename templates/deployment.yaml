@@ -99,7 +99,7 @@ spec:
             httpGet:
               path: /health
               port: ops
-              scheme: {{ .Values.controller.livenessProbe.scheme }}
+              scheme: {{ include "boundary.controller.probeScheme" (dict "root" . "explicitScheme" .Values.controller.livenessProbe.scheme) }}
             initialDelaySeconds: {{ .Values.controller.livenessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.controller.livenessProbe.periodSeconds }}
             failureThreshold: {{ .Values.controller.livenessProbe.failureThreshold }}
@@ -108,7 +108,7 @@ spec:
             httpGet:
               path: /health
               port: ops
-              scheme: {{ .Values.controller.readinessProbe.scheme }}
+              scheme: {{ include "boundary.controller.probeScheme" (dict "root" . "explicitScheme" .Values.controller.readinessProbe.scheme) }}
             initialDelaySeconds: {{ .Values.controller.readinessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.controller.readinessProbe.periodSeconds }}
             failureThreshold: {{ .Values.controller.readinessProbe.failureThreshold }}

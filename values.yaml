@@ -177,19 +177,19 @@ controller:
       }
     }
 
-  # Liveness probe configuration
+  # Liveness & Readiness probe configuration
+  # `scheme:` will be auto-derived 
+  # defaults: `HTTPS` when tls.disabled=false, `HTTP` when tls.disabled=true.
+  # Optional explicit override. Leave empty to auto-derive from tls.disabled.
   livenessProbe:
-    # Set this to HTTPS when tls.disabled=false
-    scheme: HTTP
+    scheme: ""
     initialDelaySeconds: 60
     periodSeconds: 10
     failureThreshold: 3
     timeoutSeconds: 5
 
-  # Readiness probe configuration
   readinessProbe:
-    # Set this to HTTPS when tls.disabled=false
-    scheme: HTTP
+    scheme: ""
     initialDelaySeconds: 15
     periodSeconds: 10
     failureThreshold: 3

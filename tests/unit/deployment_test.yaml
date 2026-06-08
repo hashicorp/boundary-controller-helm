@@ -112,6 +112,24 @@ tests:
             secret:
               secretName: boundary-controller-tls
         template: templates/deployment.yaml
+  - it: auto derives HTTPS probe scheme when TLS is enabled and probe schemes are empty
+    set:
+      tls:
+        disabled: false
+      controller:
+        livenessProbe:
+          scheme: ""
+        readinessProbe:
+          scheme: ""
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
+          value: HTTPS
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
+          value: HTTPS
+        template: templates/deployment.yaml
   - it: renders custom TLS mountPath and secretName when TLS is enabled
     set:
       tls:
