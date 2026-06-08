@@ -175,6 +175,14 @@ resource "helm_release" "boundary_controller" {
       name  = "podDisruptionBudget.enabled"
       value = tostring(local.pdb_enabled)
     },
+    {
+      name  = "serviceAccount.create"
+      value = "true"
+    },
+    {
+      name  = "serviceAccount.name"
+      value = "boundary-controller"
+    },
   ]
 
   # -----------------------------------------------------------------------
