@@ -173,5 +173,3 @@ boundary roles add-principals \
   -principal "$USER_ID" \
   -addr "$BOUNDARY_ADDR" \
   -recovery-config "$BOUNDARY_RECOVERY_CONFIG" 2>&1 || echo "WARNING: add-principals returned non-zero; verify user is linked to role"
-
-echo "Bootstrap admin completed successfully"
