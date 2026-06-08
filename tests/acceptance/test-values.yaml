@@ -1,3 +1,5 @@
+# Copyright IBM Corp. 2026
+
 # Acceptance test overrides.
 # These values keep local and CI acceptance runs consistent and self-contained.
 
