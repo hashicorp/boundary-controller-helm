@@ -457,6 +457,7 @@ Add `--skip-api` to bypass the ops-health and API endpoint checks.
 
 ### Expected Runtime
 
+- `make eks-apply`: typically 20-40 minutes (varies by region and account limits)
 - `make aks-apply`: typically 15-35 minutes (varies by region and subscription quotas)
 - `make gke-apply`: typically 10-20 minutes (varies by project and zone)
 - `make eks-test` / `make aks-test` / `make gke-test`: typically 2-8 minutes
