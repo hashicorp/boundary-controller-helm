@@ -27,13 +27,14 @@ The chart includes comprehensive test coverage for validation before deployment:
 	- [Cluster Smoke Test](#cluster-smoke-test)
 	- [Controller API Test](#controller-api-test)
 	- [KIND Version Matrix Test](#kind-version-matrix-test)
-- [Cloud Integration Tests (EKS/AKS)](#cloud-integration-tests-eksaks)
+- [Cloud Integration Tests (EKS/AKS/GKE)](#cloud-integration-tests-eksaksgke)
 	- [Prerequisites](#prerequisites-1)
 	- [Environment Keys](#environment-keys)
 	- [Run EKS Integration](#run-eks-integration)
 		- [Run With Local Repo Chart](#run-with-local-repo-chart)
 		- [Run With Released Chart](#run-with-released-chart)
 	- [Run AKS Integration](#run-aks-integration)
+	- [Run GKE Integration](#run-gke-integration)
 	- [Expected Runtime](#expected-runtime)
 - [Test Configuration](#test-configuration)
 	- [Test Values](#test-values)
@@ -285,7 +286,7 @@ bash tests/acceptance/kind-version-matrix-test.sh
 9. Tears down cluster
 10. Repeats for the next configured version
 
-## Cloud Integration Tests (EKS/AKS)
+## Cloud Integration Tests (EKS/AKS/GKE)
 
 Cloud integration tests provision real managed Kubernetes clusters, deploy the chart, and run runtime validation checks.
 
@@ -296,7 +297,8 @@ Cloud integration tests provision real managed Kubernetes clusters, deploy the c
 - Helm CLI
 - For EKS: aws CLI with valid credentials
 - For AKS: az CLI with valid login (`az login`)
-- A populated integration environment file at `tests/integration/.env`
+- For GKE: gcloud CLI authenticated (`gcloud auth login`) with ADC configured (`gcloud auth application-default login`)
+- A populated integration environment file at `tests/integration/.env` (EKS/AKS) or `tests/integration/.env.gke` (GKE)
 
 ### Environment Keys
 
@@ -318,6 +320,18 @@ AKS-specific keys:
 - Optional: `TF_VAR_azure_subscription_id`
 - Optional: `TF_VAR_azure_location`
 - Optional sizing: `TF_VAR_node_vm_size`, `TF_VAR_node_count`
+
+GKE-specific keys (set in `tests/integration/.env.gke`):
+
+- `TF_VAR_gcp_project_id` — GCP project ID (required)
+- `TF_VAR_boundary_license` — Boundary Enterprise license (required)
+- `TF_VAR_boundary_admin_password` — Bootstrap admin password (required)
+- Optional: `TF_VAR_gcp_region` (default: `us-central1`)
+- Optional: `TF_VAR_gke_zone` (default: `us-central1-a`)
+- Optional: `TF_VAR_gke_cluster_name` (default: `boundary-controller-cluster`)
+- Optional: `TF_VAR_gke_kubernetes_version` — pin a specific GKE master version; leave empty for release-channel default
+- Optional sizing: `TF_VAR_node_machine_type` (default: `e2-standard-2`), `TF_VAR_node_count` (default: `2`)
+- Optional image: `TF_VAR_image_tag` (default: `0.21-ent`)
 
 You can copy starter keys from `tests/integration/.env.example`.
 
@@ -398,13 +412,59 @@ make aks-destroy
 make aks-destroy DESTROY_AKS_RESOURCES=true
 ```
 
+### Run GKE Integration
+
+```bash
+# Provision GKE cluster + deploy chart
+make gke-apply
+
+# Validate runtime health
+make gke-test
+
+# Or run end-to-end (setup + apply + test)
+make gke-full
+
+# Cleanup (destroys all GKE infrastructure via Terraform)
+make gke-destroy
+```
+
+`gke-apply` runs in two phases: first it provisions the VPC and GKE cluster, updates the local kubeconfig via `gcloud container clusters get-credentials`, then applies the remaining Terraform resources (IAM, in-cluster PostgreSQL, Helm chart). A DB-init recovery step runs automatically after the Helm install to re-trigger pre-install hooks if the controller reports an uninitialized database.
+
+The test script (`tests/integration/gke-integration-test.sh`) accepts optional flags when run directly:
+
+```bash
+bash tests/integration/gke-integration-test.sh \
+  --project-id  <GCP_PROJECT_ID> \
+  --zone        us-central1-a \
+  --cluster-name boundary-controller-cluster \
+  --namespace   boundary \
+  --release     boundary-controller \
+  --timeout     300
+```
+
+Add `--skip-api` to bypass the ops-health and API endpoint checks.
+
+**What it validates:**
+1. Required CLI tools available (`kubectl`, `helm`, `gcloud`, `curl`, `python3`)
+2. GKE cluster connectivity and kubeconfig update
+3. Kubernetes namespace exists
+4. Helm release status is `deployed`
+5. Kubernetes resources present (Deployment, ConfigMap, Secret, ServiceAccount, PDB, Services)
+6. Deployment rollout complete with all replicas ready
+7. Controller ops health endpoint (`/health` on port 9203) returns HTTP `200`
+8. Controller API endpoint reachable (port 9200)
+
 ### Expected Runtime
 
 - `make eks-apply`: typically 20-40 minutes (varies by region and account limits)
 - `make aks-apply`: typically 15-35 minutes (varies by region and subscription quotas)
-- `make eks-test` / `make aks-test`: typically 2-8 minutes
+- `make gke-apply`: typically 10-20 minutes (varies by project and zone)
+- `make eks-test` / `make aks-test` / `make gke-test`: typically 2-8 minutes
 
-For cost control, destroy infrastructure after validation (`make eks-destroy DESTROY_EKS_RESOURCES=true` or `make aks-destroy DESTROY_AKS_RESOURCES=true`).
+For cost control, destroy infrastructure after validation:
+- EKS: `make eks-destroy DESTROY_EKS_RESOURCES=true`
+- AKS: `make aks-destroy DESTROY_AKS_RESOURCES=true`
+- GKE: `make gke-destroy` (always destroys all infrastructure)
 
 ## Test Configuration
 
