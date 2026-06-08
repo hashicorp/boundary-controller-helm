@@ -58,7 +58,6 @@ help:
 	@echo "  make eks-full                - Full EKS integration workflow (setup + apply + test)"
 	@echo "  make eks-destroy             - Destroy all EKS integration resources via Terraform"
 	@echo "  make eks-destroy DESTROY_EKS_RESOURCES=true - Also destroy EKS infra via Terraform"
-	
 	@echo ""
 	@echo "AKS Integration Testing targets:"
 	@echo "  make aks-setup               - Initialise Terraform for AKS integration tests"
@@ -68,7 +67,7 @@ help:
 	@echo "  make aks-full                - Full AKS integration workflow (setup + apply + test)"
 	@echo "  make aks-destroy             - Uninstall AKS Helm release only (default)"
 	@echo "  make aks-destroy DESTROY_AKS_RESOURCES=true - Also destroy AKS infra via Terraform"
-
+	@echo ""
 	@echo "GKE Integration Testing targets:"
 	@echo "  make gke-setup               - Initialise Terraform for GKE integration tests"
 	@echo "  make gke-apply               - Provision GKE cluster (phase 1), update kubeconfig, then deploy chart (phase 2)"
