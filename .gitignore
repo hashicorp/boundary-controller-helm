@@ -29,6 +29,14 @@ tests/integration/terraform/aws/.terraform/
 tests/integration/terraform/aws/.terraform.lock.hcl
 tests/integration/terraform/aws/terraform.tfstate
 tests/integration/terraform/aws/terraform.tfstate.backup
+
+# GKE integration — secrets and ephemeral Terraform artefacts
+tests/integration/.env.gke
+tests/integration/.env.gke.example
+tests/integration/terraform/gcp/.terraform/
+tests/integration/terraform/gcp/.terraform.lock.hcl
+tests/integration/terraform/gcp/terraform.tfstate
+tests/integration/terraform/gcp/terraform.tfstate.backup
 tests/integration/terraform/azure/.terraform/
 tests/integration/terraform/azure/.terraform.lock.hcl
 tests/integration/terraform/azure/terraform.tfstate

@@ -9,6 +9,7 @@
 .PHONY: acceptance-setup acceptance-helm acceptance-test acceptance-full acceptance-cleanup
 .PHONY: kind-matrix-test
 .PHONY: eks-setup eks-apply eks-db-init-recovery eks-test eks-full eks-destroy
+.PHONY: gke-setup gke-apply gke-db-init-recovery gke-test gke-full gke-destroy
 .PHONY: aks-auth-check aks-setup aks-apply aks-db-init-recovery aks-test aks-full aks-destroy
 
 HELM_TEST_RELEASE ?= boundary-controller
@@ -55,7 +56,7 @@ help:
 	@echo "  make eks-db-init-recovery    - Reinstall Helm release only when controller reports uninitialized DB"
 	@echo "  make eks-test                - Run eks-integration-test.sh against the provisioned cluster"
 	@echo "  make eks-full                - Full EKS integration workflow (setup + apply + test)"
-	@echo "  make eks-destroy             - Uninstall EKS Helm release only (default)"
+	@echo "  make eks-destroy             - Destroy all EKS integration resources via Terraform"
 	@echo "  make eks-destroy DESTROY_EKS_RESOURCES=true - Also destroy EKS infra via Terraform"
 	@echo ""
 	@echo "AKS Integration Testing targets:"
@@ -66,6 +67,15 @@ help:
 	@echo "  make aks-full                - Full AKS integration workflow (setup + apply + test)"
 	@echo "  make aks-destroy             - Uninstall AKS Helm release only (default)"
 	@echo "  make aks-destroy DESTROY_AKS_RESOURCES=true - Also destroy AKS infra via Terraform"
+	@echo ""
+	@echo "GKE Integration Testing targets:"
+	@echo "  make gke-setup               - Initialise Terraform for GKE integration tests"
+	@echo "  make gke-apply               - Provision GKE cluster (phase 1), update kubeconfig, then deploy chart (phase 2)"
+	@echo "  make gke-db-init-recovery    - Reinstall Helm release only when controller reports uninitialized DB"
+	@echo "  make gke-test                - Run gke-integration-test.sh against the provisioned cluster"
+	@echo "  make gke-full                - Full GKE integration workflow (setup + apply + test)"
+	@echo "  make gke-destroy             - Uninstall GKE Helm release only (default)"
+	@echo "  make gke-destroy DESTROY_GKE_RESOURCES=true - Also destroy GKE infra via Terraform"
 	@echo "================================"
 
 # ================================
@@ -798,5 +808,127 @@ aks-destroy:
 	else \
 		echo "ℹ️  AKS infrastructure preserved"; \
 		echo "ℹ️  Set DESTROY_AKS_RESOURCES=true to destroy AKS resources as well"; \
+	fi
+	@echo ""
+
+# ================================
+# GKE Integration Testing Targets
+# ================================
+
+GKE_INTEGRATION_DIR := tests/integration/terraform/gcp
+GKE_INTEGRATION_ENV := tests/integration/.env
+
+gke-setup:
+	@echo "================================"
+	@echo "Initialising Terraform (GKE Integration)"
+	@echo "================================"
+	@command -v terraform >/dev/null 2>&1 || (echo "❌ terraform not found. Install from https://developer.hashicorp.com/terraform/downloads"; exit 1)
+	@command -v gcloud >/dev/null 2>&1 || (echo "❌ gcloud CLI not found. Install from https://cloud.google.com/sdk/docs/install"; exit 1)
+	@[ -f "$(GKE_INTEGRATION_ENV)" ] || (echo "❌ $(GKE_INTEGRATION_ENV) not found. Copy tests/integration/.env.example to tests/integration/.env and fill in your values."; exit 1)
+	@terraform -chdir=$(GKE_INTEGRATION_DIR) init
+	@echo "✅ Terraform initialised"
+	@echo ""
+
+gke-apply: gke-setup
+	@echo "================================"
+	@echo "Provisioning GKE Cluster + Helm Install"
+	@echo "================================"
+	@[ -n "$${TF_VAR_boundary_license}" ]       || (echo "❌ TF_VAR_boundary_license is not set in $(GKE_INTEGRATION_ENV)";       exit 1)
+	@[ -n "$${TF_VAR_boundary_admin_password}" ] || (echo "❌ TF_VAR_boundary_admin_password is not set in $(GKE_INTEGRATION_ENV)"; exit 1)
+	@[ -n "$${TF_VAR_gcp_project_id}" ]          || (echo "❌ TF_VAR_gcp_project_id is not set in $(GKE_INTEGRATION_ENV)";          exit 1)
+	@echo ""
+	@echo "--- Step 1/2: Provision VPC + GKE cluster + node pool ---"
+	@terraform -chdir=$(GKE_INTEGRATION_DIR) apply -auto-approve \
+		-target=google_compute_network.this \
+		-target=google_compute_subnetwork.this \
+		-target=google_container_cluster.this \
+		-target=google_container_node_pool.this
+	@echo "✅ GKE cluster ready"
+	@echo ""
+	@echo "--- Updating kubeconfig ---"
+	@gcloud container clusters get-credentials \
+		"$${TF_VAR_gke_cluster_name:-boundary-controller-cluster}" \
+		--zone "$${TF_VAR_gke_zone:-us-central1-a}" \
+		--project "$${TF_VAR_gcp_project_id}"
+	@echo "✅ kubeconfig updated"
+	@echo ""
+	@echo "--- Step 2/2: Apply remaining resources (IAM, Kubernetes, Helm) ---"
+	@terraform -chdir=$(GKE_INTEGRATION_DIR) apply -auto-approve
+	@$(MAKE) gke-db-init-recovery
+	@echo "✅ Terraform apply complete (infrastructure, PostgreSQL, and Helm chart)"
+	@echo ""
+
+gke-db-init-recovery:
+	@echo "--- Optional recovery: checking for DB init miss ---"
+	@KCTX="gke_$${TF_VAR_gcp_project_id}_$${TF_VAR_gke_zone:-us-central1-a}_$${TF_VAR_gke_cluster_name:-boundary-controller-cluster}"; \
+	POD=$$(kubectl get pods -n "$${BOUNDARY_NAMESPACE:-boundary}" --context "$$KCTX" \
+		-l "app.kubernetes.io/name=boundary-controller,app.kubernetes.io/component=controller" \
+		-o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true); \
+	if [ -z "$$POD" ]; then \
+		echo "ℹ️  No controller pod yet; skipping DB-init recovery check"; \
+		exit 0; \
+	fi; \
+	LOGS=$$(kubectl logs -n "$${BOUNDARY_NAMESPACE:-boundary}" --context "$$KCTX" "$$POD" --previous 2>/dev/null || \
+		kubectl logs -n "$${BOUNDARY_NAMESPACE:-boundary}" --context "$$KCTX" "$$POD" 2>/dev/null || true); \
+	if echo "$$LOGS" | grep -qi "database has not been initialized"; then \
+		echo "⚠️  Detected uninitialized Boundary DB. Replacing Helm release to re-run pre-install init hooks..."; \
+		terraform -chdir=$(GKE_INTEGRATION_DIR) apply -auto-approve -replace=helm_release.boundary_controller; \
+		echo "✅ Recovery apply completed"; \
+	else \
+		echo "✅ DB-init recovery not needed"; \
+	fi
+
+gke-test:
+	@echo "================================"
+	@echo "Running GKE Integration Tests"
+	@echo "================================"
+	@bash tests/integration/gke-integration-test.sh \
+		--project-id "$${TF_VAR_gcp_project_id}" \
+		--zone "$${TF_VAR_gke_zone:-us-central1-a}" \
+		--cluster-name "$${TF_VAR_gke_cluster_name:-boundary-controller-cluster}" \
+		--namespace "$${BOUNDARY_NAMESPACE:-boundary}" \
+		--release "$${HELM_RELEASE:-boundary-controller}" \
+		--timeout "$${TIMEOUT:-300}"
+	@echo ""
+
+gke-full:
+	@echo "================================"
+	@echo "Full GKE Integration Workflow"
+	@echo "================================"
+	@$(MAKE) gke-apply
+	@$(MAKE) gke-test
+	@echo ""
+	@echo "✅ GKE integration workflow completed successfully"
+	@echo ""
+	@echo "To uninstall only Helm release: make gke-destroy"
+	@echo "To destroy GKE infra as well: make gke-destroy DESTROY_GKE_RESOURCES=true"
+	@echo ""
+
+gke-destroy:
+	@echo "================================"
+	@echo "Destroying GKE Integration Resources"
+	@echo "================================"
+	@GKE_NAME="$${TF_VAR_gke_cluster_name:-boundary-controller-cluster}"; \
+	ZONE="$${TF_VAR_gke_zone:-us-central1-a}"; \
+	PROJECT="$${TF_VAR_gcp_project_id}"; \
+	REL_NAME="$${HELM_RELEASE:-boundary-controller}"; \
+	NS_NAME="$${BOUNDARY_NAMESPACE:-boundary}"; \
+	KCTX="gke_$${PROJECT}_$${ZONE}_$${GKE_NAME}"; \
+	if command -v gcloud >/dev/null 2>&1 && [ -n "$$PROJECT" ]; then \
+		gcloud container clusters get-credentials "$$GKE_NAME" --zone "$$ZONE" --project "$$PROJECT" >/dev/null 2>&1 || true; \
+	fi; \
+	if helm status "$$REL_NAME" --namespace "$$NS_NAME" --kube-context "$$KCTX" >/dev/null 2>&1; then \
+		helm uninstall "$$REL_NAME" --namespace "$$NS_NAME" --kube-context "$$KCTX"; \
+		echo "✅ GKE Helm release '$$REL_NAME' uninstalled"; \
+	else \
+		echo "ℹ️  Helm release '$$REL_NAME' not found in namespace '$$NS_NAME' (context: $$KCTX)"; \
+	fi
+	@if [ "$${DESTROY_GKE_RESOURCES:-false}" = "true" ]; then \
+		echo "--- DESTROY_GKE_RESOURCES=true: destroying GKE infrastructure via Terraform ---"; \
+		terraform -chdir=$(GKE_INTEGRATION_DIR) destroy -auto-approve; \
+		echo "✅ All GKE integration resources destroyed"; \
+	else \
+		echo "ℹ️  GKE infrastructure preserved"; \
+		echo "ℹ️  Set DESTROY_GKE_RESOURCES=true to destroy GKE resources as well"; \
 	fi
 	@echo ""
