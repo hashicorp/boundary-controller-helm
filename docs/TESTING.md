@@ -298,7 +298,7 @@ Cloud integration tests provision real managed Kubernetes clusters, deploy the c
 - For EKS: aws CLI with valid credentials
 - For AKS: az CLI with valid login (`az login`)
 - For GKE: gcloud CLI authenticated (`gcloud auth login`) with ADC configured (`gcloud auth application-default login`)
-- A populated integration environment file at `tests/integration/.env` (EKS/AKS) or `tests/integration/.env.gke` (GKE)
+- A populated integration environment file at `tests/integration/.env` (EKS/AKS/GKE)
 
 ### Environment Keys
 
@@ -321,11 +321,9 @@ AKS-specific keys:
 - Optional: `TF_VAR_azure_location`
 - Optional sizing: `TF_VAR_node_vm_size`, `TF_VAR_node_count`
 
-GKE-specific keys (set in `tests/integration/.env.gke`):
+GKE-specific keys (set in `tests/integration/.env`):
 
 - `TF_VAR_gcp_project_id` — GCP project ID (required)
-- `TF_VAR_boundary_license` — Boundary Enterprise license (required)
-- `TF_VAR_boundary_admin_password` — Bootstrap admin password (required)
 - Optional: `TF_VAR_gcp_region` (default: `us-central1`)
 - Optional: `TF_VAR_gke_zone` (default: `us-central1-a`)
 - Optional: `TF_VAR_gke_cluster_name` (default: `boundary-controller-cluster`)
@@ -424,8 +422,11 @@ make gke-test
 # Or run end-to-end (setup + apply + test)
 make gke-full
 
-# Cleanup (destroys all GKE infrastructure via Terraform)
+# Cleanup (default: uninstall Helm release only)
 make gke-destroy
+
+# Cleanup (destroy GKE infrastructure as well)
+make gke-destroy DESTROY_GKE_RESOURCES=true
 ```
 
 `gke-apply` runs in two phases: first it provisions the VPC and GKE cluster, updates the local kubeconfig via `gcloud container clusters get-credentials`, then applies the remaining Terraform resources (IAM, in-cluster PostgreSQL, Helm chart). A DB-init recovery step runs automatically after the Helm install to re-trigger pre-install hooks if the controller reports an uninitialized database.
@@ -464,7 +465,7 @@ Add `--skip-api` to bypass the ops-health and API endpoint checks.
 For cost control, destroy infrastructure after validation:
 - EKS: `make eks-destroy DESTROY_EKS_RESOURCES=true`
 - AKS: `make aks-destroy DESTROY_AKS_RESOURCES=true`
-- GKE: `make gke-destroy` (always destroys all infrastructure)
+- GKE: `make gke-destroy DESTROY_GKE_RESOURCES=true`
 
 ## Test Configuration
 

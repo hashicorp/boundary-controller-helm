@@ -64,7 +64,8 @@ help:
 	@echo "  make gke-db-init-recovery    - Reinstall Helm release only when controller reports uninitialized DB"
 	@echo "  make gke-test                - Run gke-integration-test.sh against the provisioned cluster"
 	@echo "  make gke-full                - Full GKE integration workflow (setup + apply + test)"
-	@echo "  make gke-destroy             - Destroy all GKE integration resources via Terraform"
+	@echo "  make gke-destroy             - Uninstall GKE Helm release only (default)"
+	@echo "  make gke-destroy DESTROY_GKE_RESOURCES=true - Also destroy GKE infra via Terraform"
 	@echo "  make eks-destroy             - Uninstall EKS Helm release only (default)"
 	@echo "  make eks-destroy DESTROY_EKS_RESOURCES=true - Also destroy EKS infra via Terraform"
 	@echo ""
@@ -816,13 +817,7 @@ aks-destroy:
 # ================================
 
 GKE_INTEGRATION_DIR := tests/integration/terraform/gcp
-GKE_INTEGRATION_ENV := tests/integration/.env.gke
-
-# Load GKE .env if it exists
-ifneq (,$(wildcard $(GKE_INTEGRATION_ENV)))
-  include $(GKE_INTEGRATION_ENV)
-  export
-endif
+GKE_INTEGRATION_ENV := tests/integration/.env
 
 gke-setup:
 	@echo "================================"
@@ -830,7 +825,7 @@ gke-setup:
 	@echo "================================"
 	@command -v terraform >/dev/null 2>&1 || (echo "❌ terraform not found. Install from https://developer.hashicorp.com/terraform/downloads"; exit 1)
 	@command -v gcloud >/dev/null 2>&1 || (echo "❌ gcloud CLI not found. Install from https://cloud.google.com/sdk/docs/install"; exit 1)
-	@[ -f "$(GKE_INTEGRATION_ENV)" ] || (echo "❌ $(GKE_INTEGRATION_ENV) not found. Copy tests/integration/.env.gke.example to tests/integration/.env.gke and fill in your values."; exit 1)
+	@[ -f "$(GKE_INTEGRATION_ENV)" ] || (echo "❌ $(GKE_INTEGRATION_ENV) not found. Copy tests/integration/.env.example to tests/integration/.env and fill in your values."; exit 1)
 	@terraform -chdir=$(GKE_INTEGRATION_DIR) init
 	@echo "✅ Terraform initialised"
 	@echo ""
