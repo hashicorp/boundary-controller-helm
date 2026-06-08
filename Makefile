@@ -906,13 +906,35 @@ gke-full:
 	@echo ""
 	@echo "✅ GKE integration workflow completed successfully"
 	@echo ""
-	@echo "To destroy resources: make gke-destroy"
+	@echo "To uninstall only Helm release: make gke-destroy"
+	@echo "To destroy GKE infra as well: make gke-destroy DESTROY_GKE_RESOURCES=true"
 	@echo ""
 
 gke-destroy:
 	@echo "================================"
 	@echo "Destroying GKE Integration Resources"
 	@echo "================================"
-	@terraform -chdir=$(GKE_INTEGRATION_DIR) destroy -auto-approve
-	@echo "✅ All GKE integration resources destroyed"
+	@GKE_NAME="$${TF_VAR_gke_cluster_name:-boundary-controller-cluster}"; \
+	ZONE="$${TF_VAR_gke_zone:-us-central1-a}"; \
+	PROJECT="$${TF_VAR_gcp_project_id}"; \
+	REL_NAME="$${HELM_RELEASE:-boundary-controller}"; \
+	NS_NAME="$${BOUNDARY_NAMESPACE:-boundary}"; \
+	KCTX="gke_$${PROJECT}_$${ZONE}_$${GKE_NAME}"; \
+	if command -v gcloud >/dev/null 2>&1 && [ -n "$$PROJECT" ]; then \
+		gcloud container clusters get-credentials "$$GKE_NAME" --zone "$$ZONE" --project "$$PROJECT" >/dev/null 2>&1 || true; \
+	fi; \
+	if helm status "$$REL_NAME" --namespace "$$NS_NAME" --kube-context "$$KCTX" >/dev/null 2>&1; then \
+		helm uninstall "$$REL_NAME" --namespace "$$NS_NAME" --kube-context "$$KCTX"; \
+		echo "✅ GKE Helm release '$$REL_NAME' uninstalled"; \
+	else \
+		echo "ℹ️  Helm release '$$REL_NAME' not found in namespace '$$NS_NAME' (context: $$KCTX)"; \
+	fi
+	@if [ "$${DESTROY_GKE_RESOURCES:-false}" = "true" ]; then \
+		echo "--- DESTROY_GKE_RESOURCES=true: destroying GKE infrastructure via Terraform ---"; \
+		terraform -chdir=$(GKE_INTEGRATION_DIR) destroy -auto-approve; \
+		echo "✅ All GKE integration resources destroyed"; \
+	else \
+		echo "ℹ️  GKE infrastructure preserved"; \
+		echo "ℹ️  Set DESTROY_GKE_RESOURCES=true to destroy GKE resources as well"; \
+	fi
 	@echo ""
