@@ -26,10 +26,10 @@ tests:
           value: before-hook-creation
       - equal:
           path: spec.backoffLimit
-          value: 3
+          value: 2
       - equal:
           path: spec.ttlSecondsAfterFinished
-          value: 3600
+          value: 600
       - equal:
           path: spec.template.spec.automountServiceAccountToken
           value: false
