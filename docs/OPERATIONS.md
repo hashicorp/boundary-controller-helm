@@ -170,7 +170,8 @@ With additional values file:
 helm install boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml
+  --values my-values.yaml \
+  --wait
 ```
 
 Install from this repo checkout instead:
@@ -178,7 +179,8 @@ Install from this repo checkout instead:
 ```bash
 helm install boundary-controller . \
   --namespace boundary \
-  -f my-values.yaml
+  --values my-values.yaml \
+  --wait
 ```
 
 ### 7. Verify the deployment
@@ -556,7 +558,9 @@ Before upgrading the chart or Boundary version:
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml
+  --values my-values.yaml \
+  --rollback-on-failure \
+  --wait
 ```
 
 When using this repo locally, replace `hashicorp/boundary-controller` with `.`:
@@ -564,35 +568,47 @@ When using this repo locally, replace `hashicorp/boundary-controller` with `.`:
 ```bash
 helm upgrade boundary-controller . \
   --namespace boundary \
-  -f my-values.yaml
+  --values my-values.yaml \
+  --rollback-on-failure \
+  --wait
 ```
+
+[`--rollback-on-failure`](https://helm.sh/docs/helm/helm_upgrade/#options) waits for the rollout to complete and automatically rolls back to the previous release if anything fails.
 
 #### Upgrade with database migration
 
 `boundary database migrate` uses PostgreSQL advisory locks to get exclusive access during schema changes. It cannot acquire that lock while active controllers are still connected to the database and heartbeating. Scale the Deployment to zero replicas first, then run the migration upgrade.
 
-> **Back up the database before running a migration.** Migrations are not automatically reversed on Helm rollback. If a migration fails or produces unexpected results, restoring from backup is the recovery path.
-
-**Step 1 — scale controllers to zero:**
+**Step 1 — Scale controllers to zero:**
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml \
-  --set controller.replicas=0
+  --values my-values.yaml \
+  --set controller.replicas=0 \
+  --rollback-on-failure \
+  --wait
 ```
 
-**Step 2 — run the migration and bring controllers back up:**
+**Step 2 — Database backup:**
+> **Back up the database before running a migration.** Migrations are not automatically reversed by a Helm rollback. If a migration fails or produces unexpected results, restoring from a backup is the recovery path.
+>
+> **`--rollback-on-failure`** rolls back the Helm release state only. Database schema changes applied by a partially completed migration are **not** reversed. If a migration fails partway through, restore the database from a pre-migration backup.
 
-Pass `--set database.migrate.enabled=true` on the upgrade command. Do not set this in your values file — it is a one-time flag. Helm runs the `pre-upgrade` migration job first, then rolls out the Deployment using the replica count from your values file, bringing the controllers back up automatically.
+**Step 3 — Run the migration job:**
+
+Pass `--set database.migrate.enabled=true` on the upgrade command. Do not set this in your values file — it is a one-time flag. Helm runs the `pre-upgrade` database schema migration job and keeps the controller replicas at zero.
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml \
-  --set database.migrate.enabled=true
+  --values my-values.yaml \
+  --set controller.replicas=0 \
+  --set database.migrate.enabled=true \
+  --rollback-on-failure \
+  --wait
 ```
 
 If the migration user differs from the runtime database user, set `migration_url` in `controller.config` under the `database` block. The chart does not pass `-migration-url`; Boundary will use the configured value automatically.
@@ -616,9 +632,12 @@ Use repair only after reviewing Boundary migration failure output and identifyin
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml \
+  --values my-values.yaml \
+  --set controller.replicas=0 \
   --set database.migrate.enabled=true \
-  --set database.repair.version=<version_id>
+  --set database.repair.version=<version_id> \
+  --rollback-on-failure \
+  --wait
 ```
 
 **Notes:**
@@ -627,6 +646,28 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
 - If `database.repair.version` is set but `database.migrate.enabled=false`, no repair job runs.
 - Keep `database.repair.version` as a one-time value, similar to migrate flags.
 - When both run, Helm runs repair first (hook weight `-10`) and migrate second (hook weight `-5`).
+
+**Step 4 — Reset values after a one-time migration/repair upgrade:**
+
+Run a follow-up upgrade with `--reset-values` so that CLI overrides from the migration release do not carry into future normal upgrades.
+
+This resets all temporary command-line overrides from migration workflows, including (for example):
+
+- `database.migrate.enabled=true`
+- `database.repair.version=<version_id>`
+- `controller.replicas=0`
+
+```bash
+helm upgrade boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0 \
+  --namespace boundary \
+  --values my-values.yaml \
+  --reset-values \
+  --rollback-on-failure \
+  --wait
+```
+
+If you skip this step, Helm may reuse the previous release’s `--set database.migrate.enabled=true` value on the next plain upgrade and try to run the migration Job again.
 
 #### Post-Upgrade Verification
 
@@ -672,7 +713,11 @@ helm rollback boundary-controller <revision> -n boundary
 helm uninstall boundary-controller -n boundary
 ```
 
-Hook jobs have `ttlSecondsAfterFinished: 3600` set, so Kubernetes will automatically delete them 1 hour after they complete.
+Hook Jobs are Helm hooks and use `helm.sh/hook-delete-policy: before-hook-creation`.
+
+- `helm uninstall` removes release-managed resources (for example, the main controller ConfigMap, Deployment, Services, and PDB), but does not immediately delete existing hook Jobs.
+- Hook Jobs set `ttlSecondsAfterFinished: 3600`, so Kubernetes automatically removes them about 1 hour after they reach `Complete` or `Failed`.
+- On the next install/upgrade that triggers the same hook, `before-hook-creation` removes any previous hook Job with the same name before creating a new one.
 
 ## Monitoring
 

@@ -12,7 +12,7 @@ metadata:
     app.kubernetes.io/component: controller-init
   annotations:
     "helm.sh/hook": pre-install
-    "helm.sh/hook-output-log-policy": hook-failed,hook-succeeded
+    "helm.sh/hook-output-log-policy": hook-failed
     "helm.sh/hook-weight": "-10"
     "helm.sh/hook-delete-policy": before-hook-creation
 spec:
@@ -97,7 +97,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: {{ include "boundary.controller.configMapName" . }}
+            name: {{ include "boundary.controller.serviceName" . }}-hook-config
         {{- if not .Values.tls.disabled }}
         - name: tls-certs
           secret:

@@ -10,4 +10,3 @@ string and Helm omits it from the manifest output entirely.
 {{- include "boundary.controller.validateSecretRefs" . -}}
 {{- include "boundary.controller.validateConfig" . -}}
 {{- include "boundary.controller.validateDatabaseJobs" . -}}
-{{- include "boundary.controller.validateScheduling" . -}}

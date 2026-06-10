@@ -4,6 +4,37 @@
 
 set -eu
 
+run_required() {
+  STEP="$1"
+  shift
+
+  if OUTPUT=$("$@" 2>&1); then
+    if [ -n "$OUTPUT" ]; then
+      echo "$OUTPUT"
+    fi
+    return 0
+  fi
+
+  echo "$OUTPUT"
+  echo "ERROR: ${STEP}"
+  exit 1
+}
+
+run_optional() {
+  WARNING_MESSAGE="$1"
+  shift
+
+  if OUTPUT=$("$@" 2>&1); then
+    if [ -n "$OUTPUT" ]; then
+      echo "$OUTPUT"
+    fi
+    return 0
+  fi
+
+  echo "$OUTPUT"
+  echo "$WARNING_MESSAGE"
+}
+
 export BOUNDARY_RECOVERY_CONFIG=/etc/boundary/controller.hcl
 
 if [ -z "${BOUNDARY_ADMIN_USERNAME}" ] || [ -z "${BOUNDARY_ADMIN_PASSWORD}" ]; then
@@ -58,11 +89,12 @@ fi
 echo "Auth method ID: $AUTH_METHOD_ID"
 
 echo "Setting global primary auth method..."
-boundary scopes update \
+run_optional "Primary auth method may already be set" \
+  boundary scopes update \
   -id global \
   -primary-auth-method-id "$AUTH_METHOD_ID" \
   -addr "$BOUNDARY_ADDR" \
-  -recovery-config "$BOUNDARY_RECOVERY_CONFIG" >/dev/null 2>&1 || echo "Primary auth method may already be set"
+  -recovery-config "$BOUNDARY_RECOVERY_CONFIG"
 
 echo "Creating or fetching user..."
 USER_OUTPUT=$(boundary users create \
@@ -101,18 +133,20 @@ if echo "$ACCOUNT_OUTPUT" | grep -q "must be unique\|already exists"; then
   echo "Account already exists, fetching..."
   ACCOUNT_ID=$(boundary accounts list -auth-method-id "$AUTH_METHOD_ID" -addr "$BOUNDARY_ADDR" -recovery-config "$BOUNDARY_RECOVERY_CONFIG" -format json | grep -B2 '"login_name":"'"$BOUNDARY_ADMIN_USERNAME"'"' | grep -o '"id":"acctpw_[^"]*"' | head -1 | cut -d'"' -f4)
   if [ -n "$ACCOUNT_ID" ]; then
-    boundary accounts update password \
+    run_required "Failed to update existing password account" \
+      boundary accounts update password \
       -id "$ACCOUNT_ID" \
       -name "$BOUNDARY_ACCOUNT_RESOURCE_NAME" \
       -description "Bootstrap admin account" \
       -login-name "$BOUNDARY_ADMIN_USERNAME" \
       -addr "$BOUNDARY_ADDR" \
-      -recovery-config "$BOUNDARY_RECOVERY_CONFIG" >/dev/null
-    boundary accounts set-password \
+      -recovery-config "$BOUNDARY_RECOVERY_CONFIG"
+    run_required "Failed to set password for existing account" \
+      boundary accounts set-password \
       -id "$ACCOUNT_ID" \
       -password env://BOUNDARY_ADMIN_PASSWORD \
       -addr "$BOUNDARY_ADDR" \
-      -recovery-config "$BOUNDARY_RECOVERY_CONFIG" >/dev/null
+      -recovery-config "$BOUNDARY_RECOVERY_CONFIG"
   fi
 else
   ACCOUNT_ID=$(echo "$ACCOUNT_OUTPUT" | grep -o '"id":"acctpw_[^"]*"' | head -1 | cut -d'"' -f4)
@@ -125,11 +159,12 @@ if [ -z "$ACCOUNT_ID" ]; then
 fi
 
 echo "Linking account to user..."
-boundary users add-accounts \
+run_optional "Account may already be linked" \
+  boundary users add-accounts \
   -id "$USER_ID" \
   -account "$ACCOUNT_ID" \
   -addr "$BOUNDARY_ADDR" \
-  -recovery-config "$BOUNDARY_RECOVERY_CONFIG" 2>&1 || echo "Account may already be linked"
+  -recovery-config "$BOUNDARY_RECOVERY_CONFIG"
 
 echo "Creating or fetching admin role..."
 ROLE_OUTPUT=$(boundary roles create \
@@ -154,17 +189,19 @@ if [ -z "$ROLE_ID" ]; then
 fi
 
 echo "Adding grants to role..."
-boundary roles add-grants \
+run_optional "WARNING: add-grants returned non-zero; verify role grants are configured correctly" \
+  boundary roles add-grants \
   -id "$ROLE_ID" \
   -grant "ids=*;type=*;actions=*" \
   -addr "$BOUNDARY_ADDR" \
-  -recovery-config "$BOUNDARY_RECOVERY_CONFIG" 2>&1 || echo "WARNING: add-grants returned non-zero; verify role grants are configured correctly"
+  -recovery-config "$BOUNDARY_RECOVERY_CONFIG"
 
 echo "Adding principal to role..."
-boundary roles add-principals \
+run_optional "WARNING: add-principals returned non-zero; verify user is linked to role" \
+  boundary roles add-principals \
   -id "$ROLE_ID" \
   -principal "$USER_ID" \
   -addr "$BOUNDARY_ADDR" \
-  -recovery-config "$BOUNDARY_RECOVERY_CONFIG" 2>&1 || echo "WARNING: add-principals returned non-zero; verify user is linked to role"
+  -recovery-config "$BOUNDARY_RECOVERY_CONFIG"
 
 echo "Bootstrap admin completed successfully"

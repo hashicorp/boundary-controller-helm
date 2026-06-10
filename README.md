@@ -52,7 +52,8 @@ Install with custom values:
 helm install boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml
+  --values my-values.yaml \
+  --wait
 ```
 
 ## Helm Upgrade Commands
@@ -63,7 +64,9 @@ Standard upgrade:
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml
+  --values my-values.yaml \
+  --rollback-on-failure \
+  --wait  
 ```
 
 ## Helm Upgrade with Database Migration
@@ -74,20 +77,25 @@ Step 1: scale controllers to zero.
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml \
-  --set controller.replicas=0
+  --values my-values.yaml \
+  --set controller.replicas=0 \
+  --rollback-on-failure \
+  --wait  
 ```
 
 Step 2: take a manual PostgreSQL DB backup.
 
-Step 3: run migration and bring controllers back.
+Step 3: run migration job.
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml \
-  --set database.migrate.enabled=true
+  --values my-values.yaml \
+  --set controller.replicas=0 \
+  --set database.migrate.enabled=true \
+  --rollback-on-failure \
+  --wait
 ```
 
 Optional: run migration with repair version.
@@ -96,7 +104,31 @@ Optional: run migration with repair version.
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml \
+  --values my-values.yaml \
+  --set controller.replicas=0 \
   --set database.migrate.enabled=true \
-  --set database.repair.version=<version_id>
+  --set database.repair.version=<version_id> \
+  --rollback-on-failure \
+  --wait  
 ```
+
+Step 4: reset one-time CLI overrides (replica & migrate flag) back to the values file defaults.
+
+```bash
+helm upgrade boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0 \
+  --namespace boundary \
+  --values my-values.yaml \
+  --reset-values \
+  --rollback-on-failure \
+  --wait  
+```
+
+----
+
+**Please note**: We take Boundary's security and our users' trust very
+seriously. If you believe you have found a security issue in Boundary,
+_please responsibly disclose_ by contacting us at
+[security@hashicorp.com](mailto:security@hashicorp.com).
+
+----

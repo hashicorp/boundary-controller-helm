@@ -50,6 +50,16 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: "controller.config uses env://BOUNDARY_KMS_\\*"
+  - it: fails when migration is enabled but replicas are not zero
+    set:
+      controller:
+        replicas: 2
+      database:
+        migrate:
+          enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "database.migrate.enabled=true requires controller.replicas=0"
   - it: fails when TLS is enabled but cert path does not match tls.mountPath
     set:
       tls:

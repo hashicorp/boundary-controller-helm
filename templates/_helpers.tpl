@@ -158,6 +158,9 @@ false
 Validate migration and repair job settings.
 */}}
 {{- define "boundary.controller.validateDatabaseJobs" -}}
+{{- if and .Values.database.migrate.enabled (ne (int .Values.controller.replicas) 0) -}}
+{{- fail "database.migrate.enabled=true requires controller.replicas=0. Scale controllers to zero before running the migration or repair job." -}}
+{{- end -}}
 {{- if and (ne (printf "%v" (default "" .Values.database.repair.version) | trim) "") (not .Values.database.migrate.enabled) -}}
 {{- fail "database.repair.version is set but database.migrate.enabled is false. Enable database.migrate.enabled to run the repair job during pre-upgrade." -}}
 {{- end -}}
@@ -222,13 +225,4 @@ Validate controller config patterns that Boundary cannot resolve safely at runti
 {{- fail (printf "tls.disabled=false but controller.config is missing expected key path %q. Keep listener tls_key_file aligned with tls.mountPath." (printf "%s/tls.key" .Values.tls.mountPath)) }}
 {{- end }}
 {{- end }}
-{{- end }}
-
-{{/*
-Validate scheduling settings — PDB requires more than one replica.
-*/}}
-{{- define "boundary.controller.validateScheduling" -}}
-{{- if and .Values.podDisruptionBudget.enabled (lt (int .Values.controller.replicas) 2) -}}
-{{- fail "podDisruptionBudget.enabled=true requires controller.replicas >= 2. Increase replicas or set podDisruptionBudget.enabled=false." -}}
-{{- end -}}
 {{- end }}

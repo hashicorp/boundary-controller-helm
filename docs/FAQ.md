@@ -422,6 +422,8 @@ Hook jobs have `ttlSecondsAfterFinished: 3600` and are deleted automatically one
 kubectl delete jobs -n boundary -l app.kubernetes.io/instance=boundary-controller
 ```
 
+Hook jobs also use `helm.sh/hook-delete-policy: before-hook-creation`. This means when the same hook runs again in a later install/upgrade flow, Helm deletes the previous hook Job with the same name before creating the new one.
+
 ---
 
 ### Can I roll back the chart after a successful migration?

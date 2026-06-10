@@ -12,7 +12,7 @@ metadata:
     app.kubernetes.io/component: controller-repair
   annotations:
     "helm.sh/hook": pre-upgrade
-    "helm.sh/hook-output-log-policy": hook-failed,hook-succeeded
+    "helm.sh/hook-output-log-policy": hook-failed
     "helm.sh/hook-weight": "-10"
     "helm.sh/hook-delete-policy": before-hook-creation
 spec:
@@ -32,7 +32,7 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       serviceAccountName: {{ include "boundary.controller.serviceAccountName" . }}
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
         - name: repair-db
           image: "{{ include "boundary.controller.image" . }}"
@@ -77,12 +77,8 @@ spec:
                   key: {{ .Values.secretRefs.keys.kmsRecovery }}
             {{- end }}
           command:
-            - "boundary"
-            - "database"
-            - "migrate"
-            - "-config"
-            - "/etc/boundary/controller.hcl"
-            - "-repair"
+            - "sh"
+            - "/etc/boundary/db-repair.sh"
             - {{ .Values.database.repair.version | quote }}
           resources:
             {{- toYaml .Values.database.resources | nindent 12 }}
@@ -98,7 +94,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: {{ include "boundary.controller.configMapName" . }}
+            name: {{ include "boundary.controller.serviceName" . }}-hook-config
         {{- if not .Values.tls.disabled }}
         - name: tls-certs
           secret:

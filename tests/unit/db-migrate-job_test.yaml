@@ -39,10 +39,13 @@ tests:
           value: default
       - contains:
           path: spec.template.spec.containers[0].command
-          content: boundary
+          content: sh
       - contains:
           path: spec.template.spec.containers[0].command
-          content: migrate
+          content: /etc/boundary/db-migrate.sh
+      - equal:
+          path: spec.template.spec.volumes[0].configMap.name
+          value: boundary-controller-hook-config
   - it: renders custom image repository and pull policy in migrate job
     set:
       database:

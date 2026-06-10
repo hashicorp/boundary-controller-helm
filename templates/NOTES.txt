@@ -1,4 +1,5 @@
-Boundary controller chart has been installed successfully.
+{{- $hasRepair := ne (printf "%v" (default "" .Values.database.repair.version) | trim) "" }}
+Boundary controller chart has been {{ if .Release.IsInstall }}installed{{ else }}upgraded{{ end }} successfully.
 
 Release:   {{ .Release.Name }}
 Namespace: {{ include "boundary.namespace" . }}
@@ -16,7 +17,8 @@ Secret:
 
 Next steps:
 
-1. Check that hook jobs completed successfully:
+{{- if .Release.IsInstall }}
+1. To check install-hook jobs:
 
    kubectl get jobs -n {{ include "boundary.namespace" . }}
 {{- if .Values.database.init.enabled }}
@@ -25,20 +27,38 @@ Next steps:
 {{- if .Values.bootstrapAdmin.enabled }}
    kubectl logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-bootstrap-admin
 {{- end }}
+{{- else if and .Values.database.migrate.enabled $hasRepair }}
+1. To check pre-upgrade repair and migration hook jobs:
 
-2. Wait for controller pods to become ready:
+   kubectl get jobs -n {{ include "boundary.namespace" . }}
+   kubectl logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-database-repair
+   kubectl logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-database-migration
+{{- else if .Values.database.migrate.enabled }}
+1. To check pre-upgrade migration hook job:
 
+   kubectl get jobs -n {{ include "boundary.namespace" . }}
+   kubectl logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-database-migration
+{{- else }}
+1. To verify rollout and pod status:
+
+   kubectl rollout status deployment/{{ include "boundary.controller.serviceName" . }} -n {{ include "boundary.namespace" . }}
    kubectl get pods -n {{ include "boundary.namespace" . }} -l app.kubernetes.io/component=controller
+{{- end }}
 
-3. Wait for the API Service to receive an external address:
+2. To fetch external addresses on LoadBalancer Services:
 
    kubectl get svc {{ include "boundary.controller.apiServiceName" . }} -n {{ include "boundary.namespace" . }}
+{{- if eq .Values.controller.service.cluster.type "LoadBalancer" }}
 
-4. Access the Boundary UI at:
+   kubectl get svc {{ include "boundary.controller.clusterServiceName" . }} -n {{ include "boundary.namespace" . }}
+{{- end }}
+{{- if eq .Values.controller.service.ops.type "LoadBalancer" }}
+
+   kubectl get svc {{ include "boundary.controller.opsServiceName" . }} -n {{ include "boundary.namespace" . }}
+{{- end }}
+
+3. To access the Boundary UI using the API Service external address:
 
    {{ if .Values.tls.disabled }}http{{ else }}https{{ end }}://<EXTERNAL_ADDRESS>:{{ .Values.controller.service.api.port }}
-
-Note:
-- The liveness and readiness probe schemes are auto-derived from `tls.disabled` (HTTPS when TLS is enabled, HTTP when disabled). You can still force an explicit scheme using `controller.livenessProbe.scheme` and `controller.readinessProbe.scheme`.
 
 For more information, visit https://www.boundaryproject.io/
