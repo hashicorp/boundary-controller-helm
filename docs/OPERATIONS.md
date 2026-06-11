@@ -649,7 +649,7 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
 
 **Step 4 — Reset one-time migration flags:**
 
-Run a follow-up upgrade that explicitly sets migration mode back to disabled.
+Run a follow-up upgrade that explicitly sets migration mode back to disabled and sets `controller.replicas` back to your desired value (via `my-values.yaml` or `--set controller.replicas=<n>`).
 
 If you used repair in the previous step, also clear `database.repair.version`.
 
