@@ -716,7 +716,9 @@ helm uninstall boundary-controller -n boundary
 Hook Jobs are Helm hooks and use `helm.sh/hook-delete-policy: before-hook-creation`.
 
 - `helm uninstall` removes release-managed resources (for example, the main controller ConfigMap, Deployment, Services, and PDB), but does not immediately delete existing hook Jobs.
-- Hook Jobs set `ttlSecondsAfterFinished: 3600`, so Kubernetes automatically removes them about 1 hour after they reach `Complete` or `Failed`.
+- Hook Jobs set `ttlSecondsAfterFinished: 600` (10 minutes), so Kubernetes automatically removes them about 10 minutes after they reach `Complete` or `Failed`.
+- Hook Jobs set `backoffLimit: 2`, so Kubernetes can run up to 3 attempts total (1 initial run + 2 retries) before marking the Job failed.
+- `helm uninstall` only removes resources created by this Helm chart; it does not delete or modify the PostgreSQL database.
 - On the next install/upgrade that triggers the same hook, `before-hook-creation` removes any previous hook Job with the same name before creating a new one.
 
 ## Monitoring
