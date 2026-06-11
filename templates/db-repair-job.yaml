@@ -91,6 +91,10 @@ spec:
               mountPath: {{ .Values.tls.mountPath }}
               readOnly: true
             {{- end }}
+            - name: tmp
+              mountPath: /tmp
+            - name: boundary-data
+              mountPath: /boundary
       volumes:
         - name: config
           configMap:
@@ -100,4 +104,8 @@ spec:
           secret:
             secretName: {{ .Values.tls.secretName }}
         {{- end }}
+        - name: tmp
+          emptyDir: {}
+        - name: boundary-data
+          emptyDir: {}
 {{- end }}

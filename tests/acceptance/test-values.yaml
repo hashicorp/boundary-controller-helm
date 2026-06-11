@@ -61,14 +61,15 @@ controller:
     }
 
     events {
-      audit_enabled = true
-      observations_enabled = true
-      sysevents_enabled = true
-      telemetry_enabled = true
+      audit_enabled = false
+      observations_enabled = false
+      sysevents_enabled = false
+      telemetry_enabled = false
       sink "stderr" {
-        name = "default"
-        event_types = ["*"]
-        format = "cloudevents-json"
+        name = "errors"
+        description = "All error events"
+        event_types = ["error"]
+        format = "hclog-text"
       }
     }
 
