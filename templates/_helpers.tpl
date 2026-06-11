@@ -167,27 +167,6 @@ Validate migration and repair job settings.
 {{- end }}
 
 {{/*
-Validate upgrade image drift and require migration flag when image changes.
-*/}}
-{{- define "boundary.controller.validateUpgradeImageDrift" -}}
-{{- if .Release.IsUpgrade -}}
-{{- $namespace := include "boundary.namespace" . | trim -}}
-{{- $deploymentName := include "boundary.controller.serviceName" . | trim -}}
-{{- $existingDeployment := lookup "apps/v1" "Deployment" $namespace $deploymentName -}}
-{{- if $existingDeployment -}}
-{{- $containers := default list (dig "spec" "template" "spec" "containers" (list) $existingDeployment) -}}
-{{- if gt (len $containers) 0 -}}
-{{- $currentImage := default "" (get (index $containers 0) "image") -}}
-{{- $desiredImage := include "boundary.controller.image" . | trim -}}
-{{- if and (ne $currentImage "") (ne $desiredImage "") (ne $currentImage $desiredImage) (not .Values.database.migrate.enabled) (ne (int .Values.controller.replicas) 0) -}}
-{{- fail (printf "Controller image changed from %q to %q during upgrade. Use a migration-aware flow: first scale controllers to zero, then run helm upgrade with database.migrate.enabled=true." $currentImage $desiredImage) -}}
-{{- end -}}
-{{- end -}}
-{{- end -}}
-{{- end -}}
-{{- end }}
-
-{{/*
 Validate manual Secret existence and required keys.
 Runs only when secretRefs.validateExisting=true.
 */}}
