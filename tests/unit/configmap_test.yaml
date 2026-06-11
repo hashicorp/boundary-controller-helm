@@ -5,7 +5,7 @@ suite: Controller configmap
 templates:
   - templates/configmap.yaml
 tests:
-  - it: renders the controller config and embedded scripts
+  - it: renders the controller config and bootstrap script
     set:
       database:
         init:
@@ -19,15 +19,6 @@ tests:
       - matchRegex:
           path: data["controller.hcl"]
           pattern: disable_mlock = true
-      - matchRegex:
-          path: data["db-init.sh"]
-          pattern: boundary database init
-      - matchRegex:
-          path: data["db-migrate.sh"]
-          pattern: boundary database migrate
-      - matchRegex:
-          path: data["db-repair.sh"]
-          pattern: boundary database migrate
       - matchRegex:
           path: data["bootstrap-admin.sh"]
           pattern: Bootstrap admin completed successfully
