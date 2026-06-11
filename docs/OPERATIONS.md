@@ -647,27 +647,24 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
 - Keep `database.repair.version` as a one-time value, similar to migrate flags.
 - When both run, Helm runs repair first (hook weight `-10`) and migrate second (hook weight `-5`).
 
-**Step 4 — Reset values after a one-time migration/repair upgrade:**
+**Step 4 — Reset one-time migration flags:**
 
-Run a follow-up upgrade with `--reset-values` so that CLI overrides from the migration release do not carry into future normal upgrades.
+Run a follow-up upgrade that explicitly sets migration mode back to disabled.
 
-This resets all temporary command-line overrides from migration workflows, including (for example):
-
-- `database.migrate.enabled=true`
-- `database.repair.version=<version_id>`
-- `controller.replicas=0`
+If you used repair in the previous step, also clear `database.repair.version`.
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
   --values my-values.yaml \
-  --reset-values \
+  --set database.migrate.enabled=false \
+  --set-string database.repair.version="" \
   --rollback-on-failure \
   --wait
 ```
 
-If you skip this step, Helm may reuse the previous release’s `--set database.migrate.enabled=true` value on the next plain upgrade and try to run the migration Job again.
+If you skip this step, the previous release value can keep migration mode enabled and a later plain upgrade may try to run the migration Job again.
 
 #### Post-Upgrade Verification
 

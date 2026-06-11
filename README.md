@@ -119,7 +119,7 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
   --values my-values.yaml \
-  --reset-values \
+  --set database.migrate.enabled=false  \
   --rollback-on-failure \
   --wait  
 ```
