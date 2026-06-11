@@ -416,7 +416,7 @@ The repair version must match the format `YYYYMMDDHHMMSS` or `SEQUENCE/YYYYMMDDH
 
 Helm rollback does not reverse database migrations. The `pre-upgrade` hook jobs (`init-db`, `database-migration`, `database-repair`) are not re-run during rollback. If a migration produced an unexpected schema state, restore the database from a backup and then roll back the Helm release.
 
-Hook jobs have `ttlSecondsAfterFinished: 3600` and are deleted automatically one hour after they complete. To delete them immediately:
+Hook jobs have `ttlSecondsAfterFinished: 600` and are deleted automatically ten minutes after they complete. To delete them immediately:
 
 ```bash
 kubectl delete jobs -n boundary -l app.kubernetes.io/instance=boundary-controller
