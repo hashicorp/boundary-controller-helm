@@ -12,12 +12,6 @@ metadata:
 data:
   controller.hcl: |
 {{ tpl .Values.controller.config . | indent 4 }}
-  db-init.sh: |
-{{ .Files.Get "scripts/db-init.sh" | indent 4 }}
-  db-migrate.sh: |
-{{ .Files.Get "scripts/db-migrate.sh" | indent 4 }}
-  db-repair.sh: |
-{{ .Files.Get "scripts/db-repair.sh" | indent 4 }}
   bootstrap-admin.sh: |
 {{ .Files.Get "scripts/bootstrap-admin.sh" | indent 4 }}
 
