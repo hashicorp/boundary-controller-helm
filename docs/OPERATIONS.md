@@ -579,6 +579,12 @@ helm upgrade boundary-controller . \
 
 `boundary database migrate` uses PostgreSQL advisory locks to get exclusive access during schema changes. It cannot acquire that lock while active controllers are still connected to the database and heartbeating. Scale the Deployment to zero replicas first, then run the migration upgrade.
 
+This chart currently treats migration/repair as a manual operations workflow: run one-time migration flags with `--set` for the migration/repair upgrade, then run Step 4 to reset temporary CLI overrides with `--reset-values`.
+
+This workflow may be streamlined in future chart releases.
+
+Fresh installs that use chart defaults typically do not require a migration because there is no existing Boundary schema to upgrade. Migration steps are primarily for version upgrades.
+
 **Step 1 — Scale controllers to zero:**
 
 ```bash
@@ -647,24 +653,21 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
 - Keep `database.repair.version` as a one-time value, similar to migrate flags.
 - When both run, Helm runs repair first (hook weight `-10`) and migrate second (hook weight `-5`).
 
-**Step 4 — Reset one-time migration flags:**
+**Step 4 — Reset one-time migration overrides:**
 
-Run a follow-up upgrade that explicitly sets migration mode back to disabled and sets `controller.replicas` back to your desired value (via `my-values.yaml` or `--set controller.replicas=<n>`).
-
-If you used repair in the previous step, also clear `database.repair.version`.
+For production/GitOps workflows where desired state lives in versioned values files, run a follow-up upgrade with `--reset-values`. This clears previous CLI `--set` overrides (such as migration/repair flags and temporary replica changes) and reapplies values from `my-values.yaml`.
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
   --values my-values.yaml \
-  --set database.migrate.enabled=false \
-  --set-string database.repair.version="" \
+  --reset-values \
   --rollback-on-failure \
   --wait
 ```
 
-If you skip this step, the previous release value can keep migration mode enabled and a later plain upgrade may try to run the migration Job again.
+If you skip this step, previous CLI override values can persist and a later plain upgrade may try to run migration/repair hooks unexpectedly.
 
 #### Post-Upgrade Verification
 

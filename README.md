@@ -71,6 +71,12 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
 
 ## Helm Upgrade with Database Migration
 
+Migration/repair is currently a manual operational flow in this chart: you enable one-time migration flags via `--set` during the upgrade steps below, then clear temporary CLI overrides with Step 4 (`--reset-values`).
+
+This workflow may be streamlined in future chart releases.
+
+For fresh installs that use chart defaults, migration is typically not required because no previous Boundary schema exists yet. Most migration handling is relevant for upgrades between Boundary versions.
+
 Step 1: scale controllers to zero.
 
 ```bash
@@ -112,15 +118,14 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
   --wait  
 ```
 
-Step 4: reset one-time CLI overrides (replica & migrate flag) back to the values file defaults.
+Step 4: reset one-time CLI overrides back to the values file defaults.
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
   --values my-values.yaml \
-  --set database.migrate.enabled=false \
-  --set database.repair.version=="" \
+  --reset-values \
   --rollback-on-failure \
   --wait
 ```
