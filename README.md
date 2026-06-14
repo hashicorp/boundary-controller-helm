@@ -75,7 +75,7 @@ Migration/repair is currently a manual operational flow in this chart: you enabl
 
 This workflow may be streamlined in future chart releases.
 
-For fresh installs that use chart defaults, migration is typically not required because no previous Boundary schema exists yet. Most migration handling is relevant for upgrades between Boundary versions.
+Fresh installs usually do not need migration; it is mainly needed for Boundary upgrades.
 
 Step 1: scale controllers to zero.
 
@@ -118,7 +118,7 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
   --wait  
 ```
 
-Step 4: reset one-time CLI overrides back to the values file defaults.
+Step 4: reset one-time CLI overrides (`--reset-values`). This is strongly recommended for manual Helm runs; in GitOps flows it is usually optional.
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \

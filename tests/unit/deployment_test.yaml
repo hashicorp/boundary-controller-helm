@@ -342,10 +342,20 @@ tests:
     set:
       terminationGracePeriodSeconds: 45
       podSecurityContext:
+        runAsNonRoot: true
         runAsUser: 200
+        runAsGroup: 300
+        fsGroup: 400
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
       containerSecurityContext:
         runAsNonRoot: true
+        runAsUser: 201
+        runAsGroup: 301
         allowPrivilegeEscalation: false
+        seccompProfile:
+          type: RuntimeDefault
       podAnnotations:
         test-annotation: test-value
       nodeSelector:
@@ -373,8 +383,36 @@ tests:
           value: 200
         template: templates/deployment.yaml
       - equal:
+          path: spec.template.spec.securityContext.runAsGroup
+          value: 300
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.securityContext.fsGroup
+          value: 400
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.securityContext.fsGroupChangePolicy
+          value: OnRootMismatch
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.securityContext.seccompProfile.type
+          value: RuntimeDefault
+        template: templates/deployment.yaml
+      - equal:
           path: spec.template.spec.containers[0].securityContext.runAsNonRoot
           value: true
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+          value: 201
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsGroup
+          value: 301
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.seccompProfile.type
+          value: RuntimeDefault
         template: templates/deployment.yaml
       - equal:
           path: spec.template.spec.nodeSelector["kubernetes.io/os"]

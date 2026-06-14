@@ -48,7 +48,7 @@ By default, a release renders the following resources:
 - One PodDisruptionBudget ensuring at least one replica stays available during voluntary disruptions
 - Helm hook Jobs for database initialization (`pre-install`), optional database migration (`pre-upgrade`), optional database repair (`pre-upgrade`), and optional admin bootstrap (`post-install`)
 
-The chart uses an existing ServiceAccount and does not create ServiceAccount resources.
+The chart uses an existing ServiceAccount and does not create ServiceAccount resources. The default `serviceAccount.name=default` is intended for quick start; use a dedicated ServiceAccount in production.
 
 ## Prerequisites
 
@@ -83,6 +83,7 @@ The chart runs controller containers with restricted Kubernetes security setting
 - Sets `SKIP_SETCAP=1` to avoid capability modification at startup
 - Enforces `RuntimeDefault` seccomp profile
 - Sets `fsGroup: 1000` so mounted volumes are accessible by the container user
+- Uses `fsGroupChangePolicy: OnRootMismatch` to avoid unnecessary recursive ownership changes on every mount
 
 Operational implications:
 
@@ -101,6 +102,8 @@ Use this flow when you want to deploy a Boundary controller with this chart.
 Create the Secret that the chart reads sensitive values from. At minimum it must contain the database credentials, migration database credentials (if using `env://BOUNDARY_PG_MIGRATION_URL` in `controller.config`), and enterprise license. Add admin credentials when `bootstrapAdmin.enabled=true` (the default).
 
 The Secret name and key names do not need to use the defaults shown below. Operators can use any Secret name and key names, but must update `secretRefs.secretName` and `secretRefs.keys.*` in `values.yaml` to match.
+
+Keep the `env://...` variable names in `controller.config` aligned with the names the chart injects (for example `env://BOUNDARY_PG_URL`, `env://BOUNDARY_LICENSE`, and optionally `env://BOUNDARY_PG_MIGRATION_URL`). Operators typically only need to create/sync the Kubernetes Secret and map its key names with `secretRefs.keys.*`; no template changes are required for this workflow.
 
 ```bash
 kubectl create secret generic boundary-controller-secrets \
@@ -428,6 +431,8 @@ bootstrapAdmin:
 
 If Vault is your source of truth for secrets, use the [Vault Secrets Operator](https://developer.hashicorp.com/vault/docs/platform/k8s/vso) or the [External Secrets Operator](https://external-secrets.io) with a Vault backend to sync the required values into a Kubernetes Secret before install. Once the Secret exists in the release namespace with the correct key names, the chart reads it the same way as a manually created Secret. Set `secretRefs.secretName` to match the name the operator creates. Cloud-native alternatives such as AWS Secrets Manager (via the AWS Secrets and Configuration Provider) or GCP Secret Manager can also be used to populate the Secret in the same way.
 
+In this model, the operator's responsibility is secret lifecycle management (create/sync/rotate the Kubernetes Secret). The chart and `controller.config` keep using the same expected `env://...` variable names.
+
 ### Offline rendering without cluster access
 
 Secret validation requires a live cluster connection. Disable it for `helm template` runs:
@@ -502,13 +507,13 @@ The table below documents all chart values shipped in `values.yaml`.
 | `controller.service.ops.port` | `9203` | Service port for the ops listener. |
 | `controller.service.ops.targetPort` | `9203` | Container port targeted by the ops Service. |
 | `controller.service.ops.annotations` | `{}` | Annotations applied to the ops Service. |
-| `podSecurityContext` | secure non-root defaults | Pod-level security context applied to controller pods and hook job pods. |
-| `containerSecurityContext` | secure non-root defaults | Container-level security context with dropped Linux capabilities. |
+| `podSecurityContext` | secure non-root defaults | Pod-level security context applied to controller pods and hook job pods, including `runAsNonRoot`, UID/GID, `fsGroup`, `fsGroupChangePolicy`, and seccomp profile. |
+| `containerSecurityContext` | secure non-root defaults | Container-level security context with non-root UID/GID, dropped Linux capabilities, no privilege escalation, read-only root filesystem, and seccomp profile. |
 | `podAnnotations` | `{}` | Extra annotations added to controller pods. |
 | `nodeSelector` | `{}` | Node selector constraints for the controller Deployment. |
 | `tolerations` | `[]` | Tolerations for controller pod scheduling. |
 | `affinity` | `{}` | Affinity rules for controller pod scheduling. |
-| `serviceAccount.name` | `default` | Name of an existing ServiceAccount used by controller and hook jobs. |
+| `serviceAccount.name` | `default` | Name of an existing ServiceAccount used by controller and hook jobs (`default` is quick-start only; use a dedicated ServiceAccount in production). |
 | `serviceAccount.automountServiceAccountToken` | `false` | Control whether pods using this ServiceAccount receive an API token. |
 | `podDisruptionBudget.enabled` | `true` | Create a PodDisruptionBudget for the controller Deployment. |
 | `podDisruptionBudget.minAvailable` | `1` | Minimum number of controller pods that must remain available during voluntary disruptions. |
@@ -655,7 +660,7 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
 
 **Step 4 — Reset one-time migration overrides:**
 
-For production/GitOps workflows where desired state lives in versioned values files, run a follow-up upgrade with `--reset-values`. This clears previous CLI `--set` overrides (such as migration/repair flags and temporary replica changes) and reapplies values from `my-values.yaml`.
+For manual Helm runs, follow up with `--reset-values` so one-time CLI overrides do not leak into later upgrades. In GitOps flows that always apply the versioned values file, this step is usually optional.
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
@@ -780,14 +785,14 @@ events {
     name        = "all-events"
     description = "All events to stderr"
     event_types = ["*"]
-    format      = "cloudevents-json"
+    format      = "hclog-text"
   }
 
   sink "file" {
     name        = "audit-sink"
     description = "Audit events to file"
     event_types = ["audit"]
-    format      = "cloudevents-json"
+    format      = "hclog-text"
     file {
       path      = "/var/log/boundary"
       file_name = "audit.log"

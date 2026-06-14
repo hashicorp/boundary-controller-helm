@@ -4,7 +4,7 @@
 
 ### Why does `helm install` fail immediately with a "Secret not found" error?
 
-`controller.secretRefs.validateExisting` defaults to `false` in `values.yaml` but if you have set it to `true`, the chart validates that the Kubernetes Secret exists and contains all required keys at render time. Install fails if the Secret is absent or missing a key.
+`secretRefs.validateExisting` defaults to `false` in `values.yaml` but if you have set it to `true`, the chart validates that the Kubernetes Secret exists and contains all required keys at render time. Install fails if the Secret is absent or missing a key.
 
 Either create the Secret before installing:
 
@@ -20,9 +20,8 @@ kubectl create secret generic boundary-controller-secrets \
 Or disable validation for offline / dry-run use:
 
 ```yaml
-controller:
-  secretRefs:
-    validateExisting: false
+secretRefs:
+  validateExisting: false
 ```
 
 ---
@@ -41,25 +40,25 @@ For production use an external KMS stanza (`awskms`, `gcpckms`, `azurekeyvault`,
 
 ### Why does rendering fail with a `tls_cert_file` path error?
 
-When `tls.disabled=false` (the default), the chart validates that `controller.config` contains `tls_cert_file` and `tls_key_file` paths that match `tls.mountPath`. If the paths in your HCL do not match — for example because you customised `tls.mountPath` without updating the listener blocks — rendering fails with:
+When `tls.disabled=false`, the chart validates that `controller.config` contains `tls_cert_file` and `tls_key_file` paths that match `tls.mountPath`. If the paths in your HCL do not match — for example because you customised `tls.mountPath` without updating the listener blocks — rendering fails with:
 
 ```
 tls.disabled=false but controller.config is missing expected cert path "/etc/boundary/tls/tls.crt"
 ```
 
-Keep the paths in your `listener` blocks aligned with `tls.mountPath`, or update `tls.mountPath` to match your HCL. If you are disabling TLS entirely, set `tls.disabled=true` and add `tls_disable = true` to each listener.
+Keep the paths in your `listener` blocks aligned with `tls.mountPath`, or update `tls.mountPath` to match your HCL. If you are disabling TLS entirely, set `tls.disabled=true` (the default) and add `tls_disable = true` to each listener.
 
 ---
 
 ### Can I run `helm template` without a live cluster?
 
-Yes. Secret validation requires cluster access and is skipped when `controller.secretRefs.validateExisting=false` (the default). If you have set it to `true`, disable it for offline rendering:
+Yes. Secret validation requires cluster access and is skipped when `secretRefs.validateExisting=false` (the default). If you have set it to `true`, disable it for offline rendering:
 
 ```bash
 helm template boundary-controller . \
   --namespace boundary \
-  --set controller.secretRefs.validateExisting=false \
-  -f my-values.yaml
+  --values my-values.yaml \
+  --set secretRefs.validateExisting=false
 ```
 
 ---
@@ -120,7 +119,7 @@ Each Boundary listener has a distinct purpose and different exposure requirement
 | Service | Port | Default type | Purpose |
 |---|---|---|---|
 | `boundary-controller` | 9200 | `LoadBalancer` | Client API traffic — Boundary CLI, UI, and Terraform provider connect here |
-| `boundary-controller-cluster` | 9201 | `LoadBalancer` | Worker registration — self-managed workers dial this address to join the cluster |
+| `boundary-controller-cluster` | 9201 | `ClusterIP` | Worker registration — self-managed workers dial this address to join the cluster |
 | `boundary-controller-ops` | 9203 | `ClusterIP` | Health checks and Prometheus metrics — internal only |
 
 Separating them allows different exposure strategies: the API Service can be internet-facing while the cluster Service is internal-only, and the ops Service never leaves the cluster. It also makes firewall rules and Service annotations more precise.
@@ -130,6 +129,12 @@ Separating them allows different exposure strategies: the API Service can be int
 ### How do I expose the API Service with an internal load balancer?
 
 Add the appropriate annotation to `controller.service.api.annotations` for your cloud provider:
+
+Cloud provider references:
+
+- AWS: https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/guide/service/annotations/
+- GCP: https://cloud.google.com/kubernetes-engine/docs/concepts/service-load-balancer-parameters
+- Azure: https://learn.microsoft.com/azure/aks/load-balancer-standard
 
 **AWS (NLB internal):**
 ```yaml
@@ -234,6 +239,8 @@ controller {
 
 This resolves to `boundary-controller-cluster:9201` by default, which is the DNS name of the cluster Service inside the cluster.
 
+By default `controller.service.cluster.type` is `ClusterIP`, so this address is internal to the cluster. If you switch the cluster listener Service to `LoadBalancer`, update `public_cluster_addr` to the externally reachable LoadBalancer DNS name or IP on port `9201`.
+
 ---
 
 ### How do I use a KMS other than AWS KMS?
@@ -255,7 +262,7 @@ See the [Common Deployment Patterns](../README.md#common-deployment-patterns) se
 
 The recommended approach is to use your cloud provider's workload identity mechanism so no long-lived credentials are needed:
 
-- **AWS**: Annotate the ServiceAccount with an IAM role ARN (`eks.amazonaws.com/role-arn`) and set `serviceAccount.create=true`.
+- **AWS**: Create the ServiceAccount with an IAM role ARN annotation (`eks.amazonaws.com/role-arn`) and set `serviceAccount.name` in your values to reference it.
 - **GCP**: Annotate the ServiceAccount with a GCP service account email (`iam.gke.io/gcp-service-account`).
 - **Azure**: Use Azure Workload Identity annotations on the ServiceAccount.
 - **Vault**: Inject a token or AppRole credentials via the [Vault Agent Injector](https://developer.hashicorp.com/vault/docs/platform/k8s/injector) as an environment variable or file, and reference it in the `transit` KMS stanza.
@@ -264,7 +271,7 @@ The recommended approach is to use your cloud provider's workload identity mecha
 
 ### How do I supply the database URL securely?
 
-Add the connection string to the Kubernetes Secret under the key configured by `controller.secretRefs.keys.databaseUrl` (default `database-url`). The chart injects it as `BOUNDARY_PG_URL` into all containers. Reference it in `controller.config` as:
+Add the connection string to the Kubernetes Secret under the key configured by `secretRefs.keys.databaseUrl` (default `database-url`). The chart injects it as `BOUNDARY_PG_URL` into all containers. Reference it in `controller.config` as:
 
 ```hcl
 controller {
@@ -276,11 +283,15 @@ controller {
 
 Use `sslmode=require` or higher in the connection string for production databases.
 
+The `env://` variable names used in `controller.config` are fixed by the chart's env injection (for example `env://BOUNDARY_PG_URL`, `env://BOUNDARY_LICENSE`, and optional `env://BOUNDARY_PG_MIGRATION_URL`). You can change Kubernetes Secret name and key names via `secretRefs.secretName` and `secretRefs.keys.*`, but keep those `env://` names unchanged unless you also customize templates.
+
+For most teams, the operator's job is to create/sync/rotate the Kubernetes Secret (manually, VSO, or External Secrets) and keep `secretRefs.*` aligned; no other chart changes are required.
+
 ---
 
 ### How do I use a separate migration database user?
 
-Add the migration connection string to the Secret under the key configured by `controller.secretRefs.keys.migrationUrl` (default `migration-url`). Then set `migration_url` in `controller.config`:
+Add the migration connection string to the Secret under the key configured by `secretRefs.keys.migrationUrl` (default `migration-url`). Then set `migration_url` in `controller.config`:
 
 ```hcl
 controller {
@@ -291,7 +302,7 @@ controller {
 }
 ```
 
-Uncomment `# migrationUrl: "migration-url"` under `controller.secretRefs.keys` in your values file so the chart knows to inject that Secret key.
+Uncomment `# migrationUrl: "migration-url"` under `secretRefs.keys` in your values file so the chart knows to inject that Secret key.
 
 ---
 
@@ -377,20 +388,38 @@ If you require additional environment variables beyond what the chart injects, f
 Scale the Deployment to zero first (migrations cannot acquire an exclusive PostgreSQL advisory lock while live controllers are connected), then run the upgrade with the migrate flag:
 
 ```bash
-# Step 1 — drain connections
-helm upgrade boundary-controller . \
+# Step 1 — scale controllers to zero
+helm upgrade boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml \
-  --set controller.replicas=0
+  --values my-values.yaml \
+  --set controller.replicas=0 \
+  --rollback-on-failure \
+  --wait
 
-# Step 2 — migrate and bring controllers back up
-helm upgrade boundary-controller . \
+# Step 2 — take a database backup (manual)
+
+# Step 3 — run migration (keep replicas at zero)
+helm upgrade boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml \
-  --set controller.database.migrate.enabled=true
+  --values my-values.yaml \
+  --set controller.replicas=0 \
+  --set database.migrate.enabled=true \
+  --rollback-on-failure \
+  --wait
+
+# Step 4 — reset one-time CLI overrides so running release matches Git-managed values
+helm upgrade boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0 \
+  --namespace boundary \
+  --values my-values.yaml \
+  --reset-values \
+  --rollback-on-failure \
+  --wait
 ```
 
-Do not persist `controller.database.migrate.enabled=true` in your values file — it is a one-time flag.
+Do not persist `database.migrate.enabled=true` in your values file — it is a one-time flag. For full guidance see [docs/OPERATIONS.md](OPERATIONS.md).
 
 > Always back up the database before running a migration. Migrations are not automatically reversed on Helm rollback.
 
@@ -398,18 +427,19 @@ Do not persist `controller.database.migrate.enabled=true` in your values file �
 
 ### How do I run a migration repair?
 
-Pass both `controller.database.migrate.enabled=true` and `controller.database.repair.version` together. The repair job runs first (hook weight `-10`), then the migrate job (hook weight `-5`):
+Pass both `database.migrate.enabled=true` and `database.repair.version` together. The repair job runs first (hook weight `-10`), then the migrate job (hook weight `-5`):
 
 ```bash
-helm upgrade boundary-controller . \
+helm upgrade boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml \
-  --set controller.database.migrate.enabled=true \
-  --set controller.database.repair.version=20240111120000
+  --values my-values.yaml \
+  --set controller.replicas=0 \
+  --set database.migrate.enabled=true \
+  --set database.repair.version=<version_id> \
+  --rollback-on-failure \
+  --wait
 ```
-
-The repair version must match the format `YYYYMMDDHHMMSS` or `SEQUENCE/YYYYMMDDHHMMSS` (e.g. `0/20240111120000`). The chart validates the format at render time.
-
 ---
 
 ### What happens to hook Jobs on rollback?
@@ -489,7 +519,7 @@ When upgrading the Boundary image version without a database schema change:
 2. Run `helm upgrade` — the default RollingUpdate strategy replaces pods one at a time.
 3. Monitor rollout progress: `kubectl rollout status deployment/boundary-controller -n boundary`.
 
-The PodDisruptionBudget and rolling update strategy together guarantee at least one replica is available throughout. Do not set `controller.database.migrate.enabled=true` unless the Boundary release notes explicitly state a migration is required for this version.
+The PodDisruptionBudget and rolling update strategy together guarantee at least one replica is available throughout. Do not set `database.migrate.enabled=true` unless the Boundary release notes explicitly state a migration is required for this version.
 
 ---
 
@@ -537,10 +567,10 @@ Common causes:
 
 1. Confirm the job succeeded: `kubectl get job/boundary-controller-bootstrap-admin -n boundary`
 2. Check the admin credentials in the Secret match what was used during install.
-3. Verify the auth method name — the chart creates it with the display name set in `controller.bootstrapAdmin.authMethodName` (default `bootstrap-password`).
+3. Verify the auth method name — the chart creates it with the display name set in `bootstrapAdmin.authMethodName` (default `bootstrap-password`).
 4. Confirm you are authenticating against the correct Boundary address and using the `password` auth method type.
 
-If `controller.bootstrapAdmin.runOnUpgrade=false` (the default), the bootstrap job only runs on the initial install. It will not re-run on subsequent upgrades. To reset credentials, log in with an existing admin account and update them through the Boundary API.
+If `bootstrapAdmin.runOnUpgrade=false` (the default), the bootstrap job only runs on the initial install. It will not re-run on subsequent upgrades. To reset credentials, log in with an existing admin account and update them through the Boundary API.
 
 ---
 
@@ -556,7 +586,7 @@ Common causes and how to distinguish them:
 
 | Symptom in logs | Likely cause | Fix |
 |---|---|---|
-| `error reading license` / `missing license` | `BOUNDARY_LICENSE` env var not set or Secret key wrong | Verify `controller.secretRefs.keys.license` and the Secret contents |
+| `error reading license` / `missing license` | `BOUNDARY_LICENSE` env var not set or Secret key wrong | Verify `secretRefs.keys.license` and the Secret contents |
 | `unable to connect to database` / `connection refused` | PostgreSQL unreachable or wrong credentials | Check `database-url` in the Secret and network connectivity |
 | `failed to initialize KMS` / `AccessDenied` | KMS permissions missing or wrong key ID | Verify IAM/Workload Identity bindings and key aliases in `controller.config` |
 | `setcap: operation not permitted` | `SKIP_SETCAP=1` not set | Confirm `containerSecurityContext` has not been overridden to re-enable capabilities |
@@ -573,7 +603,7 @@ kubectl describe pod -n boundary -l app.kubernetes.io/name=boundary-controller
 
 ### How do I enable verbose event logging for debugging?
 
-Boundary uses a structured [CloudEvents](https://cloudevents.io)-based system rather than traditional log levels. To get the most diagnostic output, enable all event types and the `observations` sink in `controller.config`:
+Boundary uses a structured [CloudEvents](https://cloudevents.io)-based system rather than traditional log levels. To get the most diagnostic output, enable all event types and use `cloudevents-json` format so output can be filtered with `jq`:
 
 ```hcl
 events {
@@ -616,17 +646,21 @@ The Boundary container entrypoint normally calls `setcap` to grant the binary `I
 
 ### Can I run the controller with a custom ServiceAccount?
 
-Yes. Set `serviceAccount.create=true` and optionally provide a name:
+Yes. The chart does not create ServiceAccounts — it uses an existing one specified by `serviceAccount.name`. Create the ServiceAccount in advance with the required cloud annotations, then reference it:
 
 ```yaml
 serviceAccount:
-  create: true
   name: "boundary-controller"
-  annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/boundary-controller-role
 ```
 
-This is required for IRSA (AWS), Workload Identity (GCP), and Azure Workload Identity scenarios.
+For IRSA (AWS), Workload Identity (GCP), and Azure Workload Identity, create the ServiceAccount with the appropriate annotation before installing the chart:
+
+```bash
+# AWS IRSA example
+kubectl create serviceaccount boundary-controller -n boundary
+kubectl annotate serviceaccount boundary-controller -n boundary \
+  eks.amazonaws.com/role-arn=arn:aws:iam::ACCOUNT_ID:role/boundary-controller-role
+```
 
 ---
 
@@ -640,18 +674,20 @@ Boundary supports KMS key rotation through the `boundary database rotate-root-ke
 
 ### Can I run multiple controller releases in the same namespace?
 
-Yes. Use a different Helm release name for each installation. Because `boundary.name` is derived from the chart name (`boundary-controller`), you must set `nameOverride` or `fullnameOverride` to prevent resource name collisions:
+Yes. Use a different Helm release name for each installation. Because `boundary.name` is derived from the chart name (`boundary-controller`), you must set `nameOverride` to prevent resource name collisions:
 
 ```bash
 helm install boundary-controller-a . \
   --namespace boundary \
+  --values values-a.yaml \
   --set nameOverride=boundary-controller-a \
-  -f values-a.yaml
+  --wait
 
 helm install boundary-controller-b . \
   --namespace boundary \
+  --values values-b.yaml \
   --set nameOverride=boundary-controller-b \
-  -f values-b.yaml
+  --wait
 ```
 
 Each release must use a separate PostgreSQL database — two controllers cannot share a database unless they are replicas of the same cluster. Each release also creates its own Services, ConfigMap, ServiceAccount, and hook jobs, so the name override is mandatory to avoid conflicts.
@@ -660,25 +696,70 @@ Each release must use a separate PostgreSQL database — two controllers cannot 
 
 ### How do I integrate with the Vault Secrets Operator?
 
-The [Vault Secrets Operator (VSO)](https://developer.hashicorp.com/vault/docs/platform/k8s/vso) can create and sync the Kubernetes Secret that the chart reads from. Set `controller.secretRefs.secretName` to the name VSO will use, then create a `VaultStaticSecret` resource:
+The [Vault Secrets Operator (VSO)](https://developer.hashicorp.com/vault/docs/platform/k8s/vso) can create and continuously sync the Kubernetes Secret this chart reads from.
+
+Per the VSO docs, the recommended flow is:
+
+1. Create a `VaultConnection` (how VSO reaches Vault).
+2. Create a `VaultAuth` (how VSO authenticates).
+3. Create a `VaultStaticSecret` (what secret to sync to Kubernetes).
+
+Set `secretRefs.secretName` to the destination Secret name, then apply resources like:
 
 ```yaml
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultConnection
+metadata:
+  name: vault-connection
+  namespace: boundary
+spec:
+  address: https://vault.example.com:8200
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: vault-auth
+  namespace: boundary
+spec:
+  vaultConnectionRef: vault-connection
+  method: kubernetes
+  mount: kubernetes
+  kubernetes:
+    role: boundary-controller
+    serviceAccount: vault-secrets-operator
+---
 apiVersion: secrets.hashicorp.com/v1beta1
 kind: VaultStaticSecret
 metadata:
   name: boundary-controller-secrets
   namespace: boundary
 spec:
+  vaultAuthRef: vault-auth
   type: kv-v2
   mount: secret
   path: boundary/controller
   destination:
-    name: boundary-controller-secrets   # must match controller.secretRefs.secretName
+    name: boundary-controller-secrets   # must match secretRefs.secretName
     create: true
   refreshAfter: 30s
+  rolloutRestartTargets:
+    - kind: Deployment
+      name: boundary-controller
 ```
 
-The Vault KV secret at `secret/boundary/controller` must contain keys that match `controller.secretRefs.keys.*` (default names: `database-url`, `license`, `admin-username`, `admin-password`). VSO creates the Kubernetes Secret before the chart reads it, so `controller.secretRefs.validateExisting` can safely be set to `true`.
+The Vault KV secret at `secret/boundary/controller` must contain keys that match `secretRefs.keys.*` (default names: `database-url`, `license`, `admin-username`, `admin-password`).
+
+`rolloutRestartTargets` is recommended for Boundary because rotated values are consumed via environment variables from the Kubernetes Secret, so pods need a restart to pick up updates.
+
+Update `rolloutRestartTargets[].name` if your rendered Deployment name differs (for example when using a different Helm release name or `nameOverride`).
+
+If you set `secretRefs.validateExisting=true`, make sure the VSO-managed Kubernetes Secret exists before install/upgrade so render-time validation succeeds.
+
+References:
+
+- VSO overview: https://developer.hashicorp.com/vault/docs/platform/k8s/vso
+- Vault source and CRD workflow: https://developer.hashicorp.com/vault/docs/platform/k8s/vso/sources/vault
+- VSO API reference (`VaultConnection`, `VaultAuth`, `VaultStaticSecret`, `rolloutRestartTargets`): https://developer.hashicorp.com/vault/docs/platform/k8s/vso/api-reference
 
 ---
 
@@ -719,13 +800,13 @@ events {
   sink "stderr" {
     name        = "all-events"
     event_types = ["*"]
-    format      = "cloudevents-json"
+    format      = "hclog-text"
   }
 
   sink "file" {
     name        = "audit-sink"
     event_types = ["audit"]
-    format      = "cloudevents-json"
+    format      = "hclog-text"
     file {
       path      = "/var/log/boundary"
       file_name = "audit.log"
