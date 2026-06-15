@@ -29,22 +29,40 @@ tests:
           value: before-hook-creation
       - equal:
           path: spec.backoffLimit
-          value: 3
+          value: 2
       - equal:
           path: spec.ttlSecondsAfterFinished
-          value: 3600
+          value: 600
       - equal:
           path: spec.template.spec.automountServiceAccountToken
           value: false
       - equal:
           path: spec.template.spec.serviceAccountName
           value: default
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 100
+      - equal:
+          path: spec.template.spec.securityContext.fsGroupChangePolicy
+          value: OnRootMismatch
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsGroup
+          value: 1000
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.seccompProfile.type
+          value: RuntimeDefault
       - contains:
           path: spec.template.spec.containers[0].command
-          content: -repair
+          content: sh
+      - contains:
+          path: spec.template.spec.containers[0].command
+          content: /etc/boundary/db-repair.sh
       - contains:
           path: spec.template.spec.containers[0].command
           content: "2024-01-01-01"
+      - equal:
+          path: spec.template.spec.volumes[0].configMap.name
+          value: boundary-controller-hook-config
   - it: renders custom image repository and pull policy in repair job
     set:
       database:

@@ -48,7 +48,7 @@ By default, a release renders the following resources:
 - One PodDisruptionBudget ensuring at least one replica stays available during voluntary disruptions
 - Helm hook Jobs for database initialization (`pre-install`), optional database migration (`pre-upgrade`), optional database repair (`pre-upgrade`), and optional admin bootstrap (`post-install`)
 
-The chart uses an existing ServiceAccount and does not create ServiceAccount resources.
+The chart uses an existing ServiceAccount and does not create ServiceAccount resources. The default `serviceAccount.name=default` is intended for quick start; use a dedicated ServiceAccount in production.
 
 ## Prerequisites
 
@@ -83,6 +83,7 @@ The chart runs controller containers with restricted Kubernetes security setting
 - Sets `SKIP_SETCAP=1` to avoid capability modification at startup
 - Enforces `RuntimeDefault` seccomp profile
 - Sets `fsGroup: 1000` so mounted volumes are accessible by the container user
+- Uses `fsGroupChangePolicy: OnRootMismatch` to avoid unnecessary recursive ownership changes on every mount
 
 Operational implications:
 
@@ -101,6 +102,8 @@ Use this flow when you want to deploy a Boundary controller with this chart.
 Create the Secret that the chart reads sensitive values from. At minimum it must contain the database credentials, migration database credentials (if using `env://BOUNDARY_PG_MIGRATION_URL` in `controller.config`), and enterprise license. Add admin credentials when `bootstrapAdmin.enabled=true` (the default).
 
 The Secret name and key names do not need to use the defaults shown below. Operators can use any Secret name and key names, but must update `secretRefs.secretName` and `secretRefs.keys.*` in `values.yaml` to match.
+
+Keep the `env://...` variable names in `controller.config` aligned with the names the chart injects (for example `env://BOUNDARY_PG_URL`, `env://BOUNDARY_LICENSE`, and optionally `env://BOUNDARY_PG_MIGRATION_URL`). Operators typically only need to create/sync the Kubernetes Secret and map its key names with `secretRefs.keys.*`; no template changes are required for this workflow.
 
 ```bash
 kubectl create secret generic boundary-controller-secrets \
@@ -170,7 +173,8 @@ With additional values file:
 helm install boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml
+  --values my-values.yaml \
+  --wait
 ```
 
 Install from this repo checkout instead:
@@ -178,7 +182,8 @@ Install from this repo checkout instead:
 ```bash
 helm install boundary-controller . \
   --namespace boundary \
-  -f my-values.yaml
+  --values my-values.yaml \
+  --wait
 ```
 
 ### 7. Verify the deployment
@@ -426,6 +431,8 @@ bootstrapAdmin:
 
 If Vault is your source of truth for secrets, use the [Vault Secrets Operator](https://developer.hashicorp.com/vault/docs/platform/k8s/vso) or the [External Secrets Operator](https://external-secrets.io) with a Vault backend to sync the required values into a Kubernetes Secret before install. Once the Secret exists in the release namespace with the correct key names, the chart reads it the same way as a manually created Secret. Set `secretRefs.secretName` to match the name the operator creates. Cloud-native alternatives such as AWS Secrets Manager (via the AWS Secrets and Configuration Provider) or GCP Secret Manager can also be used to populate the Secret in the same way.
 
+In this model, the operator's responsibility is secret lifecycle management (create/sync/rotate the Kubernetes Secret). The chart and `controller.config` keep using the same expected `env://...` variable names.
+
 ### Offline rendering without cluster access
 
 Secret validation requires a live cluster connection. Disable it for `helm template` runs:
@@ -500,13 +507,13 @@ The table below documents all chart values shipped in `values.yaml`.
 | `controller.service.ops.port` | `9203` | Service port for the ops listener. |
 | `controller.service.ops.targetPort` | `9203` | Container port targeted by the ops Service. |
 | `controller.service.ops.annotations` | `{}` | Annotations applied to the ops Service. |
-| `podSecurityContext` | secure non-root defaults | Pod-level security context applied to controller pods and hook job pods. |
-| `containerSecurityContext` | secure non-root defaults | Container-level security context with dropped Linux capabilities. |
+| `podSecurityContext` | secure non-root defaults | Pod-level security context applied to controller pods and hook job pods, including `runAsNonRoot`, UID/GID, `fsGroup`, `fsGroupChangePolicy`, and seccomp profile. |
+| `containerSecurityContext` | secure non-root defaults | Container-level security context with non-root UID/GID, dropped Linux capabilities, no privilege escalation, read-only root filesystem, and seccomp profile. |
 | `podAnnotations` | `{}` | Extra annotations added to controller pods. |
 | `nodeSelector` | `{}` | Node selector constraints for the controller Deployment. |
 | `tolerations` | `[]` | Tolerations for controller pod scheduling. |
 | `affinity` | `{}` | Affinity rules for controller pod scheduling. |
-| `serviceAccount.name` | `default` | Name of an existing ServiceAccount used by controller and hook jobs. |
+| `serviceAccount.name` | `default` | Name of an existing ServiceAccount used by controller and hook jobs (`default` is quick-start only; use a dedicated ServiceAccount in production). |
 | `serviceAccount.automountServiceAccountToken` | `false` | Control whether pods using this ServiceAccount receive an API token. |
 | `podDisruptionBudget.enabled` | `true` | Create a PodDisruptionBudget for the controller Deployment. |
 | `podDisruptionBudget.minAvailable` | `1` | Minimum number of controller pods that must remain available during voluntary disruptions. |
@@ -556,7 +563,9 @@ Before upgrading the chart or Boundary version:
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml
+  --values my-values.yaml \
+  --rollback-on-failure \
+  --wait
 ```
 
 When using this repo locally, replace `hashicorp/boundary-controller` with `.`:
@@ -564,35 +573,53 @@ When using this repo locally, replace `hashicorp/boundary-controller` with `.`:
 ```bash
 helm upgrade boundary-controller . \
   --namespace boundary \
-  -f my-values.yaml
+  --values my-values.yaml \
+  --rollback-on-failure \
+  --wait
 ```
+
+[`--rollback-on-failure`](https://helm.sh/docs/helm/helm_upgrade/#options) waits for the rollout to complete and automatically rolls back to the previous release if anything fails.
 
 #### Upgrade with database migration
 
 `boundary database migrate` uses PostgreSQL advisory locks to get exclusive access during schema changes. It cannot acquire that lock while active controllers are still connected to the database and heartbeating. Scale the Deployment to zero replicas first, then run the migration upgrade.
 
-> **Back up the database before running a migration.** Migrations are not automatically reversed on Helm rollback. If a migration fails or produces unexpected results, restoring from backup is the recovery path.
+This chart currently treats migration/repair as a manual operations workflow: run one-time migration flags with `--set` for the migration/repair upgrade, then run Step 4 to reset temporary CLI overrides with `--reset-values`.
 
-**Step 1 — scale controllers to zero:**
+This workflow may be streamlined in future chart releases.
+
+Fresh installs that use chart defaults typically do not require a migration because there is no existing Boundary schema to upgrade. Migration steps are primarily for version upgrades.
+
+**Step 1 — Scale controllers to zero:**
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml \
-  --set controller.replicas=0
+  --values my-values.yaml \
+  --set controller.replicas=0 \
+  --rollback-on-failure \
+  --wait
 ```
 
-**Step 2 — run the migration and bring controllers back up:**
+**Step 2 — Database backup:**
+> **Back up the database before running a migration.** Migrations are not automatically reversed by a Helm rollback. If a migration fails or produces unexpected results, restoring from a backup is the recovery path.
+>
+> **`--rollback-on-failure`** rolls back the Helm release state only. Database schema changes applied by a partially completed migration are **not** reversed. If a migration fails partway through, restore the database from a pre-migration backup.
 
-Pass `--set database.migrate.enabled=true` on the upgrade command. Do not set this in your values file — it is a one-time flag. Helm runs the `pre-upgrade` migration job first, then rolls out the Deployment using the replica count from your values file, bringing the controllers back up automatically.
+**Step 3 — Run the migration job:**
+
+Pass `--set database.migrate.enabled=true` on the upgrade command. Do not set this in your values file — it is a one-time flag. Helm runs the `pre-upgrade` database schema migration job and keeps the controller replicas at zero.
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml \
-  --set database.migrate.enabled=true
+  --values my-values.yaml \
+  --set controller.replicas=0 \
+  --set database.migrate.enabled=true \
+  --rollback-on-failure \
+  --wait
 ```
 
 If the migration user differs from the runtime database user, set `migration_url` in `controller.config` under the `database` block. The chart does not pass `-migration-url`; Boundary will use the configured value automatically.
@@ -616,9 +643,12 @@ Use repair only after reviewing Boundary migration failure output and identifyin
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml \
+  --values my-values.yaml \
+  --set controller.replicas=0 \
   --set database.migrate.enabled=true \
-  --set database.repair.version=<version_id>
+  --set database.repair.version=<version_id> \
+  --rollback-on-failure \
+  --wait
 ```
 
 **Notes:**
@@ -627,6 +657,22 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
 - If `database.repair.version` is set but `database.migrate.enabled=false`, no repair job runs.
 - Keep `database.repair.version` as a one-time value, similar to migrate flags.
 - When both run, Helm runs repair first (hook weight `-10`) and migrate second (hook weight `-5`).
+
+**Step 4 — Reset one-time migration overrides:**
+
+For operators or end users running Helm manually, we suggest following up with `--reset-values` so one-time CLI overrides do not leak into later upgrades. In GitOps flows that always apply the versioned values file, this step is usually optional.
+
+```bash
+helm upgrade boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0 \
+  --namespace boundary \
+  --values my-values.yaml \
+  --reset-values \
+  --rollback-on-failure \
+  --wait
+```
+
+If you skip this step, previous CLI override values can persist and a later plain upgrade may try to run migration/repair hooks unexpectedly.
 
 #### Post-Upgrade Verification
 
@@ -672,7 +718,13 @@ helm rollback boundary-controller <revision> -n boundary
 helm uninstall boundary-controller -n boundary
 ```
 
-Hook jobs have `ttlSecondsAfterFinished: 3600` set, so Kubernetes will automatically delete them 1 hour after they complete.
+Hook Jobs are Helm hooks and use `helm.sh/hook-delete-policy: before-hook-creation`.
+
+- `helm uninstall` removes release-managed resources (for example, the main controller ConfigMap, Deployment, Services, and PDB), but does not immediately delete existing hook Jobs.
+- Hook Jobs set `ttlSecondsAfterFinished: 600` (10 minutes), so Kubernetes automatically removes them about 10 minutes after they reach `Complete` or `Failed`.
+- Hook Jobs set `backoffLimit: 2`, so Kubernetes can run up to 3 attempts total (1 initial run + 2 retries) before marking the Job failed.
+- `helm uninstall` only removes resources created by this Helm chart; it does not delete or modify the PostgreSQL database.
+- On the next install/upgrade that triggers the same hook, `before-hook-creation` removes any previous hook Job with the same name before creating a new one.
 
 ## Monitoring
 
@@ -733,14 +785,14 @@ events {
     name        = "all-events"
     description = "All events to stderr"
     event_types = ["*"]
-    format      = "cloudevents-json"
+    format      = "hclog-text"
   }
 
   sink "file" {
     name        = "audit-sink"
     description = "Audit events to file"
     event_types = ["audit"]
-    format      = "cloudevents-json"
+    format      = "hclog-text"
     file {
       path      = "/var/log/boundary"
       file_name = "audit.log"

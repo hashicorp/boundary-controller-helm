@@ -18,16 +18,28 @@ tests:
           value: before-hook-creation
       - equal:
           path: spec.backoffLimit
-          value: 3
+          value: 2
       - equal:
           path: spec.ttlSecondsAfterFinished
-          value: 3600
+          value: 600
       - equal:
           path: spec.template.spec.automountServiceAccountToken
           value: false
       - equal:
           path: spec.template.spec.serviceAccountName
           value: default
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 100
+      - equal:
+          path: spec.template.spec.securityContext.fsGroupChangePolicy
+          value: OnRootMismatch
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsGroup
+          value: 1000
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.seccompProfile.type
+          value: RuntimeDefault
       - contains:
           path: spec.template.spec.containers[0].env
           content:

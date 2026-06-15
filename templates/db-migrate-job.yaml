@@ -12,12 +12,12 @@ metadata:
     app.kubernetes.io/component: controller-migrate
   annotations:
     "helm.sh/hook": pre-upgrade
-    "helm.sh/hook-output-log-policy": hook-failed,hook-succeeded
+    "helm.sh/hook-output-log-policy": hook-failed
     "helm.sh/hook-weight": "-5"
     "helm.sh/hook-delete-policy": before-hook-creation
 spec:
-  backoffLimit: 3
-  ttlSecondsAfterFinished: 3600
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 600
   template:
     metadata:
       labels:
@@ -32,7 +32,7 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       serviceAccountName: {{ include "boundary.controller.serviceAccountName" . }}
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
         - name: migrate-db
           image: "{{ include "boundary.controller.image" . }}"
@@ -77,11 +77,8 @@ spec:
                   key: {{ .Values.secretRefs.keys.kmsRecovery }}
             {{- end }}
           command:
-            - "boundary"
-            - "database"
-            - "migrate"
-            - "-config"
-            - "/etc/boundary/controller.hcl"
+            - "sh"
+            - "/etc/boundary/db-migrate.sh"
           resources:
             {{- toYaml .Values.database.resources | nindent 12 }}
           volumeMounts:
@@ -100,7 +97,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: {{ include "boundary.controller.configMapName" . }}
+            name: {{ include "boundary.controller.serviceName" . }}-hook-config
         {{- if not .Values.tls.disabled }}
         - name: tls-certs
           secret:

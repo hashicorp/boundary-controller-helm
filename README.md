@@ -23,7 +23,7 @@ By default, this chart deploys:
 | Component | Version | 
 | --- | --- | 
 | Kubernetes | 1.34 and above |
-| Helm | v4 |
+| Helm | v3 and above |
 | PostgreSQL | 15 and above |
 
 ### Required Resources
@@ -52,7 +52,8 @@ Install with custom values:
 helm install boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml
+  --values my-values.yaml \
+  --wait
 ```
 
 ## Helm Upgrade Commands
@@ -63,10 +64,18 @@ Standard upgrade:
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml
+  --values my-values.yaml \
+  --rollback-on-failure \
+  --wait  
 ```
 
 ## Helm Upgrade with Database Migration
+
+Migration/repair is currently a manual operational flow in this chart: you enable one-time migration flags via `--set` during the upgrade steps below, then clear temporary CLI overrides with Step 4 (`--reset-values`).
+
+This workflow may be streamlined in future chart releases.
+
+Fresh installs usually do not need migration; it is mainly needed for Boundary upgrades.
 
 Step 1: scale controllers to zero.
 
@@ -74,20 +83,25 @@ Step 1: scale controllers to zero.
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml \
-  --set controller.replicas=0
+  --values my-values.yaml \
+  --set controller.replicas=0 \
+  --rollback-on-failure \
+  --wait  
 ```
 
 Step 2: take a manual PostgreSQL DB backup.
 
-Step 3: run migration and bring controllers back.
+Step 3: run migration job.
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml \
-  --set database.migrate.enabled=true
+  --values my-values.yaml \
+  --set controller.replicas=0 \
+  --set database.migrate.enabled=true \
+  --rollback-on-failure \
+  --wait
 ```
 
 Optional: run migration with repair version.
@@ -96,7 +110,31 @@ Optional: run migration with repair version.
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
-  -f my-values.yaml \
+  --values my-values.yaml \
+  --set controller.replicas=0 \
   --set database.migrate.enabled=true \
-  --set database.repair.version=<version_id>
+  --set database.repair.version=<version_id> \
+  --rollback-on-failure \
+  --wait  
 ```
+
+Step 4: reset one-time CLI overrides (`--reset-values`). This is suggested for operators or end users running Helm manually; in GitOps flows it is usually optional.
+
+```bash
+helm upgrade boundary-controller hashicorp/boundary-controller \
+  --version 0.1.0 \
+  --namespace boundary \
+  --values my-values.yaml \
+  --reset-values \
+  --rollback-on-failure \
+  --wait
+```
+
+----
+
+**Please note**: We take Boundary's security and our users' trust very
+seriously. If you believe you have found a security issue in Boundary,
+_please responsibly disclose_ by contacting us at
+[security@hashicorp.com](mailto:security@hashicorp.com).
+
+----

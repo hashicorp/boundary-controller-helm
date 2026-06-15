@@ -12,11 +12,12 @@ metadata:
     app.kubernetes.io/component: controller-bootstrap-admin
   annotations:
     "helm.sh/hook": {{ if .Values.bootstrapAdmin.runOnUpgrade }}post-install,post-upgrade{{ else }}post-install{{ end }}
+    "helm.sh/hook-output-log-policy": hook-failed
     "helm.sh/hook-weight": "5"
     "helm.sh/hook-delete-policy": before-hook-creation
 spec:
-  backoffLimit: 3
-  ttlSecondsAfterFinished: 3600
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 600
   template:
     metadata:
       labels:
@@ -31,7 +32,7 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       serviceAccountName: {{ include "boundary.controller.serviceAccountName" . }}
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
         - name: bootstrap-admin
           image: "{{ include "boundary.controller.image" . }}"

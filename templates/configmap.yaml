@@ -9,14 +9,33 @@ metadata:
   labels:
     {{- include "boundary.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller
+data:
+  controller.hcl: |
+{{ tpl .Values.controller.config . | indent 4 }}
+  bootstrap-admin.sh: |
+{{ .Files.Get "scripts/bootstrap-admin.sh" | indent 4 }}
+
+{{- if or (and .Release.IsInstall .Values.database.init.enabled) (and .Release.IsUpgrade .Values.database.migrate.enabled) }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "boundary.controller.serviceName" . }}-hook-config
+  namespace: {{ include "boundary.namespace" . }}
+  labels:
+    {{- include "boundary.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller-init
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-20"
-    "helm.sh/hook-delete-policy": before-hook-creation
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
 data:
   controller.hcl: |
 {{ tpl .Values.controller.config . | indent 4 }}
   db-init.sh: |
 {{ .Files.Get "scripts/db-init.sh" | indent 4 }}
-  bootstrap-admin.sh: |
-{{ .Files.Get "scripts/bootstrap-admin.sh" | indent 4 }}
+  db-migrate.sh: |
+{{ .Files.Get "scripts/db-migrate.sh" | indent 4 }}
+  db-repair.sh: |
+{{ .Files.Get "scripts/db-repair.sh" | indent 4 }}
+{{- end }}

@@ -21,7 +21,7 @@ namespace: ""
 # Boundary image configuration
 image:
   repository: hashicorp/boundary-enterprise
-  tag: "0.21-ent"
+  tag: ""
   pullPolicy: IfNotPresent
 
 # https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry
@@ -106,8 +106,7 @@ controller:
     controller {
       name = "boundary-controller"
       description = "Boundary Controller running in Kubernetes"
-      # If controller.service.cluster.type is LoadBalancer, update this to the
-      # external LoadBalancer DNS name or IP on port 9201 after install/upgrade.
+      # If controller.service.cluster.type is LoadBalancer, set this to its external DNS/IP:9201.
       public_cluster_addr = "{{ printf "%s:9201" (include "boundary.controller.clusterServiceName" .) }}"
       license = "env://BOUNDARY_LICENSE"
       database {
@@ -165,15 +164,17 @@ controller:
       kms_key_id = "alias/boundary-worker-auth"
     }
 
+    # https://developer.hashicorp.com/boundary/docs/monitor/events/common
     events {
-      audit_enabled = true
-      observations_enabled = true
-      sysevents_enabled = true
-      telemetry_enabled = true
+      audit_enabled = false
+      observations_enabled = false
+      sysevents_enabled = false
+      telemetry_enabled = false
       sink "stderr" {
-        name = "default"
-        event_types = ["*"]
-        format = "cloudevents-json"
+        name = "errors"
+        description = "All error events"
+        event_types = ["error"]
+        format = "hclog-text"
       }
     }
 
@@ -307,14 +308,19 @@ bootstrapAdmin:
 
 # Pod security context
 podSecurityContext:
+  runAsNonRoot: true
   runAsUser: 100
   runAsGroup: 1000
-  runAsNonRoot: true
   fsGroup: 1000
+  fsGroupChangePolicy: "OnRootMismatch"
+  seccompProfile:
+    type: RuntimeDefault
 
 # Container security context
 containerSecurityContext:
   runAsNonRoot: true
+  runAsUser: 100
+  runAsGroup: 1000
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: true
   capabilities:
@@ -345,8 +351,9 @@ affinity: {}
 
 # ServiceAccount configuration
 # Chart does not create ServiceAccounts. Provide an existing ServiceAccount name.
+# Existing ServiceAccount used by the controller Deployment and hook Jobs.
+# The default "default" value is for quick start only; use a dedicated ServiceAccount in production.
 serviceAccount:
-  # Existing ServiceAccount used by controller and hook jobs
   name: "default"
   automountServiceAccountToken: false
 
