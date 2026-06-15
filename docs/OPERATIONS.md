@@ -660,7 +660,7 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
 
 **Step 4 — Reset one-time migration overrides:**
 
-For manual Helm runs, follow up with `--reset-values` so one-time CLI overrides do not leak into later upgrades. In GitOps flows that always apply the versioned values file, this step is usually optional.
+For operators or end users running Helm manually, we suggest following up with `--reset-values` so one-time CLI overrides do not leak into later upgrades. In GitOps flows that always apply the versioned values file, this step is usually optional.
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \

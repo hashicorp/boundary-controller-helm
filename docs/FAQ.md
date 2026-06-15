@@ -409,7 +409,7 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
   --rollback-on-failure \
   --wait
 
-# Step 4 — reset one-time CLI overrides so running release matches Git-managed values
+# Step 4 — suggested for operators or end users running Helm manually to reset one-time CLI overrides so the running release matches Git-managed values
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \

@@ -118,7 +118,7 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
   --wait  
 ```
 
-Step 4: reset one-time CLI overrides (`--reset-values`). This is strongly recommended for manual Helm runs; in GitOps flows it is usually optional.
+Step 4: reset one-time CLI overrides (`--reset-values`). This is suggested for operators or end users running Helm manually; in GitOps flows it is usually optional.
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
