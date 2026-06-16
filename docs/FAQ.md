@@ -48,6 +48,8 @@ tls.disabled=false but controller.config is missing expected cert path "/etc/bou
 
 Keep the paths in your `listener` blocks aligned with `tls.mountPath`, or update `tls.mountPath` to match your HCL. If you are disabling TLS entirely, set `tls.disabled=true` (the default) and add `tls_disable = true` to each listener.
 
+When using a Kubernetes TLS Secret (`type: kubernetes.io/tls`), the data keys are fixed to `tls.crt` and `tls.key`. This chart mounts that Secret directly and expects those filenames at `{{ .Values.tls.mountPath }}/tls.crt` and `{{ .Values.tls.mountPath }}/tls.key`.
+
 ---
 
 ### Can I run `helm template` without a live cluster?
@@ -326,6 +328,38 @@ For most teams, the operator's job is to create/sync/rotate the Kubernetes Secre
 
 ---
 
+### What happens if I use a different env name in `env://...`?
+
+`env://` resolution is exact. Boundary looks up the exact variable name you set in `controller.config`.
+
+Example:
+
+```hcl
+controller {
+  database {
+    url = "env://MY_DB_URL"
+  }
+}
+```
+
+In this case Boundary looks for `MY_DB_URL`, not `BOUNDARY_PG_URL`.
+
+- If `MY_DB_URL` exists in the container environment, it works.
+- If `MY_DB_URL` does not exist, Boundary fails to resolve the value and controller startup fails.
+
+The chart auto-injects chart-managed names (`BOUNDARY_PG_URL`, `BOUNDARY_LICENSE`, and optional `BOUNDARY_PG_MIGRATION_URL`) from `secretRefs`. For custom names, inject the variable yourself with `extraEnv`.
+
+```yaml
+extraEnv:
+  - name: MY_DB_URL
+    valueFrom:
+      secretKeyRef:
+        name: boundary-controller-secrets
+        key: database-url
+```
+
+---
+
 ### How do I use a separate migration database user?
 
 Add the migration connection string to the Secret under the key configured by `secretRefs.keys.migrationUrl` (default `migration-url`). Then set `migration_url` in `controller.config`:
@@ -385,7 +419,7 @@ controller {
   public_cluster_addr = "{{ include \"boundary.controller.clusterServiceName\" . }}:9201"
 
   # Reference a value from values.yaml
-  name = "{{ .Values.nameOverride | default \"boundary-controller\" }}"
+  name = "{{ include \"boundary.name\" . }}"
 }
 ```
 
@@ -726,19 +760,24 @@ Boundary supports KMS key rotation through the `boundary database rotate-root-ke
 
 ### Can I run multiple controller releases in the same namespace?
 
-Yes. Use a different Helm release name for each installation. Because `boundary.name` is derived from the chart name (`boundary-controller`), you must set `nameOverride` to prevent resource name collisions:
+Yes. Use a different Helm release name for each installation. Resource names are derived from `boundary.name`.
+
+- `nameOverride` prefixes the chart base name (for example `dev-boundary-controller`).
+- `fullnameOverride` replaces the base name entirely (for example `boundary-a`).
+
+To avoid collisions in a shared namespace, set either a unique `nameOverride` or `fullnameOverride` per release:
 
 ```bash
 helm install boundary-controller-a . \
   --namespace boundary \
   --values values-a.yaml \
-  --set nameOverride=boundary-controller-a \
+  --set fullnameOverride=boundary-controller-a \
   --wait
 
 helm install boundary-controller-b . \
   --namespace boundary \
   --values values-b.yaml \
-  --set nameOverride=boundary-controller-b \
+  --set fullnameOverride=boundary-controller-b \
   --wait
 ```
 

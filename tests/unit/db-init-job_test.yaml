@@ -238,7 +238,7 @@ tests:
     asserts:
       - equal:
           path: metadata.name
-          value: custom-init-db
+          value: custom-boundary-controller-init-db
       - equal:
           path: metadata.namespace
           value: boundary

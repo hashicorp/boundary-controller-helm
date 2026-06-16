@@ -212,7 +212,7 @@ tests:
     asserts:
       - equal:
           path: metadata.name
-          value: custom-database-migration
+          value: custom-boundary-controller-database-migration
       - equal:
           path: metadata.namespace
           value: boundary

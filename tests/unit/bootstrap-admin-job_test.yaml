@@ -211,7 +211,7 @@ tests:
     asserts:
       - equal:
           path: metadata.name
-          value: custom-bootstrap-admin
+          value: custom-boundary-controller-bootstrap-admin
       - equal:
           path: metadata.namespace
           value: boundary

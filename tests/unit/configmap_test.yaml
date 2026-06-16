@@ -88,7 +88,7 @@ tests:
     asserts:
       - equal:
           path: metadata.name
-          value: custom-config
+          value: custom-boundary-controller-config
       - equal:
           path: metadata.namespace
           value: boundary

@@ -7,8 +7,8 @@
 # Naming and Namespace
 # --------------------------------------------------
 
-# Override chart-generated resource names. Ex: if set to "custom", resources will be named custom-api, custom-cluster, etc.
 nameOverride: ""
+fullnameOverride: ""
 
 # Namespace to deploy resources into, keep empty to use the namespace provided via --namespace flag during helm install/upgrade
 # If set, all resources will be deployed into the specified namespace regardless of the Helm release namespace.

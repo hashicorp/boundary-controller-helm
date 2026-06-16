@@ -27,27 +27,51 @@ tests:
           value: hashicorp/boundary-enterprise:9.9.9
         template: templates/deployment.yaml
 
-  - it: applies nameOverride to deployment and service names
+  - it: applies nameOverride as a prefix to deployment and service names
     set:
       nameOverride: custom
     asserts:
       - equal:
           path: metadata.name
-          value: custom
+          value: custom-boundary-controller
         template: templates/deployment.yaml
       - equal:
           path: metadata.name
-          value: custom-api
+          value: custom-boundary-controller-api
         template: templates/service.yaml
         documentIndex: 0
       - equal:
           path: metadata.name
-          value: custom-cluster
+          value: custom-boundary-controller-cluster
         template: templates/service.yaml
         documentIndex: 1
       - equal:
           path: metadata.name
-          value: custom-ops
+          value: custom-boundary-controller-ops
+        template: templates/service.yaml
+        documentIndex: 2
+
+  - it: applies fullnameOverride as the full resource base name
+    set:
+      fullnameOverride: boundary-dev
+    asserts:
+      - equal:
+          path: metadata.name
+          value: boundary-dev
+        template: templates/deployment.yaml
+      - equal:
+          path: metadata.name
+          value: boundary-dev-api
+        template: templates/service.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: boundary-dev-cluster
+        template: templates/service.yaml
+        documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: boundary-dev-ops
         template: templates/service.yaml
         documentIndex: 2
 

@@ -456,7 +456,8 @@ The table below documents all chart values shipped in `values.yaml`.
 | `image.pullPolicy` | `IfNotPresent` | Kubernetes image pull policy. |
 | `imagePullSecrets` | `[]` | Optional registry credentials for private image pulls. |
 | `extraEnv` | `[]` | Additional environment variables injected into controller and hook job containers. Prefer `secretRefs` + `env://...` for sensitive values. |
-| `nameOverride` | `""` | Override the chart name used in resource naming. |
+| `nameOverride` | `""` | Prefix generated resource names as `<nameOverride>-boundary-controller` (for example `dev-boundary-controller`). |
+| `fullnameOverride` | `""` | Fully override the generated resource base name (for example `boundary-dev`). |
 | `namespace` | `""` | Namespace applied to all namespaced chart resources. Leave empty to use the Helm release namespace. |
 | `tls.disabled` | `true` | Disable TLS cert mounts and related validation when set to `true`. |
 | `tls.secretName` | `boundary-controller-tls` | Name of the Kubernetes TLS Secret containing `tls.crt` and `tls.key`. |

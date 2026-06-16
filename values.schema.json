@@ -6,6 +6,9 @@
     "nameOverride": {
       "type": "string"
     },
+    "fullnameOverride": {
+      "type": "string"
+    },
     "namespace": {
       "type": "string"
     },

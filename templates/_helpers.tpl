@@ -5,9 +5,20 @@
 
 {{/*
 Expand the name of the chart.
+
+Naming precedence:
+- fullnameOverride: use as-is for the full resource base name
+- nameOverride: prefix chart name with <nameOverride>-<chartName>
+- default: chart name
 */}}
 {{- define "boundary.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- if .Values.fullnameOverride -}}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else if .Values.nameOverride -}}
+{{- printf "%s-%s" .Values.nameOverride .Chart.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- .Chart.Name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
 {{- end }}
 
 {{/*
