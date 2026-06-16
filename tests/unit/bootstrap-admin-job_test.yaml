@@ -67,6 +67,17 @@ tests:
           path: spec.template.spec.imagePullSecrets
           content:
             name: regcred
+  - it: renders extraEnv in bootstrap job
+    set:
+      extraEnv:
+        - name: HTTP_PROXY
+          value: http://proxy.example.com:8080
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: HTTP_PROXY
+            value: http://proxy.example.com:8080
   - it: renders a custom tag when image.tag is overridden
     set:
       image:

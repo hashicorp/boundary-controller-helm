@@ -206,6 +206,7 @@ controller:
       memory: 512Mi
 
   # Service configuration for API, Cluster, and Ops listeners
+  # annotations{} are cloud-provider specific.
   # https://developer.hashicorp.com/boundary/docs/monitor/listeners
   # Choose service type LoadBalancer or ClusterIP based on requirements.
   service:
@@ -213,38 +214,12 @@ controller:
       type: LoadBalancer
       port: 9200
       targetPort: 9200
-
-      # Service annotations are cloud-provider specific.
-      # Set annotations required by your environment.
       annotations: {}
-      # --- AWS (EKS + NLB) ---
-      # Empty annotations on EKS usually create a Classic Load Balancer.
-      # For NLB annotations to work, install AWS Load Balancer Controller:
-      # https://docs.aws.amazon.com/eks/latest/userguide/lbc-helm.html
-      # https://docs.aws.amazon.com/eks/latest/userguide/auto-configure-nlb.html
-      # https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/guide/service/annotations/
-      
-      #  service.beta.kubernetes.io/aws-load-balancer-type: "external"
-      #  service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
-      #  service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-      #  service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
-
-      # --- GCP (GKE) ---
-      # https://docs.cloud.google.com/kubernetes-engine/docs/concepts/service-load-balancer-parameters#service_parameters
-      #  cloud.google.com/l4-rbs: "enabled"
-
-      # --- Azure (AKS) ---
-      # https://learn.microsoft.com/en-us/azure/aks/configure-load-balancer-standard?tabs=create-cluster-ip-based%2Ccreate-cluster-managed-outbound-ips%2Ccreate-cluster-custom-ips%2Ccreate-cluster-custom-ip-prefixes%2Ccreate-cluster-outbound-ports-ips%2Ccreate-cluster-idle-timeout#customizations-via-kubernetes-annotations
-      #  service.beta.kubernetes.io/azure-load-balancer-tcp-idle-timeout: "30"
-
-    # https://developer.hashicorp.com/boundary/docs/monitor/listeners#cluster
     cluster:
       type: ClusterIP
       port: 9201
       targetPort: 9201
       annotations: {}
-
-    # https://developer.hashicorp.com/boundary/docs/monitor/listeners#ops
     ops:
       type: ClusterIP
       port: 9203
@@ -344,6 +319,17 @@ tolerations: []
 
 # Affinity rules
 affinity: {}
+
+# Additional environment variables injected into controller and hook job containers.
+extraEnv: []
+# extraEnv:
+#   - name: HTTP_PROXY
+#     value: http://proxy.example.com:8080
+#   - name: MY_API_TOKEN
+#     valueFrom:
+#       secretKeyRef:
+#         name: app-extra-secrets
+#         key: api-token
 
 # --------------------------------------------------
 # Service Account

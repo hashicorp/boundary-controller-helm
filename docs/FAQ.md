@@ -132,11 +132,16 @@ Add the appropriate annotation to `controller.service.api.annotations` for your 
 
 Cloud provider references:
 
-- AWS: https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/guide/service/annotations/
-- GCP: https://cloud.google.com/kubernetes-engine/docs/concepts/service-load-balancer-parameters
-- Azure: https://learn.microsoft.com/azure/aks/load-balancer-standard
+- AWS Load Balancer Controller install on EKS: https://docs.aws.amazon.com/eks/latest/userguide/lbc-helm.html
+- AWS auto-configure NLB on EKS: https://docs.aws.amazon.com/eks/latest/userguide/auto-configure-nlb.html
+- AWS service annotations reference: https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/guide/service/annotations/
+- GCP service load balancer parameters: https://docs.cloud.google.com/kubernetes-engine/docs/concepts/service-load-balancer-parameters#service_parameters
+- Azure load balancer annotations in AKS: https://learn.microsoft.com/en-us/azure/aks/configure-load-balancer-standard?tabs=create-cluster-ip-based%2Ccreate-cluster-managed-outbound-ips%2Ccreate-cluster-custom-ips%2Ccreate-cluster-custom-ip-prefixes%2Ccreate-cluster-outbound-ports-ips%2Ccreate-cluster-idle-timeout#customizations-via-kubernetes-annotations
 
 **AWS (NLB internal):**
+
+Empty annotations on EKS usually create a Classic Load Balancer. For NLB annotations to work, install AWS Load Balancer Controller.
+
 ```yaml
 controller:
   service:
@@ -147,13 +152,26 @@ controller:
         service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
 ```
 
+For an internet-facing NLB, use:
+
+```yaml
+controller:
+  service:
+    api:
+      annotations:
+        service.beta.kubernetes.io/aws-load-balancer-type: "external"
+        service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+        service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+        service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
+```
+
 **GCP (internal passthrough NLB):**
 ```yaml
 controller:
   service:
     api:
       annotations:
-        networking.gke.io/load-balancer-type: "Internal"
+        cloud.google.com/l4-rbs: "enabled"
 ```
 
 **Azure (internal):**
@@ -241,6 +259,25 @@ This resolves to `boundary-controller-cluster:9201` by default, which is the DNS
 
 By default `controller.service.cluster.type` is `ClusterIP`, so this address is internal to the cluster. If you switch the cluster listener Service to `LoadBalancer`, update `public_cluster_addr` to the externally reachable LoadBalancer DNS name or IP on port `9201`.
 
+If you do not want to hardcode the address in HCL, you can inject it via `extraEnv` and reference it with `env://`:
+
+```yaml
+extraEnv:
+  - name: BOUNDARY_PUBLIC_CLUSTER_ADDR
+    valueFrom:
+      secretKeyRef:
+        name: boundary-extra-env
+        key: public-cluster-addr
+```
+
+```hcl
+controller {
+  public_cluster_addr = "env://BOUNDARY_PUBLIC_CLUSTER_ADDR"
+}
+```
+
+Use this pattern only when the target Boundary config field supports `env://`.
+
 ---
 
 ### How do I use a KMS other than AWS KMS?
@@ -283,7 +320,7 @@ controller {
 
 Use `sslmode=require` or higher in the connection string for production databases.
 
-The `env://` variable names used in `controller.config` are fixed by the chart's env injection (for example `env://BOUNDARY_PG_URL`, `env://BOUNDARY_LICENSE`, and optional `env://BOUNDARY_PG_MIGRATION_URL`). You can change Kubernetes Secret name and key names via `secretRefs.secretName` and `secretRefs.keys.*`, but keep those `env://` names unchanged unless you also customize templates.
+For chart-managed secret injection, use the expected names (`env://BOUNDARY_PG_URL`, `env://BOUNDARY_LICENSE`, and optional `env://BOUNDARY_PG_MIGRATION_URL`). If you need additional custom names, add them through `extraEnv` and reference those names with `env://` where Boundary supports it.
 
 For most teams, the operator's job is to create/sync/rotate the Kubernetes Secret (manually, VSO, or External Secrets) and keep `secretRefs.*` aligned; no other chart changes are required.
 
@@ -375,9 +412,24 @@ The default when unset is determined by Boundary's internal logic. For productio
 
 ### How do I add custom environment variables to the controller container?
 
-The chart does not expose a generic `extraEnv` field. The intended pattern is to source all sensitive values from the Kubernetes Secret via `env://` references in `controller.config`, which the chart injects as named environment variables. For non-sensitive values, use Helm template expressions directly inside `controller.config` (it is evaluated with `tpl`).
+Use `extraEnv` in your values file. These entries are injected into the controller container and all hook job containers.
 
-If you require additional environment variables beyond what the chart injects, fork or extend the chart by modifying `templates/deployment.yaml` to add an `env` entry, or use a Helm post-renderer.
+Example:
+
+```yaml
+extraEnv:
+  - name: HTTP_PROXY
+    value: http://proxy.example.com:8080
+  - name: CUSTOM_API_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: boundary-extra-env
+        key: api-token
+```
+
+For sensitive values, prefer the existing `secretRefs` + `env://...` pattern in `controller.config`.
+
+If you need different env vars for controller vs hook jobs, fork/extend the chart or use a post-renderer.
 
 ---
 
@@ -409,7 +461,7 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
   --rollback-on-failure \
   --wait
 
-# Step 4 — suggested for operators or end users running Helm manually to reset one-time CLI overrides so the running release matches Git-managed values
+# Step 4 — reset one-time CLI overrides so running release matches Git-managed values
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \

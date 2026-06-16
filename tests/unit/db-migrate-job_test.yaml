@@ -86,6 +86,20 @@ tests:
           path: spec.template.spec.imagePullSecrets
           content:
             name: regcred
+  - it: renders extraEnv in migrate job
+    set:
+      database:
+        migrate:
+          enabled: true
+      extraEnv:
+        - name: HTTP_PROXY
+          value: http://proxy.example.com:8080
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: HTTP_PROXY
+            value: http://proxy.example.com:8080
   - it: renders automountServiceAccountToken when enabled in migrate job
     set:
       database:
