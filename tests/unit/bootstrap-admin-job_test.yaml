@@ -45,6 +45,12 @@ tests:
           content:
             name: BOUNDARY_ADDR
             value: http://boundary-controller-api:9200
+      - equal:
+          path: spec.template.spec.volumes[0].configMap.name
+          value: boundary-controller-bootstrap-hook-config
+      - equal:
+          path: spec.template.spec.containers[0].command[1]
+          value: /etc/boundary/bootstrap-admin.sh
   - it: renders custom image repository and pull policy in bootstrap job
     set:
       image:

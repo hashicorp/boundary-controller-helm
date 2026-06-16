@@ -92,7 +92,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: {{ include "boundary.controller.configMapName" . }}
+            name: {{ include "boundary.controller.serviceName" . }}-bootstrap-hook-config
         {{- if not .Values.tls.disabled }}
         - name: tls-certs
           secret:

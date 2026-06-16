@@ -322,14 +322,6 @@ affinity: {}
 
 # Additional environment variables injected into controller and hook job containers.
 extraEnv: []
-# extraEnv:
-#   - name: HTTP_PROXY
-#     value: http://proxy.example.com:8080
-#   - name: MY_API_TOKEN
-#     valueFrom:
-#       secretKeyRef:
-#         name: app-extra-secrets
-#         key: api-token
 
 # --------------------------------------------------
 # Service Account
