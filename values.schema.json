@@ -6,6 +6,9 @@
     "nameOverride": {
       "type": "string"
     },
+    "fullnameOverride": {
+      "type": "string"
+    },
     "namespace": {
       "type": "string"
     },
@@ -38,6 +41,26 @@
         },
         "required": ["name"],
         "additionalProperties": false
+      }
+    },
+    "extraEnv": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": "string"
+          },
+          "valueFrom": {
+            "type": "object"
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": true
       }
     },
     "serviceAccount": {

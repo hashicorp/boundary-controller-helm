@@ -48,11 +48,13 @@ spec:
           env:
             - name: SKIP_SETCAP
               value: "1"
+            {{- if eq (include "boundary.controller.usesEnvDatabaseUrl" . | trim) "true" }}
             - name: BOUNDARY_PG_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
                   key: {{ .Values.secretRefs.keys.databaseUrl }}
+            {{- end }}
             {{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" }}
             - name: BOUNDARY_PG_MIGRATION_URL
               valueFrom:
@@ -60,11 +62,13 @@ spec:
                   name: {{ include "boundary.controller.secretName" . }}
                   key: {{ .Values.secretRefs.keys.migrationUrl }}
             {{- end }}
+            {{- if eq (include "boundary.controller.usesEnvLicense" . | trim) "true" }}
             - name: BOUNDARY_LICENSE
               valueFrom:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
                   key: {{ .Values.secretRefs.keys.license }}
+            {{- end }}
             {{- if eq (include "boundary.controller.usesEnvAeadKms" . | trim) "true" }}
             - name: BOUNDARY_KMS_ROOT
               valueFrom:
@@ -81,6 +85,9 @@ spec:
                 secretKeyRef:
                   name: {{ include "boundary.controller.secretName" . }}
                   key: {{ .Values.secretRefs.keys.kmsRecovery }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
             {{- end }}
           args:
             - "server"

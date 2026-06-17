@@ -5,9 +5,20 @@
 
 {{/*
 Expand the name of the chart.
+
+Naming precedence:
+- fullnameOverride: use as-is for the full resource base name
+- nameOverride: prefix chart name with <nameOverride>-<chartName>
+- default: chart name
 */}}
 {{- define "boundary.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- if .Values.fullnameOverride -}}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else if .Values.nameOverride -}}
+{{- printf "%s-%s" .Values.nameOverride .Chart.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- .Chart.Name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
 {{- end }}
 
 {{/*
@@ -129,6 +140,32 @@ HTTPS
 {{- end }}
 
 {{/*
+Returns true when controller config uses env://BOUNDARY_PG_URL.
+Commented lines are ignored.
+*/}}
+{{- define "boundary.controller.usesEnvDatabaseUrl" -}}
+{{- $configNoComments := regexReplaceAll "(?m)^\\s*#.*$" .Values.controller.config "" -}}
+{{- if regexMatch "url\\s*=\\s*\"env://BOUNDARY_PG_URL\"" $configNoComments -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{/*
+Returns true when controller config uses env://BOUNDARY_LICENSE.
+Commented lines are ignored.
+*/}}
+{{- define "boundary.controller.usesEnvLicense" -}}
+{{- $configNoComments := regexReplaceAll "(?m)^\\s*#.*$" .Values.controller.config "" -}}
+{{- if regexMatch "license\\s*=\\s*\"env://BOUNDARY_LICENSE\"" $configNoComments -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{/*
 Returns true when controller config uses AEAD keys via env://BOUNDARY_KMS_*.
 Commented lines are ignored.
 */}}
@@ -182,7 +219,13 @@ Runs only when secretRefs.validateExisting=true.
 {{- fail (printf "Secret %q not found in namespace %q (set secretRefs.secretName or disable secretRefs.validateExisting)" $secretName $namespace) }}
 {{- end }}
 {{- $data := default dict (get $secret "data") -}}
-{{- $requiredKeys := list .Values.secretRefs.keys.databaseUrl .Values.secretRefs.keys.license -}}
+{{- $requiredKeys := list -}}
+{{- if eq (include "boundary.controller.usesEnvDatabaseUrl" . | trim) "true" -}}
+{{- $requiredKeys = append $requiredKeys .Values.secretRefs.keys.databaseUrl -}}
+{{- end -}}
+{{- if eq (include "boundary.controller.usesEnvLicense" . | trim) "true" -}}
+{{- $requiredKeys = append $requiredKeys .Values.secretRefs.keys.license -}}
+{{- end -}}
 {{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" -}}
 {{- $requiredKeys = append $requiredKeys .Values.secretRefs.keys.migrationUrl -}}
 {{- end -}}

@@ -95,6 +95,22 @@ tests:
           path: spec.template.spec.imagePullSecrets
           content:
             name: regcred
+  - it: renders extraEnv in repair job
+    set:
+      database:
+        migrate:
+          enabled: true
+        repair:
+          version: "2024-01-01-01"
+      extraEnv:
+        - name: HTTP_PROXY
+          value: http://proxy.example.com:8080
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: HTTP_PROXY
+            value: http://proxy.example.com:8080
   - it: renders automountServiceAccountToken when enabled in repair job
     set:
       database:
@@ -231,7 +247,7 @@ tests:
     asserts:
       - equal:
           path: metadata.name
-          value: custom-database-repair
+          value: custom-boundary-controller-database-repair
       - equal:
           path: metadata.namespace
           value: boundary

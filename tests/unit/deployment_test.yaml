@@ -80,6 +80,18 @@ tests:
           content:
             name: regcred
         template: templates/deployment.yaml
+  - it: renders extraEnv in deployment
+    set:
+      extraEnv:
+        - name: HTTP_PROXY
+          value: http://proxy.example.com:8080
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: HTTP_PROXY
+            value: http://proxy.example.com:8080
+        template: templates/deployment.yaml
   - it: renders TLS secret volume and HTTPS probes when TLS is enabled
     set:
       tls:
@@ -197,6 +209,27 @@ tests:
               secretKeyRef:
                 name: boundary-controller-secrets
                 key: lic-key
+        template: templates/deployment.yaml
+  - it: does not inject database or license env vars when controller config uses inline values
+    set:
+      controller:
+        config: |
+          controller {
+            license = "inline-license"
+            database {
+              url = "postgres://boundary:password@postgres:5432/boundary?sslmode=require"
+            }
+          }
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_PG_URL
+        template: templates/deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_LICENSE
         template: templates/deployment.yaml
   - it: renders AEAD env vars when controller config uses env based AEAD keys
     set:

@@ -12,8 +12,27 @@ metadata:
 data:
   controller.hcl: |
 {{ tpl .Values.controller.config . | indent 4 }}
+
+{{- if and .Values.bootstrapAdmin.enabled (or .Release.IsInstall (and .Release.IsUpgrade .Values.bootstrapAdmin.runOnUpgrade)) }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "boundary.controller.serviceName" . }}-bootstrap-hook-config
+  namespace: {{ include "boundary.namespace" . }}
+  labels:
+    {{- include "boundary.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller-bootstrap-admin
+  annotations:
+    "helm.sh/hook": {{ if .Values.bootstrapAdmin.runOnUpgrade }}post-install,post-upgrade{{ else }}post-install{{ end }}
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+data:
+  controller.hcl: |
+{{ tpl .Values.controller.config . | indent 4 }}
   bootstrap-admin.sh: |
 {{ .Files.Get "scripts/bootstrap-admin.sh" | indent 4 }}
+{{- end }}
 
 {{- if or (and .Release.IsInstall .Values.database.init.enabled) (and .Release.IsUpgrade .Values.database.migrate.enabled) }}
 ---

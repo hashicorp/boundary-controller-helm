@@ -57,7 +57,7 @@ The chart uses an existing ServiceAccount and does not create ServiceAccount res
 | Component | Version | 
 | ----- | ----- | 
 | Kubernetes | 1.34 and above |
-| Helm | v4 |
+| Helm | v3 and above |
 | PostgreSQL | 15 and above |
 
 ### Required Resources
@@ -99,11 +99,11 @@ Use this flow when you want to deploy a Boundary controller with this chart.
 
 ### 1. Create the Kubernetes Secret
 
-Create the Secret that the chart reads sensitive values from. At minimum it must contain the database credentials, migration database credentials (if using `env://BOUNDARY_PG_MIGRATION_URL` in `controller.config`), and enterprise license. Add admin credentials when `bootstrapAdmin.enabled=true` (the default).
+Create the Secret that the chart reads sensitive values from when you use `env://...` references in `controller.config`. At minimum it must contain the database credentials, migration database credentials (if using `env://BOUNDARY_PG_MIGRATION_URL` in `controller.config`), and enterprise license. Add admin credentials when `bootstrapAdmin.enabled=true` (the default).
 
 The Secret name and key names do not need to use the defaults shown below. Operators can use any Secret name and key names, but must update `secretRefs.secretName` and `secretRefs.keys.*` in `values.yaml` to match.
 
-Keep the `env://...` variable names in `controller.config` aligned with the names the chart injects (for example `env://BOUNDARY_PG_URL`, `env://BOUNDARY_LICENSE`, and optionally `env://BOUNDARY_PG_MIGRATION_URL`). Operators typically only need to create/sync the Kubernetes Secret and map its key names with `secretRefs.keys.*`; no template changes are required for this workflow.
+For chart-managed secret injection, keep the expected `env://...` names in `controller.config` (for example `env://BOUNDARY_PG_URL`, `env://BOUNDARY_LICENSE`, and optionally `env://BOUNDARY_PG_MIGRATION_URL`). If you need custom env var names, add them through `extraEnv` and reference those names with `env://` where Boundary supports it. Operators typically only need to create/sync the Kubernetes Secret and map key names with `secretRefs.keys.*` or `extraEnv`; no template changes are required for this workflow.
 
 ```bash
 kubectl create secret generic boundary-controller-secrets \
@@ -230,6 +230,7 @@ Important characteristics:
 Kubernetes-specific settings live under chart values such as:
 
 - `image.*`
+- `extraEnv`
 - `controller.service.*`
 - `controller.resources.*`
 - `tls.*`
@@ -251,7 +252,7 @@ At minimum, a usable controller config must include:
 
 - Listener blocks for `api`, `cluster`, and `ops` traffic
 - A `controller` block with `name`, `license`, and `database.url`
-- `public_cluster_addr` so workers can reach the cluster listener. If `controller.service.cluster.type=LoadBalancer`, set this to the externally reachable LoadBalancer address (DNS name or IP with port `9201`) after the Service is provisioned, then apply an update.
+- `public_cluster_addr` so workers can reach the cluster listener. If `controller.service.cluster.type=LoadBalancer`, set this to the externally reachable LoadBalancer address (DNS name or IP with port `9201`) after the Service is provisioned, then apply an update. You can also source it from an env var (for example `public_cluster_addr = "env://BOUNDARY_PUBLIC_CLUSTER_ADDR"`) when using `extraEnv`.
 - At least three KMS stanzas: `root`, `recovery`, and `worker-auth`
 
 Example:
@@ -378,6 +379,8 @@ controller:
 
 Use [IAM Roles for Service Accounts (IRSA)](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html) to grant the controller pod access to [AWS KMS](https://docs.aws.amazon.com/kms/latest/developerguide/overview.html) without long-lived credentials. Expose the API listener through an [AWS Network Load Balancer](https://docs.aws.amazon.com/eks/latest/userguide/network-load-balancing.html).
 
+For provider-specific `controller.service.api.annotations` examples, see the FAQ section about exposing the API Service with an internal load balancer.
+
 **Resources:**
 - [Boundary AWS KMS Configuration](https://developer.hashicorp.com/boundary/docs/configuration/kms/awskms)
 - [IAM Roles for Service Accounts (IRSA)](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html)
@@ -452,7 +455,9 @@ The table below documents all chart values shipped in `values.yaml`.
 | `image.tag` | `0.21-ent` | Image tag used by the controller container and hook jobs. Defaults to `appVersion` in Chart.yaml when empty. |
 | `image.pullPolicy` | `IfNotPresent` | Kubernetes image pull policy. |
 | `imagePullSecrets` | `[]` | Optional registry credentials for private image pulls. |
-| `nameOverride` | `""` | Override the chart name used in resource naming. |
+| `extraEnv` | `[]` | Additional environment variables injected into controller and hook job containers. Prefer `secretRefs` + `env://...` for sensitive values. |
+| `nameOverride` | `""` | Prefix generated resource names as `<nameOverride>-boundary-controller` (for example `dev-boundary-controller`). |
+| `fullnameOverride` | `""` | Fully override the generated resource base name (for example `boundary-dev`). |
 | `namespace` | `""` | Namespace applied to all namespaced chart resources. Leave empty to use the Helm release namespace. |
 | `tls.disabled` | `true` | Disable TLS cert mounts and related validation when set to `true`. |
 | `tls.secretName` | `boundary-controller-tls` | Name of the Kubernetes TLS Secret containing `tls.crt` and `tls.key`. |
@@ -461,7 +466,7 @@ The table below documents all chart values shipped in `values.yaml`.
 | `controller.rollingUpdate.maxUnavailable` | `1` | Maximum unavailable pods during a rolling update. |
 | `controller.rollingUpdate.maxSurge` | `1` | Maximum surge pods during a rolling update. |
 | `controller.config` | Embedded HCL | Raw HCL controller configuration stored in a ConfigMap and mounted into all containers. Rendered with `tpl`. |
-| `secretRefs.secretName` | `boundary-controller-secrets` | Name of the Kubernetes Secret containing sensitive values. Must exist before install. |
+| `secretRefs.secretName` | `boundary-controller-secrets` | Name of the Kubernetes Secret containing sensitive values when `controller.config` references them via `env://...`. |
 | `secretRefs.validateExisting` | `false` | When true, Helm validates that the Secret exists and contains all required keys at render time. Set to `false` for offline `helm template` runs. |
 | `secretRefs.keys.databaseUrl` | `database-url` | Key in the Secret for the PostgreSQL connection string. |
 | `secretRefs.keys.migrationUrl` | `migration-url` | Key in the Secret for the migration PostgreSQL connection string, used when `controller.config` sets `database.migration_url = "env://BOUNDARY_PG_MIGRATION_URL"`. |
@@ -660,7 +665,7 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
 
 **Step 4 — Reset one-time migration overrides:**
 
-For operators or end users running Helm manually, we suggest following up with `--reset-values` so one-time CLI overrides do not leak into later upgrades. In GitOps flows that always apply the versioned values file, this step is usually optional.
+For manual Helm runs, follow up with `--reset-values` so one-time CLI overrides do not leak into later upgrades. In GitOps flows that always apply the versioned values file, this step is usually optional.
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \

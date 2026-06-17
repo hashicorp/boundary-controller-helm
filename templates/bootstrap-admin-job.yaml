@@ -68,6 +68,9 @@ spec:
               value: {{ .Values.bootstrapAdmin.accountResourceName | quote }}
             - name: BOUNDARY_ROLE_NAME
               value: {{ .Values.bootstrapAdmin.roleName | quote }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           command:
             - "sh"
             - "/etc/boundary/bootstrap-admin.sh"
@@ -89,7 +92,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: {{ include "boundary.controller.configMapName" . }}
+            name: {{ include "boundary.controller.serviceName" . }}-bootstrap-hook-config
         {{- if not .Values.tls.disabled }}
         - name: tls-certs
           secret:

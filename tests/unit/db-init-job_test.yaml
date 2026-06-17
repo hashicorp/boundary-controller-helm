@@ -79,6 +79,17 @@ tests:
           path: spec.template.spec.imagePullSecrets
           content:
             name: regcred
+  - it: renders extraEnv in init job
+    set:
+      extraEnv:
+        - name: HTTP_PROXY
+          value: http://proxy.example.com:8080
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: HTTP_PROXY
+            value: http://proxy.example.com:8080
   - it: renders automountServiceAccountToken when enabled in init job
     set:
       serviceAccount:
@@ -141,6 +152,25 @@ tests:
               secretKeyRef:
                 name: boundary-controller-secrets
                 key: lic-key
+  - it: does not inject database or license env vars in init job when controller config uses inline values
+    set:
+      controller:
+        config: |
+          controller {
+            license = "inline-license"
+            database {
+              url = "postgres://boundary:password@postgres:5432/boundary?sslmode=require"
+            }
+          }
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_PG_URL
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BOUNDARY_LICENSE
   - it: renders AEAD env vars when config uses env based AEAD keys in init job
     set:
       controller:
@@ -208,7 +238,7 @@ tests:
     asserts:
       - equal:
           path: metadata.name
-          value: custom-init-db
+          value: custom-boundary-controller-init-db
       - equal:
           path: metadata.namespace
           value: boundary
