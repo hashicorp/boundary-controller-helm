@@ -57,7 +57,7 @@ The chart uses an existing ServiceAccount and does not create ServiceAccount res
 | Component | Version | 
 | ----- | ----- | 
 | Kubernetes | 1.34 and above |
-| Helm | v4 |
+| Helm | v3 and above |
 | PostgreSQL | 15 and above |
 
 ### Required Resources
