@@ -7,7 +7,7 @@ on:
       - 'v*.*.*-*'    # prerelease tags (for example: v1.2.3-beta)
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   update-helm-charts-index:
@@ -46,10 +46,24 @@ jobs:
             -f SOURCE_TAG="${{ github.ref_name }}" \
             -f SOURCE_REPO="${{ github.repository }}"
 
-      - uses: hashicorp/actions-slack-status@38d0699d80d50038000c0af77944c3531c6e97c0 # v2
-        if: ${{always()}}
-        with:
-          success-message: "boundary-controller-helm charts index update triggered successfully. View the run <https://github.com/hashicorp/helm-charts/actions/workflows/publish-charts.yml|here>."
-          failure-message: "boundary-controller-helm charts index update trigger failed."
-          status: ${{ job.status }}
-          slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+      - name: create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |-
+          tag="${{ github.ref_name }}"
+          repo="${{ github.repository }}"
+
+          if gh release view "${tag}" --repo "${repo}" >/dev/null 2>&1; then
+            if [[ "${tag}" == *-* ]]; then
+              gh release edit "${tag}" --repo "${repo}" --title "${tag}" --prerelease
+            else
+              gh release edit "${tag}" --repo "${repo}" --title "${tag}"
+            fi
+            exit 0
+          fi
+
+          if [[ "${tag}" == *-* ]]; then
+            gh release create "${tag}" --repo "${repo}" --title "${tag}" --generate-notes --prerelease
+          else
+            gh release create "${tag}" --repo "${repo}" --title "${tag}" --generate-notes
+          fi
