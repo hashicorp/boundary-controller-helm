@@ -1,78 +1,5 @@
 # Boundary Controller Helm Chart
 
-Production-oriented Helm chart for HashiCorp Boundary controllers on Kubernetes. Boundary controllers are the control-plane component of Boundary — they manage authentication, authorization, sessions, and worker registration. Because controller state lives in PostgreSQL, the controller Deployment is stateless and can run multiple replicas behind a load balancer.
-
-This chart packages the Kubernetes resources required to run one or more Boundary controller replicas backed by a PostgreSQL database. It is intended for operator-managed Boundary deployments where you control the control plane infrastructure.
-
-The chart scope focuses on:
-
-- Multi-replica controller Deployment with rolling update support
-- Kubernetes-native resource model using Deployment, Services, ConfigMap, ServiceAccount, and PodDisruptionBudget
-- Customer-supplied Boundary controller configuration file
-- Helm hook jobs for database initialization, database migration, and admin bootstrapping
-- Existing Kubernetes Secret model for sensitive values — no secret generation
-
-The chart does not manage worker resources, Boundary scopes, HCP Boundary connectivity, DNS, ingress controllers, or TLS certificate issuance and renewal. You must supply a pre-existing Kubernetes TLS Secret containing a valid certificate and private key.
-
-## Contents
-
-- [What The Chart Deploys](#what-the-chart-deploys)
-- [Prerequisites](#prerequisites)
-  - [Version Requirements](#version-requirements)
-  - [Required Resources](#required-resources)
-- [Security Model](#security-model)
-- [Installation](#installation)
-- [Configuration Model](#configuration-model)
-- [Required Controller Configuration](#required-controller-configuration)
-- [TLS](#tls)
-- [Common Deployment Patterns](#common-deployment-patterns)
-- [Configuration Reference](#configuration-reference)
-- [Operations](#operations)
-  - [Upgrading](#upgrading)
-  - [Rollback](#rollback)
-  - [Uninstall](#uninstall)
-- [Monitoring](#monitoring)
-- [Known Limitations](#known-limitations)
-- [Contributing](#contributing)
-
-## What The Chart Deploys
-
-By default, a release renders the following resources:
-
-- One Deployment with two controller replicas and a RollingUpdate strategy
-- Three Services for controller traffic:
-  - **API Service** (`boundary-controller`): LoadBalancer on port 9200 for client API traffic
-  - **Cluster Service** (`boundary-controller-cluster`): ClusterIP on port 9201 for worker registration
-  - **Ops Service** (`boundary-controller-ops`): ClusterIP on port 9203 for health checks and metrics
-- One ConfigMap containing the rendered Boundary controller configuration file
-- One PodDisruptionBudget ensuring at least one replica stays available during voluntary disruptions
-- Helm hook Jobs for database initialization (`pre-install`), optional database migration (`pre-upgrade`), optional database repair (`pre-upgrade`), and optional admin bootstrap (`post-install`)
-
-The chart uses an existing ServiceAccount and does not create ServiceAccount resources. The default `serviceAccount.name=default` is intended for quick start; use a dedicated ServiceAccount in production.
-
-## Prerequisites
-
-### Version Requirements
-
-| Component | Version | 
-| ----- | ----- | 
-| Kubernetes | 1.34 and above |
-| Helm | v3 and above |
-| PostgreSQL | 15 and above |
-
-### Required Resources
-
-Ensure the following exist before installing:
-
- - **Kubernetes Secret** in the same namespace the chart resources are rendered into (the release namespace by default, unless overridden with `.Values.namespace`) containing the database URL credentials and Boundary Enterprise license (add admin credentials when `bootstrapAdmin.enabled=true`). The Secret name and key names are operator-defined; if you change them from defaults, update `secretRefs.secretName` and `secretRefs.keys.*` in `values.yaml` to match. Create it manually or sync it using the [Vault Secrets Operator](https://developer.hashicorp.com/vault/docs/platform/k8s/vso) or the [External Secrets Operator](https://external-secrets.io).
-- **PostgreSQL database** reachable from the cluster, with a user that has permission to create tables.
-- **KMS provider** — choose one: Vault Transit (`transit` stanza, requires Vault 1.11+), AWS KMS (`awskms`), GCP Cloud KMS (`gcpckms`), or Azure Key Vault (`azurekeyvault`). Cloud KMS providers require IAM/RBAC permissions granting the controller access to the key.
-- **Kubernetes TLS Secret** containing `tls.crt` and `tls.key` when `tls.disabled=false`.
-
-For multi-replica deployments, `public_cluster_addr` must be set in `controller.config` so workers can reach each replica.
-
-> Always test upgrades in a non-production environment before applying to production.
-
 ## Security Model
 
 The chart runs controller containers with restricted Kubernetes security settings:
@@ -88,127 +15,9 @@ The chart runs controller containers with restricted Kubernetes security setting
 Operational implications:
 
 - `disable_mlock = true` should remain set in the controller configuration when using this deployment model.
-- Sensitive values are not stored in the ConfigMap. They are sourced from an existing Kubernetes Secret via `valueFrom.secretKeyRef` in all containers. That Secret can be populated manually or synced from Vault using the Vault Secrets Operator or External Secrets Operator.
-- The ops Service defaults to `ClusterIP` and is not exposed externally.
-- The cluster Service defaults to `ClusterIP` on port `9201` for internal worker registration. Operators can change service types and ports using `controller.service.*` values in `values.yaml`.
-- Secret validation at render time (`secretRefs.validateExisting=true`) catches missing credentials before any resources are created.
+- Secret validation (`secretRefs.validateExisting`) is opt-in; when enabled, Helm validates that the Secret exists before any resources are created.
 
-## Installation
 
-Use this flow when you want to deploy a Boundary controller with this chart.
-
-### 1. Create the Kubernetes Secret
-
-Create the Secret that the chart reads sensitive values from when you use `env://...` references in `controller.config`. At minimum it must contain the database credentials, migration database credentials (if using `env://BOUNDARY_PG_MIGRATION_URL` in `controller.config`), and enterprise license. Add admin credentials when `bootstrapAdmin.enabled=true` (the default).
-
-The Secret name and key names do not need to use the defaults shown below. Operators can use any Secret name and key names, but must update `secretRefs.secretName` and `secretRefs.keys.*` in `values.yaml` to match.
-
-For chart-managed secret injection, keep the expected `env://...` names in `controller.config` (for example `env://BOUNDARY_PG_URL`, `env://BOUNDARY_LICENSE`, and optionally `env://BOUNDARY_PG_MIGRATION_URL`). If you need custom env var names, add them through `extraEnv` and reference those names with `env://` where Boundary supports it. Operators typically only need to create/sync the Kubernetes Secret and map key names with `secretRefs.keys.*` or `extraEnv`; no template changes are required for this workflow.
-
-```bash
-kubectl create secret generic boundary-controller-secrets \
-  --namespace boundary \
-  --from-literal=database-url="postgres://boundary:password@postgres:5432/boundary?sslmode=require" \
-  --from-literal=migration-url="postgres://boundary-migrator:password@postgres:5432/boundary?sslmode=require" \
-  --from-literal=license="<boundary-enterprise-license>" \
-  --from-literal=admin-username="admin" \
-  --from-literal=admin-password="<secure-password>"
-```
-
-### 2. Create the TLS Secret
-
-Create this Secret only if you plan to enable TLS (`tls.disabled=false`). Supply a TLS certificate and key:
-
-```bash
-kubectl create secret tls boundary-controller-tls \
-  --namespace boundary \
-  --cert=tls.crt \
-  --key=tls.key
-```
-
-### 3. Add the controller configuration to your values file
-
-Set `controller.config` in your values file with your Boundary HCL. The embedded default uses `awskms` — you must update KMS key IDs, region, and `public_cluster_addr` before installing. See [Required Controller Configuration](#required-controller-configuration) for the minimum structure, required fields, and a complete example.
-
-### 4. Review chart values
-
-Check `values.yaml` before installing, especially:
-
-- `image.repository`, `image.tag`, and `image.pullPolicy`
-- `secretRefs.secretName`
-- `database.init.enabled`, `database.migrate.enabled`, and `database.repair.version`
-- `bootstrapAdmin.enabled`
-- `tls.secretName` and `tls.mountPath`
-- `controller.service.api`, `controller.service.cluster`, and `controller.service.ops`
-- `serviceAccount.name`
-- `controller.resources`
-
-For all available values see the [Configuration Reference](#configuration-reference). For cloud-specific examples (AWS, GCP, Azure) see [Common Deployment Patterns](#common-deployment-patterns).
-
-### 5. Create the namespace
-
-```bash
-kubectl create namespace boundary
-```
-
-### 6. Install the chart
-
-Add the HashiCorp Helm repository (one-time):
-
-```bash
-helm repo add hashicorp https://helm.releases.hashicorp.com
-helm repo update
-```
-
-Install using the default values from the published release:
-
-```bash
-helm install boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0 \
-  --namespace boundary
-```
-
-With additional values file:
-```bash
-helm install boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0 \
-  --namespace boundary \
-  --values my-values.yaml \
-  --wait
-```
-
-Install from this repo checkout instead:
-
-```bash
-helm install boundary-controller . \
-  --namespace boundary \
-  --values my-values.yaml \
-  --wait
-```
-
-### 7. Verify the deployment
-
-```bash
-kubectl get pods -n boundary
-kubectl get svc -n boundary
-kubectl get jobs -n boundary
-kubectl logs deployment/boundary-controller -n boundary
-```
-
-Confirm that:
-
-- The database initialization Job completes successfully when database.init.enabled=true
-- The bootstrap admin Job completes successfully (if enabled)
-- The controller pods become ready
-- The API Service has an external address
-
-### 8. If using a LoadBalancer, retrieve the external address
-
-```bash
-kubectl get svc boundary-controller-api -n boundary
-```
-
-Use the external address to access the Boundary UI at `https://<EXTERNAL_IP>:9200`.
 
 ## Configuration Model
 
@@ -224,29 +33,15 @@ Important characteristics:
 - The chart validates that `tls_cert_file` and `tls_key_file` paths are aligned with `tls.mountPath` when `tls.disabled=false`.
 - The chart validates that AEAD `env://` key indirection is not used inside `kms` blocks (Boundary does not support this).
 - The operator is responsible for keeping listener ports, KMS stanzas, and cluster addresses aligned with the Kubernetes resources.
+- The chart does not validate the HCL content of `controller.config` beyond the checks listed above. Ensuring the configuration is syntactically and semantically correct is the operator's responsibility.
 
 ### 2. Kubernetes infrastructure configuration
 
-Kubernetes-specific settings live under chart values such as:
-
-- `image.*`
-- `extraEnv`
-- `controller.service.*`
-- `controller.resources.*`
-- `tls.*`
-- `podSecurityContext`
-- `containerSecurityContext`
-- `serviceAccount.*`
-- `podDisruptionBudget.*`
-- `nodeSelector`
-- `tolerations`
-- `affinity`
-
-These values control how the controller runs in Kubernetes but do not replace or generate the Boundary runtime configuration.
+Kubernetes-specific settings control how the controller runs in Kubernetes — image, resources, services, security contexts, scheduling, and service account configuration. These do not replace or generate the Boundary runtime configuration. See [values.yaml](values.yaml) for the full list of available values.
 
 ## Required Controller Configuration
 
-This chart ships with an embedded default `controller.config` that uses `awskms` for KMS. You must update the KMS key IDs and region before the chart is usable in your environment.
+This chart ships with an embedded default `controller.config` that uses `aead` for KMS. AEAD is suitable for development and testing only — keys are stored in plaintext in the ConfigMap. Replace with a proper KMS provider before deploying to production.
 
 At minimum, a usable controller config must include:
 
@@ -290,63 +85,32 @@ controller {
   }
 }
 
-kms "awskms" {
-  purpose    = "root"
-  region     = "us-east-1"
-  kms_key_id = "alias/boundary-root"
+# AEAD is for development and testing only — keys are stored in plaintext.
+# Replace with a production KMS provider before deploying to production.
+kms "aead" {
+  purpose   = "root"
+  aead_type = "aes-gcm"
+  key       = "sP1fnF5Xz85RrXyELHFeZg9Ad2qt4Z4bgNHVGtD6ung="
 }
 
-kms "awskms" {
-  purpose    = "recovery"
-  region     = "us-east-1"
-  kms_key_id = "alias/boundary-recovery"
+kms "aead" {
+  purpose   = "recovery"
+  aead_type = "aes-gcm"
+  key       = "8fZBjCUfozI8/xQhAFb0LRHuUFb/tDMGVJzCmVm0R+8="
 }
 
-kms "awskms" {
-  purpose    = "worker-auth"
-  region     = "us-east-1"
-  kms_key_id = "alias/boundary-worker-auth"
+kms "aead" {
+  purpose   = "worker-auth"
+  aead_type = "aes-gcm"
+  key       = "iHdyGULJrLHmEBzMt8n3g6a4w8xm5jJZKQBr0+6OZIA="
 }
 ```
 
 Because the chart evaluates `controller.config` with Helm `tpl`, Helm template expressions inside the HCL are supported. For example, `{{ include "boundary.controller.clusterServiceName" . }}` resolves to the cluster Service name at render time.
 
-### Vault Transit KMS
-
-If Vault is part of your infrastructure, you can use the Vault Transit engine instead of a cloud KMS. Replace the `awskms` stanzas with `transit` stanzas.
-
-```hcl
-kms "transit" {
-  purpose            = "root"
-  address            = "https://vault.example.com"
-  token              = "env://VAULT_TOKEN"
-  mount_path         = "transit/"
-  key_name           = "boundary-root"
-  disable_renewal    = false
-}
-
-kms "transit" {
-  purpose            = "recovery"
-  address            = "https://vault.example.com"
-  token              = "env://VAULT_TOKEN"
-  mount_path         = "transit/"
-  key_name           = "boundary-recovery"
-}
-
-kms "transit" {
-  purpose            = "worker-auth"
-  address            = "https://vault.example.com"
-  token              = "env://VAULT_TOKEN"
-  mount_path         = "transit/"
-  key_name           = "boundary-worker-auth"
-}
-```
-
-The Vault token or other credentials required by the Transit engine must be supplied to the controller pod. One approach is to inject them via the [Vault Agent Injector](https://developer.hashicorp.com/vault/docs/platform/k8s/injector) as environment variables or files, alongside the Boundary container. See the Boundary KMS documentation for all supported Transit configuration fields.
-
 ## TLS
 
-TLS is disabled by default (`tls.disabled=true`). When enabled, the chart expects a Kubernetes TLS Secret named by `tls.secretName` containing `tls.crt` and `tls.key`. That Secret is mounted at `tls.mountPath` in all controller and job containers.
+TLS is required for the API listener on port 9200. The chart must be deployed with `tls.disabled=false` and a valid Kubernetes TLS Secret present. The chart expects a TLS Secret named by `tls.secretName` containing `tls.crt` and `tls.key`. That Secret is mounted at `tls.mountPath` in all controller and job containers.
 
 The chart validates that `controller.config` references `tls.mountPath` for both `tls_cert_file` and `tls_key_file`. If the paths do not match, rendering fails with an actionable error.
 
@@ -360,54 +124,10 @@ The liveness and readiness probe schemes are auto-derived from `tls.disabled`:
 - `HTTPS` when `tls.disabled=false`
 - `HTTP` when `tls.disabled=true`
 
-Optional explicit override:
 
-```yaml
-tls:
-  disabled: false
+## Common Configuration Patterns
 
-controller:
-  livenessProbe:
-    scheme: HTTPS
-  readinessProbe:
-    scheme: HTTPS
-```
-
-## Common Deployment Patterns
-
-### AWS with IRSA and NLB
-
-Use [IAM Roles for Service Accounts (IRSA)](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html) to grant the controller pod access to [AWS KMS](https://docs.aws.amazon.com/kms/latest/developerguide/overview.html) without long-lived credentials. Expose the API listener through an [AWS Network Load Balancer](https://docs.aws.amazon.com/eks/latest/userguide/network-load-balancing.html).
-
-For provider-specific `controller.service.api.annotations` examples, see the FAQ section about exposing the API Service with an internal load balancer.
-
-**Resources:**
-- [Boundary AWS KMS Configuration](https://developer.hashicorp.com/boundary/docs/configuration/kms/awskms)
-- [IAM Roles for Service Accounts (IRSA)](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html)
-- [AWS KMS IAM Permissions](https://docs.aws.amazon.com/kms/latest/developerguide/key-policies.html)
-- [AWS Network Load Balancer on EKS](https://docs.aws.amazon.com/eks/latest/userguide/network-load-balancing.html)
-
-### GCP with Workload Identity and Cloud KMS
-
-Use [Workload Identity](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) to grant the controller pod access to GCP Cloud KMS. Expose the API through a GCP Load Balancer.
-
-**Resources:**
-- [Boundary GCP KMS Configuration](https://developer.hashicorp.com/boundary/docs/configuration/kms/gcpckms)
-- [GKE Workload Identity](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity)
-- [Cloud KMS IAM Permissions](https://cloud.google.com/iam/docs/roles-permissions/cloudkms)
-- [GKE LoadBalancer Services](https://cloud.google.com/kubernetes-engine/docs/concepts/service-load-balancer)
-
-### Azure with Managed Identity and Key Vault
-
-Use [Azure Managed Identity](https://learn.microsoft.com/azure/aks/workload-identity-overview) to grant the controller pod access to [Azure Key Vault](https://learn.microsoft.com/azure/key-vault/general/overview). Expose the API through an Azure Load Balancer.
-
-**Resources:**
-- [Boundary Azure Key Vault Configuration](https://developer.hashicorp.com/boundary/docs/configuration/kms/azurekeyvault)
-- [Azure Workload Identity](https://learn.microsoft.com/azure/aks/workload-identity-overview)
-- [Azure Key Vault RBAC and Access Policies](https://learn.microsoft.com/azure/key-vault/general/rbac-guide)
-- [Azure Load Balancer in AKS](https://learn.microsoft.com/azure/aks/load-balancer-standard)
-
-### Database Ops Flags
+### Database ops flags
 
 Use these values to control database operational hooks:
 
@@ -430,11 +150,31 @@ bootstrapAdmin:
   enabled: false
 ```
 
-### Vault-managed secrets
+### Check hook job status
 
-If Vault is your source of truth for secrets, use the [Vault Secrets Operator](https://developer.hashicorp.com/vault/docs/platform/k8s/vso) or the [External Secrets Operator](https://external-secrets.io) with a Vault backend to sync the required values into a Kubernetes Secret before install. Once the Secret exists in the release namespace with the correct key names, the chart reads it the same way as a manually created Secret. Set `secretRefs.secretName` to match the name the operator creates. Cloud-native alternatives such as AWS Secrets Manager (via the AWS Secrets and Configuration Provider) or GCP Secret Manager can also be used to populate the Secret in the same way.
+Use these commands to inspect the status and logs of the database and bootstrap hook jobs after install or upgrade.
 
-In this model, the operator's responsibility is secret lifecycle management (create/sync/rotate the Kubernetes Secret). The chart and `controller.config` keep using the same expected `env://...` variable names.
+Check whether jobs completed successfully:
+
+```bash
+kubectl get jobs -n boundary
+```
+
+View logs for the database init job:
+
+```bash
+kubectl logs -n boundary job/boundary-controller-init-db
+```
+
+View logs for the bootstrap admin job:
+
+```bash
+kubectl logs -n boundary job/boundary-controller-bootstrap-admin
+```
+
+### External secret providers
+
+To use an external secret provider, configure the [External Secrets Operator](https://external-secrets.io) with your provider backend to sync the required values into a Kubernetes Secret before install. Set `secretRefs.secretName` to match the Secret name the operator creates. The chart reads it the same way as a manually created Secret.
 
 ### Offline rendering without cluster access
 
@@ -445,291 +185,32 @@ secretRefs:
   validateExisting: false
 ```
 
-## Configuration Reference
-
-The table below documents all chart values shipped in `values.yaml`.
-
-| Key | Default | Description |
-| --- | --- | --- |
-| `image.repository` | `hashicorp/boundary-enterprise` | Boundary controller container image repository. |
-| `image.tag` | `0.21-ent` | Image tag used by the controller container and hook jobs. Defaults to `appVersion` in Chart.yaml when empty. |
-| `image.pullPolicy` | `IfNotPresent` | Kubernetes image pull policy. |
-| `imagePullSecrets` | `[]` | Optional registry credentials for private image pulls. |
-| `extraEnv` | `[]` | Additional environment variables injected into controller and hook job containers. Prefer `secretRefs` + `env://...` for sensitive values. |
-| `nameOverride` | `""` | Prefix generated resource names as `<nameOverride>-boundary-controller` (for example `dev-boundary-controller`). |
-| `fullnameOverride` | `""` | Fully override the generated resource base name (for example `boundary-dev`). |
-| `namespace` | `""` | Namespace applied to all namespaced chart resources. Leave empty to use the Helm release namespace. |
-| `tls.disabled` | `true` | Disable TLS cert mounts and related validation when set to `true`. |
-| `tls.secretName` | `boundary-controller-tls` | Name of the Kubernetes TLS Secret containing `tls.crt` and `tls.key`. |
-| `tls.mountPath` | `/etc/boundary/tls` | Mount path for TLS certs inside containers. Must match paths in `controller.config`. |
-| `controller.replicas` | `2` | Number of controller replicas. |
-| `controller.rollingUpdate.maxUnavailable` | `1` | Maximum unavailable pods during a rolling update. |
-| `controller.rollingUpdate.maxSurge` | `1` | Maximum surge pods during a rolling update. |
-| `controller.config` | Embedded HCL | Raw HCL controller configuration stored in a ConfigMap and mounted into all containers. Rendered with `tpl`. |
-| `secretRefs.secretName` | `boundary-controller-secrets` | Name of the Kubernetes Secret containing sensitive values when `controller.config` references them via `env://...`. |
-| `secretRefs.validateExisting` | `false` | When true, Helm validates that the Secret exists and contains all required keys at render time. Set to `false` for offline `helm template` runs. |
-| `secretRefs.keys.databaseUrl` | `database-url` | Key in the Secret for the PostgreSQL connection string. |
-| `secretRefs.keys.migrationUrl` | `migration-url` | Key in the Secret for the migration PostgreSQL connection string, used when `controller.config` sets `database.migration_url = "env://BOUNDARY_PG_MIGRATION_URL"`. |
-| `secretRefs.keys.license` | `license` | Key in the Secret for the Boundary Enterprise license. |
-| `secretRefs.keys.adminUsername` | `admin-username` | Key in the Secret for the bootstrap admin login name. Required when `bootstrapAdmin.enabled=true`. |
-| `secretRefs.keys.adminPassword` | `admin-password` | Key in the Secret for the bootstrap admin password. Required when `bootstrapAdmin.enabled=true`. |
-| `secretRefs.keys.kmsRoot` | `kms-root` | Key in the Secret for the AEAD root KMS key. Required only when using AEAD `env://` key mode. |
-| `secretRefs.keys.kmsWorkerAuth` | `kms-worker-auth` | Key in the Secret for the AEAD worker-auth KMS key. Required only when using AEAD `env://` key mode. |
-| `secretRefs.keys.kmsRecovery` | `kms-recovery` | Key in the Secret for the AEAD recovery KMS key. Required only when using AEAD `env://` key mode. |
-| `database.init.enabled` | `true` | Run `boundary database init` as a `pre-install` hook job. Set to `false` when database lifecycle is managed outside this chart. |
-| `database.migrate.enabled` | `false` | Run `boundary database migrate` as a `pre-upgrade` hook job. Pass via `--set` on the upgrade command rather than setting in your values file. |
-| `database.repair.version` | `""` | Migration version id passed to `-repair`. When non-empty and `database.migrate.enabled=true`, a repair job runs first, then migrate. |
-| `bootstrapAdmin.enabled` | `true` | Run the post-install bootstrap admin hook job. |
-| `bootstrapAdmin.runOnUpgrade` | `false` | Also run the bootstrap admin job as a post-upgrade hook. |
-| `bootstrapAdmin.waitTimeoutSeconds` | `120` | Seconds the bootstrap job waits for the controller API to become available. |
-| `bootstrapAdmin.authMethodName` | `bootstrap-password` | Display name for the password auth method created by the bootstrap job. |
-| `bootstrapAdmin.userResourceName` | `bootstrap-admin` | Display name for the Boundary user resource created by the bootstrap job. |
-| `bootstrapAdmin.accountResourceName` | `bootstrap-admin` | Display name for the Boundary account resource created by the bootstrap job. |
-| `bootstrapAdmin.roleName` | `bootstrap-global-admin` | Display name for the global admin role created by the bootstrap job. |
-| `controller.livenessProbe.scheme` | `""` | Optional explicit probe scheme. When empty, auto-derived from `tls.disabled` (`HTTPS` when TLS enabled, `HTTP` when disabled). |
-| `controller.livenessProbe.initialDelaySeconds` | `60` | Seconds before the first liveness probe. |
-| `controller.livenessProbe.periodSeconds` | `10` | Liveness probe interval in seconds. |
-| `controller.livenessProbe.failureThreshold` | `3` | Consecutive failures before the pod is restarted. |
-| `controller.livenessProbe.timeoutSeconds` | `5` | Timeout in seconds for each liveness probe. |
-| `controller.readinessProbe.scheme` | `""` | Optional explicit probe scheme. When empty, auto-derived from `tls.disabled` (`HTTPS` when TLS enabled, `HTTP` when disabled). |
-| `controller.readinessProbe.initialDelaySeconds` | `15` | Seconds before the first readiness probe. |
-| `controller.readinessProbe.periodSeconds` | `10` | Readiness probe interval in seconds. |
-| `controller.readinessProbe.failureThreshold` | `3` | Consecutive failures before the pod is removed from Service endpoints. |
-| `controller.readinessProbe.timeoutSeconds` | `5` | Timeout in seconds for each readiness probe. |
-| `controller.resources.requests.cpu` | `250m` | CPU request for the controller container. |
-| `controller.resources.requests.memory` | `512Mi` | Memory request for the controller container. |
-| `controller.resources.limits.cpu` | `500m` | CPU limit for the controller container. |
-| `controller.resources.limits.memory` | `1Gi` | Memory limit for the controller container. |
-| `controller.service.api.type` | `LoadBalancer` | Service type for the API listener. |
-| `controller.service.api.port` | `9200` | Service port for the API listener. |
-| `controller.service.api.targetPort` | `9200` | Container port targeted by the API Service. |
-| `controller.service.api.annotations` | `{}` | Annotations applied to the API Service. Use for cloud load balancer configuration. |
-| `controller.service.cluster.type` | `ClusterIP` | Service type for the cluster listener. Operators can override this in `values.yaml` based on requirements. |
-| `controller.service.cluster.port` | `9201` | Service port for the cluster listener. |
-| `controller.service.cluster.targetPort` | `9201` | Container port targeted by the cluster Service. |
-| `controller.service.cluster.annotations` | `{}` | Annotations applied to the cluster Service (9201), typically used for NLB internal or external mode. |
-| `controller.service.ops.type` | `ClusterIP` | Service type for the ops listener. |
-| `controller.service.ops.port` | `9203` | Service port for the ops listener. |
-| `controller.service.ops.targetPort` | `9203` | Container port targeted by the ops Service. |
-| `controller.service.ops.annotations` | `{}` | Annotations applied to the ops Service. |
-| `podSecurityContext` | secure non-root defaults | Pod-level security context applied to controller pods and hook job pods, including `runAsNonRoot`, UID/GID, `fsGroup`, `fsGroupChangePolicy`, and seccomp profile. |
-| `containerSecurityContext` | secure non-root defaults | Container-level security context with non-root UID/GID, dropped Linux capabilities, no privilege escalation, read-only root filesystem, and seccomp profile. |
-| `podAnnotations` | `{}` | Extra annotations added to controller pods. |
-| `nodeSelector` | `{}` | Node selector constraints for the controller Deployment. |
-| `tolerations` | `[]` | Tolerations for controller pod scheduling. |
-| `affinity` | `{}` | Affinity rules for controller pod scheduling. |
-| `serviceAccount.name` | `default` | Name of an existing ServiceAccount used by controller and hook jobs (`default` is quick-start only; use a dedicated ServiceAccount in production). |
-| `serviceAccount.automountServiceAccountToken` | `false` | Control whether pods using this ServiceAccount receive an API token. |
-| `podDisruptionBudget.enabled` | `true` | Create a PodDisruptionBudget for the controller Deployment. |
-| `podDisruptionBudget.minAvailable` | `1` | Minimum number of controller pods that must remain available during voluntary disruptions. |
-| `terminationGracePeriodSeconds` | `15` | Seconds Kubernetes waits before sending SIGKILL after SIGTERM. Should exceed `graceful_shutdown_wait_duration` in the controller config. |
-
 ## Operations
-
-### Check release resources
-
-```bash
-kubectl get deployment,pods,svc,pdb -n boundary
-```
-
-### Inspect controller logs
-
-```bash
-kubectl logs -n boundary deployment/boundary-controller
-```
-
-### Check hook job status
-
-```bash
-kubectl get jobs -n boundary
-kubectl logs -n boundary job/boundary-controller-init-db
-kubectl logs -n boundary job/boundary-controller-bootstrap-admin
-```
-
-### Upgrading
-
-#### Pre-Upgrade Checklist
-
-Before upgrading the chart or Boundary version:
-
-1. **Backup the database**: Create a PostgreSQL backup before any upgrade
-2. **Review release notes**: Check Boundary release notes for breaking changes
-3. **Test in non-production**: Always test upgrades in a staging environment first
-4. **Check compatibility**: Verify chart and Boundary version compatibility
-5. **Review configuration changes**: Check if new chart version requires config updates
-6. **Verify KMS access**: Ensure KMS keys are accessible and permissions are current
-7. **Check resource capacity**: Ensure cluster has capacity for rolling update surge
-
-
-#### Upgrade with a new values file
-
-```bash
-# Perform the upgrade
-helm upgrade boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0 \
-  --namespace boundary \
-  --values my-values.yaml \
-  --rollback-on-failure \
-  --wait
-```
-
-When using this repo locally, replace `hashicorp/boundary-controller` with `.`:
-
-```bash
-helm upgrade boundary-controller . \
-  --namespace boundary \
-  --values my-values.yaml \
-  --rollback-on-failure \
-  --wait
-```
-
-[`--rollback-on-failure`](https://helm.sh/docs/helm/helm_upgrade/#options) waits for the rollout to complete and automatically rolls back to the previous release if anything fails.
-
-#### Upgrade with database migration
-
-`boundary database migrate` uses PostgreSQL advisory locks to get exclusive access during schema changes. It cannot acquire that lock while active controllers are still connected to the database and heartbeating. Scale the Deployment to zero replicas first, then run the migration upgrade.
-
-This chart currently treats migration/repair as a manual operations workflow: run one-time migration flags with `--set` for the migration/repair upgrade, then run Step 4 to reset temporary CLI overrides with `--reset-values`.
-
-This workflow may be streamlined in future chart releases.
-
-Fresh installs that use chart defaults typically do not require a migration because there is no existing Boundary schema to upgrade. Migration steps are primarily for version upgrades.
-
-**Step 1 — Scale controllers to zero:**
-
-```bash
-helm upgrade boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0 \
-  --namespace boundary \
-  --values my-values.yaml \
-  --set controller.replicas=0 \
-  --rollback-on-failure \
-  --wait
-```
-
-**Step 2 — Database backup:**
-> **Back up the database before running a migration.** Migrations are not automatically reversed by a Helm rollback. If a migration fails or produces unexpected results, restoring from a backup is the recovery path.
->
-> **`--rollback-on-failure`** rolls back the Helm release state only. Database schema changes applied by a partially completed migration are **not** reversed. If a migration fails partway through, restore the database from a pre-migration backup.
-
-**Step 3 — Run the migration job:**
-
-Pass `--set database.migrate.enabled=true` on the upgrade command. Do not set this in your values file — it is a one-time flag. Helm runs the `pre-upgrade` database schema migration job and keeps the controller replicas at zero.
-
-```bash
-helm upgrade boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0 \
-  --namespace boundary \
-  --values my-values.yaml \
-  --set controller.replicas=0 \
-  --set database.migrate.enabled=true \
-  --rollback-on-failure \
-  --wait
-```
-
-If the migration user differs from the runtime database user, set `migration_url` in `controller.config` under the `database` block. The chart does not pass `-migration-url`; Boundary will use the configured value automatically.
-
-```bash
-controller {
-  database {
-    url           = "env://BOUNDARY_PG_URL"
-    migration_url = "env://BOUNDARY_PG_MIGRATION_URL"
-  }
-}
-```
-
-When using `env://BOUNDARY_PG_MIGRATION_URL`, ensure the Secret contains the key configured by `secretRefs.keys.migrationUrl` (default `migration-url`).
-
-#### Upgrade with migration repair
-
-Use repair only after reviewing Boundary migration failure output and identifying the failed version id. This chart runs repair as a separate `pre-upgrade` hook job.
-
-```bash
-helm upgrade boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0 \
-  --namespace boundary \
-  --values my-values.yaml \
-  --set controller.replicas=0 \
-  --set database.migrate.enabled=true \
-  --set database.repair.version=<version_id> \
-  --rollback-on-failure \
-  --wait
-```
-
-**Notes:**
-
-- Repair runs only when both conditions are true: `database.migrate.enabled=true` and `database.repair.version` is non-empty.
-- If `database.repair.version` is set but `database.migrate.enabled=false`, no repair job runs.
-- Keep `database.repair.version` as a one-time value, similar to migrate flags.
-- When both run, Helm runs repair first (hook weight `-10`) and migrate second (hook weight `-5`).
-
-**Step 4 — Reset one-time migration overrides:**
-
-For manual Helm runs, follow up with `--reset-values` so one-time CLI overrides do not leak into later upgrades. In GitOps flows that always apply the versioned values file, this step is usually optional.
-
-```bash
-helm upgrade boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0 \
-  --namespace boundary \
-  --values my-values.yaml \
-  --reset-values \
-  --rollback-on-failure \
-  --wait
-```
-
-If you skip this step, previous CLI override values can persist and a later plain upgrade may try to run migration/repair hooks unexpectedly.
-
-#### Post-Upgrade Verification
-
-After upgrading:
-
-```bash
-# Check pod status
-kubectl get pods -n boundary
-
-# Verify all replicas are ready
-kubectl rollout status deployment/boundary-controller -n boundary
-
-# Check controller logs for errors
-kubectl logs -n boundary deployment/boundary-controller --tail=100
-
-# Check hook job completion
-kubectl get jobs -n boundary
-```
 
 ### Rollback
 
-If an upgrade fails or causes issues:
+If an upgrade fails or causes issues, use `helm rollback` to revert to a previous release state.
+
+View release history to find the revision to roll back to:
 
 ```bash
-# View release history
 helm history boundary-controller -n boundary
+```
 
-# Rollback to previous revision
+Roll back to the previous revision:
+
+```bash
 helm rollback boundary-controller -n boundary
+```
 
-# Rollback to specific revision
+Roll back to a specific revision:
+
+```bash
 helm rollback boundary-controller <revision> -n boundary
 ```
 
-**Database Rollback Considerations:**
-- Database migrations are **not automatically reversed** on Helm rollback
-- If a migration was applied, you may need to restore from backup
-- Test rollback procedures in non-production environments
+Database migrations are **not automatically reversed** on Helm rollback. If a migration was applied during the failed upgrade, restore the database from the pre-migration backup.
 
-### Uninstall
-
-```bash
-helm uninstall boundary-controller -n boundary
-```
-
-Hook Jobs are Helm hooks and use `helm.sh/hook-delete-policy: before-hook-creation`.
-
-- `helm uninstall` removes release-managed resources (for example, the main controller ConfigMap, Deployment, Services, and PDB), but does not immediately delete existing hook Jobs.
-- Hook Jobs set `ttlSecondsAfterFinished: 600` (10 minutes), so Kubernetes automatically removes them about 10 minutes after they reach `Complete` or `Failed`.
-- Hook Jobs set `backoffLimit: 2`, so Kubernetes can run up to 3 attempts total (1 initial run + 2 retries) before marking the Job failed.
-- `helm uninstall` only removes resources created by this Helm chart; it does not delete or modify the PostgreSQL database.
-- On the next install/upgrade that triggers the same hook, `before-hook-creation` removes any previous hook Job with the same name before creating a new one.
 
 ## Monitoring
 
@@ -837,13 +318,3 @@ The current chart intentionally does not attempt to solve the following problems
 - Horizontal pod autoscaling
 - TLS certificate issuance or renewal — the chart expects a pre-existing Kubernetes TLS Secret (`tls.crt` / `tls.key`); it does not integrate with cert-manager, ACM, or any other certificate authority
 - Ingress or DNS automation
-- Secret generation, Vault Agent Injector integration, or external secret operator wiring (Vault Secrets Operator, External Secrets Operator) — the chart expects the Kubernetes Secret to already exist; how it gets there is outside the chart's scope
-- Multi-cluster or multi-region controller topologies
-
-## Contributing
-
-When submitting changes, include:
-
-- A clear description of the behavior or documentation change
-- Validation notes with the commands you ran
-- Any chart value changes that affect install or upgrade workflows
