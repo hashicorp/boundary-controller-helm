@@ -13,7 +13,7 @@ Controller:
 
 Secret:
 - Name:          {{ include "boundary.controller.secretName" . }}
-- Required keys: {{ .Values.secretRefs.keys.databaseUrl }}, {{ .Values.secretRefs.keys.license }}{{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" }}, {{ .Values.secretRefs.keys.migrationUrl }}{{- end }}{{- if .Values.bootstrapAdmin.enabled }}, {{ .Values.secretRefs.keys.adminUsername }}, {{ .Values.secretRefs.keys.adminPassword }}{{- end }}{{- if eq (include "boundary.controller.usesEnvAeadKms" . | trim) "true" }}, {{ .Values.secretRefs.keys.kmsRoot }}, {{ .Values.secretRefs.keys.kmsWorkerAuth }}, {{ .Values.secretRefs.keys.kmsRecovery }}{{- end }}
+- Required keys: {{ .Values.secretRefs.keys.databaseUrl }}, {{ .Values.secretRefs.keys.license }}{{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" }}, {{ .Values.secretRefs.keys.migrationUrl }}{{- end }}{{- if .Values.bootstrapAdminAuthMethod.enabled }}, {{ .Values.secretRefs.keys.adminUsername }}, {{ .Values.secretRefs.keys.adminPassword }}{{- end }}{{- if eq (include "boundary.controller.usesEnvAeadKms" . | trim) "true" }}, {{ .Values.secretRefs.keys.kmsRoot }}, {{ .Values.secretRefs.keys.kmsWorkerAuth }}, {{ .Values.secretRefs.keys.kmsRecovery }}{{- end }}
 
 Next steps:
 
@@ -24,7 +24,7 @@ Next steps:
 {{- if .Values.database.init.enabled }}
    kubectl logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-init-db
 {{- end }}
-{{- if .Values.bootstrapAdmin.enabled }}
+{{- if .Values.bootstrapAdminAuthMethod.enabled }}
    kubectl logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-bootstrap-admin
 {{- end }}
 {{- else if and .Values.database.migrate.enabled $hasRepair }}

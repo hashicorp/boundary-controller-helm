@@ -146,7 +146,7 @@ database:
 If you manage admin accounts externally, disable the bootstrap job:
 
 ```yaml
-bootstrapAdmin:
+bootstrapAdminAuthMethod:
   enabled: false
 ```
 

@@ -39,7 +39,7 @@ controller:
     listener "tcp" {
       address = "0.0.0.0:9200"
       purpose = "api"
-      tls_disable   = false
+      tls_disable   = {{ .Values.tls.disabled }}
       tls_cert_file = "{{ .Values.tls.mountPath }}/tls.crt"
       tls_key_file  = "{{ .Values.tls.mountPath }}/tls.key"
     }
@@ -182,11 +182,11 @@ database:
   repair:
     version: ""
 
-bootstrapAdmin:
+bootstrapAdminAuthMethod:
   enabled: true
   runOnUpgrade: false
   waitTimeoutSeconds: 120
-  authMethodName: "bootstrap-password"
+  authMethodName: "bootstrap-auth-method"
   userResourceName: "bootstrap-admin"
   accountResourceName: "bootstrap-admin"
   roleName: "bootstrap-global-admin"

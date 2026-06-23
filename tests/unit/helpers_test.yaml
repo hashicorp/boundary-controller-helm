@@ -79,6 +79,11 @@ tests:
     set:
       secretRefs:
         secretName: ""
+      controller:
+        config: |
+          controller {
+            database { url = "env://BOUNDARY_PG_URL" }
+          }
     asserts:
       - equal:
           path: spec.template.spec.containers[0].env[1].valueFrom.secretKeyRef.name
@@ -89,6 +94,11 @@ tests:
     set:
       secretRefs:
         secretName: custom-boundary-secrets
+      controller:
+        config: |
+          controller {
+            database { url = "env://BOUNDARY_PG_URL" }
+          }
     asserts:
       - equal:
           path: spec.template.spec.containers[0].env[1].valueFrom.secretKeyRef.name
@@ -107,6 +117,12 @@ tests:
 
   - it: renders remapped secretRefs keys for database URL and license
     set:
+      controller:
+        config: |
+          controller {
+            license = "env://BOUNDARY_LICENSE"
+            database { url = "env://BOUNDARY_PG_URL" }
+          }
       secretRefs:
         keys:
           databaseUrl: db-url-key

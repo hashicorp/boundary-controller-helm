@@ -164,11 +164,11 @@ resource "helm_release" "boundary_controller" {
       value = var.api_service_type
     },
     {
-      name  = "bootstrapAdmin.runOnUpgrade"
+      name  = "bootstrapAdminAuthMethod.runOnUpgrade"
       value = "true"
     },
     {
-      name  = "bootstrapAdmin.waitTimeoutSeconds"
+      name  = "bootstrapAdminAuthMethod.waitTimeoutSeconds"
       value = "300"
     },
     {

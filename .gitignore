@@ -22,6 +22,9 @@ tests/unit/__snapshot__/
 *.swp
 *.swo
 
+#environment variables
+.env
+
 # EKS integration — secrets and ephemeral Terraform artefacts
 tests/integration/.env
 tests/integration/.env.example

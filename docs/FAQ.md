@@ -653,10 +653,10 @@ Common causes:
 
 1. Confirm the job succeeded: `kubectl get job/boundary-controller-bootstrap-admin -n boundary`
 2. Check the admin credentials in the Secret match what was used during install.
-3. Verify the auth method name — the chart creates it with the display name set in `bootstrapAdmin.authMethodName` (default `bootstrap-password`).
+3. Verify the auth method name — the chart creates it with the display name set in `bootstrapAdminAuthMethod.authMethodName` (default `bootstrap-password`).
 4. Confirm you are authenticating against the correct Boundary address and using the `password` auth method type.
 
-If `bootstrapAdmin.runOnUpgrade=false` (the default), the bootstrap job only runs on the initial install. It will not re-run on subsequent upgrades. To reset credentials, log in with an existing admin account and update them through the Boundary API.
+If `bootstrapAdminAuthMethod.runOnUpgrade=false` (the default), the bootstrap job only runs on the initial install. It will not re-run on subsequent upgrades. To reset credentials, log in with an existing admin account and update them through the Boundary API.
 
 ---
 

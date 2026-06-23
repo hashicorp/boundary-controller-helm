@@ -13,7 +13,7 @@ data:
   controller.hcl: |
 {{ tpl .Values.controller.config . | indent 4 }}
 
-{{- if and .Values.bootstrapAdmin.enabled (or .Release.IsInstall (and .Release.IsUpgrade .Values.bootstrapAdmin.runOnUpgrade)) }}
+{{- if and .Values.bootstrapAdminAuthMethod.enabled (or .Release.IsInstall (and .Release.IsUpgrade .Values.bootstrapAdminAuthMethod.runOnUpgrade)) }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -24,7 +24,7 @@ metadata:
     {{- include "boundary.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller-bootstrap-admin
   annotations:
-    "helm.sh/hook": {{ if .Values.bootstrapAdmin.runOnUpgrade }}post-install,post-upgrade{{ else }}post-install{{ end }}
+    "helm.sh/hook": {{ if .Values.bootstrapAdminAuthMethod.runOnUpgrade }}post-install,post-upgrade{{ else }}post-install{{ end }}
     "helm.sh/hook-weight": "0"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
 data:

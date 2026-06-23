@@ -187,6 +187,20 @@ tests:
         template: templates/deployment.yaml
   - it: renders secretRefs key remapping in deployment env vars
     set:
+      controller:
+        config: |
+          listener "tcp" {
+            address = "0.0.0.0:9200"
+            purpose = "api"
+            tls_cert_file = "/etc/boundary/tls/tls.crt"
+            tls_key_file  = "/etc/boundary/tls/tls.key"
+          }
+          controller {
+            license = "env://BOUNDARY_LICENSE"
+            database {
+              url = "env://BOUNDARY_PG_URL"
+            }
+          }
       secretRefs:
         keys:
           databaseUrl: db-url-key

@@ -36,7 +36,7 @@ Have these ready before running `helm install`:
 - **KMS configuration** — [KMS](https://developer.hashicorp.com/boundary/docs/configuration/kms) stanzas in `controller.config`
 - **Boundary license** — required for enterprise builds
 - **TLS certificate** — required for the API listener on port 9200
-- **Bootstrap admin credentials** — required when `bootstrapAdmin.enabled=true`
+- **Bootstrap admin credentials** — required when `bootstrapAdminAuthMethod.enabled=true`
 
 ## Step 1 — Create Kubernetes Secrets
 

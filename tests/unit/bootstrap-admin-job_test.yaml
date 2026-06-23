@@ -110,14 +110,14 @@ tests:
           value: true
   - it: does not render bootstrap job when disabled
     set:
-      bootstrapAdmin:
+      bootstrapAdminAuthMethod:
         enabled: false
     asserts:
       - hasDocuments:
           count: 0
   - it: renders post-install and post-upgrade hooks when runOnUpgrade is true
     set:
-      bootstrapAdmin:
+      bootstrapAdminAuthMethod:
         runOnUpgrade: true
     asserts:
       - equal:
@@ -127,7 +127,7 @@ tests:
     release:
       upgrade: true
     set:
-      bootstrapAdmin:
+      bootstrapAdminAuthMethod:
         runOnUpgrade: false
     asserts:
       - hasDocuments:
@@ -189,7 +189,7 @@ tests:
                 key: custom-admin-pass
   - it: renders custom bootstrap resources
     set:
-      bootstrapAdmin:
+      bootstrapAdminAuthMethod:
         resources:
           limits:
             cpu: 900m
@@ -215,9 +215,9 @@ tests:
       - equal:
           path: metadata.namespace
           value: boundary
-  - it: renders bootstrap admin env values from bootstrapAdmin overrides
+  - it: renders bootstrap admin env values from bootstrapAdminAuthMethod overrides
     set:
-      bootstrapAdmin:
+      bootstrapAdminAuthMethod:
         waitTimeoutSeconds: 240
         authMethodName: custom-auth-method
         userResourceName: custom-user-resource
