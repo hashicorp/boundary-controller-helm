@@ -119,3 +119,38 @@ tests:
           path: spec.type
           value: LoadBalancer
         documentIndex: 2
+  - it: renders api service as ClusterIP when openshift.enabled is true regardless of values
+    set:
+      openshift:
+        enabled: true
+      controller:
+        service:
+          api:
+            type: LoadBalancer
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP
+        documentIndex: 0
+  - it: renders cluster and ops services unchanged when openshift.enabled is true
+    set:
+      openshift:
+        enabled: true
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP
+        documentIndex: 1
+      - equal:
+          path: spec.type
+          value: ClusterIP
+        documentIndex: 2
+  - it: renders api service as LoadBalancer when openshift.enabled is false
+    set:
+      openshift:
+        enabled: false
+    asserts:
+      - equal:
+          path: spec.type
+          value: LoadBalancer
+        documentIndex: 0

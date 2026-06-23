@@ -38,13 +38,21 @@ spec:
       serviceAccountName: {{ include "boundary.controller.serviceAccountName" . }}
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       securityContext:
+        {{- if .Values.openshift.enabled }}
+        {{- toYaml .Values.openshift.podSecurityContext | nindent 8 }}
+        {{- else }}
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        {{- end }}
       containers:
         - name: controller
           image: "{{ include "boundary.controller.image" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
+            {{- if .Values.openshift.enabled }}
+            {{- toYaml .Values.openshift.containerSecurityContext | nindent 12 }}
+            {{- else }}
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+            {{- end }}
           env:
             - name: SKIP_SETCAP
               value: "1"

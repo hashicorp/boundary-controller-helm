@@ -110,6 +110,13 @@ Get the controller secret name
 {{- end }}
 
 {{/*
+Get the OpenShift Route name for the controller API port
+*/}}
+{{- define "boundary.controller.route.api.name" -}}
+{{- printf "%s-api-route" (include "boundary.controller.serviceName" .) }}
+{{- end }}
+
+{{/*
 Get the service account name for the controller
 */}}
 {{- define "boundary.controller.serviceAccountName" -}}

@@ -1,0 +1,29 @@
+# Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
+
+{{- if and .Values.openshift.enabled .Values.openshift.route.api.enabled }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "boundary.controller.route.api.name" . }}
+  namespace: {{ include "boundary.namespace" . }}
+  labels:
+    {{- include "boundary.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+  {{- with .Values.openshift.route.api.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.openshift.route.api.host }}
+  host: {{ .Values.openshift.route.api.host }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "boundary.controller.apiServiceName" . }}
+  port:
+    targetPort: api
+  tls:
+    termination: {{ .Values.openshift.route.api.tls.termination }}
+    insecureEdgeTerminationPolicy: {{ .Values.openshift.route.api.tls.insecureEdgeTerminationPolicy }}
+{{- end }}

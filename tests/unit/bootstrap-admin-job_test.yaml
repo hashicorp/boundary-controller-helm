@@ -251,3 +251,36 @@ tests:
           content:
             name: BOUNDARY_ROLE_NAME
             value: custom-role
+  - it: uses openshift podSecurityContext and omits runAsUser in bootstrap job when openshift.enabled is true
+    set:
+      openshift:
+        enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - notExists:
+          path: spec.template.spec.securityContext.runAsUser
+      - notExists:
+          path: spec.template.spec.securityContext.fsGroup
+  - it: uses openshift containerSecurityContext in bootstrap job when openshift.enabled is true
+    set:
+      openshift:
+        enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext.runAsGroup
+  - it: uses default podSecurityContext with runAsUser in bootstrap job when openshift.enabled is false
+    set:
+      openshift:
+        enabled: false
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 100
