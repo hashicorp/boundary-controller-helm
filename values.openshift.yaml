@@ -1,0 +1,50 @@
+# Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
+
+# These overrides are appropriate defaults for deploying this chart on OpenShift.
+# Usage:
+#   helm install boundary-controller . \
+#     --namespace boundary \
+#     --create-namespace \
+#     -f values.openshift.yaml \
+#     -f my-secrets-values.yaml
+
+# TODO: replace with official OpenShift-certified image when available.
+image:
+  repository: public.ecr.aws/g0u5x5a3/boundary-ent
+  tag: "0.21.0-ubi-arm64"
+
+openshift:
+  enabled: true
+  route:
+    api:
+      enabled: true
+      # Leave empty to let OpenShift auto-assign a hostname from the cluster's
+      # ingress domain (e.g. boundary-controller-api-boundary.apps.cluster.example.com).
+      host: ""
+      tls:
+        # edge terminates TLS at the OCP router; controller API listener runs with tls_disable=true.
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+      annotations: {}
+
+# ServiceAccount — provide an existing ServiceAccount bound to a compatible SCC.
+# After creating, grant the restricted-v2 SCC if your namespace policy requires it:
+#   oc adm policy add-scc-to-user restricted-v2 -z boundary-controller -n <namespace>
+#
+# SCC requirements for the boundary-controller pod:
+#   - runAsNonRoot: true   (OCP assigns a UID from the namespace range)
+#   - allowPrivilegeEscalation: false
+#   - readOnlyRootFilesystem: true
+#   - All capabilities dropped
+# The built-in "restricted-v2" SCC (OCP 4.11+) satisfies all of the above.
+# On OCP 4.10 and earlier, use "restricted".
+serviceAccount:
+  name: "boundary-controller"
+  automountServiceAccountToken: false
+
+controller:
+  service:
+    api:
+      # On OpenShift the API port is exposed via the Route above; a LoadBalancer is not needed.
+      type: ClusterIP

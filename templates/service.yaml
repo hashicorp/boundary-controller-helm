@@ -14,7 +14,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  type: {{ .Values.controller.service.api.type }}
+  type: {{ if .Values.openshift.enabled }}ClusterIP{{ else }}{{ .Values.controller.service.api.type }}{{ end }}
   ports:
     - port: {{ .Values.controller.service.api.port }}
       targetPort: {{ .Values.controller.service.api.targetPort }}

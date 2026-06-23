@@ -349,3 +349,41 @@ podDisruptionBudget:
 # Seconds Kubernetes waits before sending SIGKILL after SIGTERM.
 # Should exceed controller.config graceful_shutdown_wait_duration (default 10s).
 terminationGracePeriodSeconds: 15
+
+# --------------------------------------------------
+# OpenShift
+# --------------------------------------------------
+
+# Set openshift.enabled=true when deploying on OpenShift.
+# - Forces the API Service type to ClusterIP (a Route handles external traffic instead).
+# - Drops the fixed runAsUser/runAsGroup/fsGroup so OpenShift's SCC assigns a valid UID from the namespace range.
+# - Renders a route.openshift.io/v1 Route for the controller API port.
+openshift:
+  enabled: false
+  # Pod security context used instead of podSecurityContext when openshift.enabled=true.
+  # runAsUser/runAsGroup/fsGroup are intentionally absent so the namespace SCC assigns them.
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  # Container security context used instead of containerSecurityContext when openshift.enabled=true.
+  containerSecurityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault
+  route:
+    api:
+      enabled: true
+      # Leave empty to let OpenShift auto-assign a hostname from the cluster's ingress domain.
+      host: ""
+      tls:
+        # edge terminates TLS at the OCP router; the controller API listener runs with tls_disable=true.
+        # Switch to reencrypt if you configure TLS on the API listener.
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+      annotations: {}
