@@ -6,8 +6,7 @@ name: boundary-controller
 description: Official HashiCorp Boundary Controller Chart
 type: application
 version: 0.1.0-beta
-appVersion: "0.21-ent"
-kubeVersion: ">= 1.34.0-0"
+appVersion: "0.21.3-ent"
 keywords:
   - boundary
   - hashicorp
@@ -25,4 +24,4 @@ sources:
   - https://github.com/hashicorp/boundary-controller-helm
 maintainers:
   - name: HashiCorp
-  
+    url: https://github.com/hashicorp/boundary-controller-helm
