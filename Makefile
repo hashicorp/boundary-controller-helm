@@ -1,6 +1,13 @@
 # Copyright IBM Corp. 2026
 # SPDX-License-Identifier: MPL-2.0
 
+# Load .env if present; shell-exported vars take precedence over .env values.
+-include .env
+export BOUNDARY_LICENSE
+export BOOTSTRAP_ADMIN_PASSWORD
+export BOOTSTRAP_ADMIN_USERNAME
+export K8S_MATRIX_VERSIONS
+
 # ================================
 # PHONY Declarations
 # ================================
@@ -470,7 +477,11 @@ acceptance-test:
 	fi
 	@export BOOTSTRAP_ADMIN_USERNAME=$${BOOTSTRAP_ADMIN_USERNAME:-admin};
 	@bash tests/acceptance/cluster-smoke-test.sh
-	@bash tests/acceptance/kind-version-matrix-test.sh
+	@K8S_MATRIX_VERSIONS="$$K8S_MATRIX_VERSIONS" \
+		BOUNDARY_LICENSE="$$BOUNDARY_LICENSE" \
+		BOOTSTRAP_ADMIN_PASSWORD="$$BOOTSTRAP_ADMIN_PASSWORD" \
+		BOOTSTRAP_ADMIN_USERNAME="$${BOOTSTRAP_ADMIN_USERNAME:-admin}" \
+		bash tests/acceptance/kind-version-matrix-test.sh
 	@echo ""
 	@echo "✅ All acceptance tests passed!"
 
@@ -519,10 +530,13 @@ kind-matrix-test:
 		echo "❌ BOOTSTRAP_ADMIN_PASSWORD is not set. Add it to .env or export it."; \
 		exit 1; \
 	fi
-	@bash tests/acceptance/kind-version-matrix-test.sh
-
+	@K8S_MATRIX_VERSIONS="$$K8S_MATRIX_VERSIONS" \
+		BOUNDARY_LICENSE="$$BOUNDARY_LICENSE" \
+		BOOTSTRAP_ADMIN_PASSWORD="$$BOOTSTRAP_ADMIN_PASSWORD" \
+		BOOTSTRAP_ADMIN_USERNAME="$${BOOTSTRAP_ADMIN_USERNAME:-admin}" \
+		bash tests/acceptance/kind-version-matrix-test.sh
 # ================================
-# EKS Integration Testing Targets
+# EKS Integration Testing Targets	
 # ================================
 
 INTEGRATION_DIR := tests/integration/terraform/aws

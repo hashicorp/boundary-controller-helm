@@ -13,7 +13,7 @@ image:
 imagePullSecrets: []
 
 tls:
-  disabled: true # Set to false to enable TLS. Required for the API listener on port 9200.
+  disabled: false # Set to false to enable TLS. Required for the API listener on port 9200.
   secretName: "boundary-controller-tls"
   mountPath: "/etc/boundary/tls"
 
@@ -39,9 +39,9 @@ controller:
     listener "tcp" {
       address = "0.0.0.0:9200"
       purpose = "api"
-      tls_disable   = {{ .Values.tls.disabled }}
-      tls_cert_file = "{{ .Values.tls.mountPath }}/tls.crt"
-      tls_key_file  = "{{ .Values.tls.mountPath }}/tls.key"
+      tls_disable   = true
+      tls_cert_file = "/etc/boundary/tls/tls.crt"
+      tls_key_file  = "/etc/boundary/tls/tls.key"
     }
 
     listener "tcp" {
@@ -52,45 +52,19 @@ controller:
     listener "tcp" {
       address = "0.0.0.0:9203"
       purpose = "ops"
-      tls_disable = {{ .Values.tls.disabled }}
-      tls_cert_file = "{{ .Values.tls.mountPath }}/tls.crt"
-      tls_key_file  = "{{ .Values.tls.mountPath }}/tls.key"
+      tls_disable   = true
+      tls_cert_file = "/etc/boundary/tls/tls.crt"
+      tls_key_file  = "/etc/boundary/tls/tls.key"
     }
 
     controller {
       name = "boundary-controller"
-      description = "Boundary Controller running in Kubernetes"
-      # If the cluster Service is LoadBalancer, set this to its external DNS/IP:9201.
-      public_cluster_addr = "{{ printf "%s:9201" (include "boundary.controller.clusterServiceName" .) }}"
-      license = "<your-boundary-enterprise-license>"
+      description = "Boundary controller running in Kubernetes"
+      public_cluster_addr = "boundary-controller-cluster.boundary.svc.cluster.local:9201"
+      license = "<your-license-here>"
+
       database {
-        url = "postgresql://<user>:<password>@<host>:5432/<dbname>"
-        # migration_url = "postgresql://<user>:<password>@<host>:5432/<dbname>"
-      }
-      graceful_shutdown_wait_duration = "10s"
-
-      api_rate_limit {
-        resources = ["*"]
-        actions   = ["*"]
-        per     = "total"
-        limit   = 500
-        period  = "1s"
-      }
-
-      api_rate_limit {
-        resources = ["*"]
-        actions   = ["*"]
-        per     = "ip-address"
-        limit   = 100
-        period  = "1s"
-      }
-
-      api_rate_limit {
-        resources = ["*"]
-        actions   = ["*"]
-        per     = "auth-token"
-        limit   = 100
-        period  = "1s"
+        url = "postgres://<user>:<password>@<host>:5432/<dbname>?sslmode=require"
       }
     }
 
@@ -100,30 +74,32 @@ controller:
     kms "aead" {
       purpose   = "root"
       aead_type = "aes-gcm"
-      key       = "sP1fnF5Xz85RrXyELHFeZg9Ad2qt4Z4bgNHVGtD6ung="
+      key       = "sP1fnF5Xz85RrXyELHFeZg9Ad2qt4Z4bgNHVGtD6sFo="
+      key_id    = "global_root"
     }
 
     kms "aead" {
       purpose   = "recovery"
       aead_type = "aes-gcm"
-      key       = "8fZBjCUfozI8/xQhAFb0LRHuUFb/tDMGVJzCmVm0R+8="
+      key       = "8fZBjCUfN0TzjEGLQldGY4+iE9AkOvCfjh7+p0GtRBQ="
+      key_id    = "global_recovery"
     }
 
     kms "aead" {
       purpose   = "worker-auth"
       aead_type = "aes-gcm"
-      key       = "iHdyGULJrLHmEBzMt8n3g6a4w8xm5jJZKQBr0+6OZIA="
+      key       = "ATTK2pMjMTEJGlAkUJAePnFMlNLQaXBnhSqJHVlJeKQ="
+      key_id    = "global_worker-auth"
     }
 
     events {
-      audit_enabled = false
-      observations_enabled = false
-      sysevents_enabled = false
-      telemetry_enabled = false
+      audit_enabled        = true
+      sysevents_enabled    = true
+      observations_enabled = true
       sink "stderr" {
-        name = "errors"
-        description = "All error events"
-        event_types = ["error"]
+        name = "all-events"
+        description = "All events sent to stderr"
+        event_types = ["*"]
         format = "hclog-text"
       }
     }
@@ -169,7 +145,7 @@ controller:
 
 database:
   init:
-    enabled: true
+    enabled: false
   migrate:
     enabled: false
   resources:
@@ -183,7 +159,7 @@ database:
     version: ""
 
 bootstrapAdminAuthMethod:
-  enabled: true
+  enabled: false
   runOnUpgrade: false
   waitTimeoutSeconds: 120
   authMethodName: "bootstrap-auth-method"

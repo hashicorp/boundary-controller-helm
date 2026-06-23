@@ -74,4 +74,9 @@ controller:
     }
 
 bootstrapAdminAuthMethod:
+  enabled: true
   waitTimeoutSeconds: 300
+
+database:
+  init:
+    enabled: true

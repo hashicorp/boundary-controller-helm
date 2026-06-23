@@ -110,19 +110,79 @@ Because the chart evaluates `controller.config` with Helm `tpl`, Helm template e
 
 ## TLS
 
-TLS is required for the API listener on port 9200. The chart must be deployed with `tls.disabled=false` and a valid Kubernetes TLS Secret present. The chart expects a TLS Secret named by `tls.secretName` containing `tls.crt` and `tls.key`. That Secret is mounted at `tls.mountPath` in all controller and job containers.
+TLS for the API listener (port 9200) and ops listener (port 9203) is controlled by two independent settings:
 
-The chart validates that `controller.config` references `tls.mountPath` for both `tls_cert_file` and `tls_key_file`. If the paths do not match, rendering fails with an actionable error.
+- `tls.disabled` — Helm value that controls whether the TLS Secret is mounted and whether probes use HTTPS or HTTP.
+- `tls_disable` inside `controller.config` — HCL field in each listener block that tells the Boundary process itself whether to use TLS.
 
-To enable TLS:
+These two settings are **independent**. The default `controller.config` in `values.yaml` uses plain literal values — there are no Helm template expressions in the listener blocks. When you change `tls.disabled`, you must also manually update the `tls_disable`, `tls_cert_file`, and `tls_key_file` fields in your `controller.config` override to match.
 
-1. Set `tls.disabled=false`
-2. Configure `controller.config` listeners with `tls_disable = false` and cert/key file paths under `tls.mountPath`
+### Enabling TLS — Helm values
 
-The liveness and readiness probe schemes are auto-derived from `tls.disabled`:
+Set `tls.disabled: false` in your values override so the chart mounts the TLS Secret and switches probes to HTTPS. Then create a Kubernetes TLS Secret whose name matches `tls.secretName` (default: `boundary-controller-tls`):
 
-- `HTTPS` when `tls.disabled=false`
-- `HTTP` when `tls.disabled=true`
+```bash
+kubectl create secret tls boundary-controller-tls \
+  --cert=path/to/tls.crt \
+  --key=path/to/tls.key \
+  -n boundary
+```
+
+### Enabling TLS — controller config
+
+In your `controller.config` override, update the TLS fields in each listener to match `tls.mountPath` (default: `/etc/boundary/tls`):
+
+```hcl
+listener "tcp" {
+  address       = "0.0.0.0:9200"
+  purpose       = "api"
+  tls_disable   = false
+  tls_cert_file = "/etc/boundary/tls/tls.crt"
+  tls_key_file  = "/etc/boundary/tls/tls.key"
+}
+
+listener "tcp" {
+  address       = "0.0.0.0:9203"
+  purpose       = "ops"
+  tls_disable   = false
+  tls_cert_file = "/etc/boundary/tls/tls.crt"
+  tls_key_file  = "/etc/boundary/tls/tls.key"
+}
+```
+
+If you change `tls.mountPath` from its default, update the `tls_cert_file` / `tls_key_file` paths to match.
+
+The chart validates that `tls_cert_file` and `tls_key_file` paths are aligned with `tls.mountPath` when `tls.disabled=false`. If the paths do not match, rendering fails with an actionable error.
+
+Alternatively, because `controller.config` is evaluated through Helm's `tpl` function, you can use Helm template expressions scoped to just the TLS fields to keep them in sync automatically:
+
+```hcl
+  tls_disable   = {{ .Values.tls.disabled }}
+  tls_cert_file = "{{ .Values.tls.mountPath }}/tls.crt"
+  tls_key_file  = "{{ .Values.tls.mountPath }}/tls.key"
+```
+
+With this approach, flipping `tls.disabled` in your values automatically updates both the Helm-side behaviour (Secret mount, probe scheme) and the HCL passed to the Boundary process.
+
+### Disabling TLS (development/testing only)
+
+The default `values.yaml` ships with TLS disabled for ease of local development:
+
+```yaml
+tls:
+  disabled: true
+```
+
+The default `controller.config` correspondingly sets `tls_disable = true` in each listener and retains cert/key path fields (they are ignored when `tls_disable = true`).
+
+### Liveness and readiness probes
+
+Probe schemes are auto-derived from `tls.disabled`:
+
+- `HTTPS` when `tls.disabled: false`
+- `HTTP` when `tls.disabled: true`
+
+Override per-probe with `controller.livenessProbe.scheme` / `controller.readinessProbe.scheme` if needed.
 
 
 ## Common Configuration Patterns
