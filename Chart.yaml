@@ -21,7 +21,6 @@ keywords:
 home: https://www.boundaryproject.io/
 icon: https://raw.githubusercontent.com/hashicorp/boundary/main/boundary.png
 sources:
-  - https://github.com/hashicorp/boundary
   - https://github.com/hashicorp/boundary-controller-helm
 maintainers:
   - name: HashiCorp

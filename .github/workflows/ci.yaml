@@ -153,6 +153,8 @@ jobs:
     name: Chart Tests
     if: |
       github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' &&
+       github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' &&
        github.base_ref == 'main' &&
        github.event.pull_request.draft == false)
@@ -183,6 +185,8 @@ jobs:
     name: Acceptance Matrix
     if: |
       github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' &&
+       github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' &&
        github.base_ref == 'main' &&
        github.event.pull_request.draft == false)
@@ -221,6 +225,8 @@ jobs:
     name: Acceptance Test (${{ matrix.k8s_version }})
     if: |
       github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' &&
+       github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' &&
        github.base_ref == 'main' &&
        github.event.pull_request.draft == false)
