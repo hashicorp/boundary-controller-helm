@@ -20,6 +20,7 @@ Initial public beta release of the Boundary Controller Helm chart.
 - PodDisruptionBudget, `extraEnv`, scheduling controls (`nodeSelector`, `tolerations`, `affinity`), and `imagePullSecrets`
 - Unit tests (helm-unittest), KIND acceptance tests with API smoke test and version matrix, EKS and AKS integration tests
 - Makefile targets for lint, unit, acceptance, and cloud integration workflows; Trivy and Kubescape scanning
+- `bootstrapAdmin` renamed to `bootstrapAdminAuthMethod`.
 
 ### Configuration Defaults
 
@@ -29,5 +30,5 @@ Initial public beta release of the Boundary Controller Helm chart.
 | Replicas | `2` |
 | CPU request / limit | `250m` / `500m` |
 | Memory request / limit | `512Mi` / `1Gi` |
-| TLS | Disabled (`tls.disabled: true`) |
+| TLS | Enabled (`tls.disabled: false`) |
 | Termination grace period | `15s` |
