@@ -158,7 +158,7 @@ database:
   repair:
     version: ""
 
-bootstrapAdminAuthMethod:
+bootstrapAdmin:
   enabled: false
   runOnUpgrade: false
   waitTimeoutSeconds: 120

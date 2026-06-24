@@ -28,7 +28,7 @@ tests:
       database:
         init:
           enabled: false
-      bootstrapAdminAuthMethod:
+      bootstrapAdmin:
         enabled: true
     asserts:
       - hasDocuments:
@@ -51,7 +51,7 @@ tests:
       database:
         init:
           enabled: true
-      bootstrapAdminAuthMethod:
+      bootstrapAdmin:
         enabled: true
     asserts:
       - hasDocuments:
@@ -100,7 +100,7 @@ tests:
       database:
         init:
           enabled: false
-      bootstrapAdminAuthMethod:
+      bootstrapAdmin:
         enabled: true
         runOnUpgrade: true
     asserts:

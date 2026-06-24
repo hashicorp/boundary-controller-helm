@@ -315,7 +315,7 @@
       },
       "additionalProperties": true
     },
-    "bootstrapAdminAuthMethod": {
+    "bootstrapAdmin": {
       "type": "object",
       "properties": {
         "enabled": {

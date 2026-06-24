@@ -4,7 +4,7 @@
 # Unit test fixture: enables optional features that are off by default,
 # and sets safe test defaults (e.g. TLS disabled to avoid secret dependencies).
 # Included at the suite level in test files that test these features.
-bootstrapAdminAuthMethod:
+bootstrapAdmin:
   enabled: true
 
 database:

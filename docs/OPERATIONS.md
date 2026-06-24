@@ -16,8 +16,38 @@ Operational implications:
 
 - `disable_mlock = true` should remain set in the controller configuration when using this deployment model.
 - Secret validation (`secretRefs.validateExisting`) is opt-in; when enabled, Helm validates that the Secret exists before any resources are created.
+- Sensitive values are not stored in the ConfigMap. They are sourced from an existing Kubernetes Secret via `valueFrom.secretKeyRef` in controller and hook job containers.
+- The ops Service defaults to `ClusterIP` and is not exposed externally.
+- The cluster Service defaults to `ClusterIP` on port `9201` for internal worker registration and controller cluster traffic. Review service exposure carefully if you override `controller.service.*`.
 
+## Prerequisites Checklist
 
+Before installing or upgrading, confirm the following:
+
+- A Kubernetes Secret exists in the target namespace with the keys referenced by `secretRefs.secretName` and `secretRefs.keys.*`.
+- PostgreSQL is reachable from the cluster and the configured user has the required permissions.
+- Your selected KMS provider is provisioned and the controller has the required IAM/RBAC permissions.
+- For multi-replica deployments, `public_cluster_addr` is set to an address workers can reach.
+- A Kubernetes TLS Secret matching `tls.secretName` exists when TLS is enabled.
+
+## Installation Verification
+
+After install or upgrade, verify the release state:
+
+```bash
+kubectl get pods -n boundary
+kubectl get svc -n boundary
+kubectl get jobs -n boundary
+kubectl logs deployment/boundary-controller -n boundary
+```
+
+Confirm that:
+
+- Controller pods become Ready.
+- Database hook Jobs complete successfully when enabled.
+- The bootstrap admin Job completes successfully when enabled.
+- The API endpoint is reachable from the intended client network.
+- Controller logs do not show database, KMS, or listener startup errors.
 
 ## Configuration Model
 
@@ -160,17 +190,17 @@ Probe schemes are auto-derived from `tls.disabled`: `HTTPS` when `tls.disabled=f
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `bootstrapAdminAuthMethod.enabled` | `false` | Runs the bootstrap admin Job after install |
-| `bootstrapAdminAuthMethod.runOnUpgrade` | `false` | Also runs the bootstrap admin Job after upgrades when `true` |
-| `bootstrapAdminAuthMethod.waitTimeoutSeconds` | `120` | Maximum time the bootstrap Job waits for the controller API to become reachable |
-| `bootstrapAdminAuthMethod.authMethodName` | `bootstrap-auth-method` | Name of the password auth method created or reused by the Job |
-| `bootstrapAdminAuthMethod.userResourceName` | `bootstrap-admin` | Boundary user resource name created or reused by the Job |
-| `bootstrapAdminAuthMethod.accountResourceName` | `bootstrap-admin` | Boundary account resource name created or reused by the Job |
-| `bootstrapAdminAuthMethod.roleName` | `bootstrap-global-admin` | Boundary role name created or reused by the Job |
-| `bootstrapAdminAuthMethod.resources.requests.cpu` | `100m` | CPU request for the bootstrap Job |
-| `bootstrapAdminAuthMethod.resources.requests.memory` | `128Mi` | Memory request for the bootstrap Job |
-| `bootstrapAdminAuthMethod.resources.limits.cpu` | `500m` | CPU limit for the bootstrap Job |
-| `bootstrapAdminAuthMethod.resources.limits.memory` | `512Mi` | Memory limit for the bootstrap Job |
+| `bootstrapAdmin.enabled` | `false` | Runs the bootstrap admin Job after install |
+| `bootstrapAdmin.runOnUpgrade` | `false` | Also runs the bootstrap admin Job after upgrades when `true` |
+| `bootstrapAdmin.waitTimeoutSeconds` | `120` | Maximum time the bootstrap Job waits for the controller API to become reachable |
+| `bootstrapAdmin.authMethodName` | `bootstrap-auth-method` | Name of the password auth method created or reused by the Job |
+| `bootstrapAdmin.userResourceName` | `bootstrap-admin` | Boundary user resource name created or reused by the Job |
+| `bootstrapAdmin.accountResourceName` | `bootstrap-admin` | Boundary account resource name created or reused by the Job |
+| `bootstrapAdmin.roleName` | `bootstrap-global-admin` | Boundary role name created or reused by the Job |
+| `bootstrapAdmin.resources.requests.cpu` | `100m` | CPU request for the bootstrap Job |
+| `bootstrapAdmin.resources.requests.memory` | `128Mi` | Memory request for the bootstrap Job |
+| `bootstrapAdmin.resources.limits.cpu` | `500m` | CPU limit for the bootstrap Job |
+| `bootstrapAdmin.resources.limits.memory` | `512Mi` | Memory limit for the bootstrap Job |
 
 ### Security context values
 
@@ -342,14 +372,14 @@ With this approach, flipping `tls.disabled` in your values automatically updates
 
 ### Disabling TLS (development/testing only)
 
-The default `values.yaml` ships with TLS disabled for ease of local development:
+The default `values.yaml` ships with TLS **enabled** (`tls.disabled: false`). For local development or testing, disable TLS in your values override:
 
 ```yaml
 tls:
   disabled: true
 ```
 
-The default `controller.config` correspondingly sets `tls_disable = true` in each listener and retains cert/key path fields (they are ignored when `tls_disable = true`).
+The embedded default `controller.config` in `values.yaml` already sets `tls_disable = true` in each listener. If you use TLS in production, update those listener fields to match `tls.mountPath` as shown in the sections above.
 
 ### Liveness and readiness probes
 
@@ -382,7 +412,7 @@ database:
 If you manage admin accounts externally, disable the bootstrap job:
 
 ```yaml
-bootstrapAdminAuthMethod:
+bootstrapAdmin:
   enabled: false
 ```
 
@@ -407,6 +437,59 @@ View logs for the bootstrap admin job:
 ```bash
 kubectl logs -n boundary job/boundary-controller-bootstrap-admin
 ```
+
+### Upgrade preparation checklist
+
+Before upgrading the chart or Boundary version:
+
+- Back up PostgreSQL before any upgrade that may include schema changes.
+- Test the upgrade in a non-production environment first.
+- Review Boundary and chart compatibility, including any required configuration changes.
+- Verify KMS access, Secret contents, and service exposure assumptions before rollout.
+- Ensure the cluster has enough capacity for the rollout strategy.
+
+### Database migration workflow
+
+Database migrations are operationally different from ordinary chart upgrades. `boundary database migrate` requires exclusive access to the database schema, so active controllers should be scaled down before running migration hooks.
+
+Scale controllers to zero before running a migration-oriented upgrade:
+
+```bash
+helm upgrade boundary-controller hashicorp/boundary-controller \
+  --namespace boundary \
+  --values my-values.yaml \
+  --set controller.replicas=0 \
+  --wait
+```
+
+Run migration as a one-time action:
+
+```bash
+helm upgrade boundary-controller hashicorp/boundary-controller \
+  --namespace boundary \
+  --values my-values.yaml \
+  --set controller.replicas=0 \
+  --set database.migrate.enabled=true \
+  --wait
+```
+
+If a failed migration requires repair, set `database.repair.version` to the failed version id and rerun the upgrade:
+
+```bash
+helm upgrade boundary-controller hashicorp/boundary-controller \
+  --namespace boundary \
+  --values my-values.yaml \
+  --set controller.replicas=0 \
+  --set database.migrate.enabled=true \
+  --set database.repair.version=<version_id> \
+  --wait
+```
+
+Operational notes:
+
+- Treat `database.migrate.enabled` and `database.repair.version` as one-time operational flags rather than persistent values.
+- Helm rollback does not reverse database schema changes.
+- If you use CLI `--set` overrides for one-time migration flags, follow up with a normal upgrade using your versioned values so those overrides do not persist unexpectedly.
 
 ### External secret providers
 
@@ -447,6 +530,18 @@ helm rollback boundary-controller <revision> -n boundary
 
 Database migrations are **not automatically reversed** on Helm rollback. If a migration was applied during the failed upgrade, restore the database from the pre-migration backup.
 
+### Uninstall behavior
+
+```bash
+helm uninstall boundary-controller -n boundary
+```
+
+Operational notes:
+
+- `helm uninstall` removes release-managed resources created by the chart, but does not remove the PostgreSQL database.
+- Hook Jobs are ephemeral operational resources and may remain briefly after uninstall until Kubernetes garbage collection removes them.
+- Hook Jobs use `ttlSecondsAfterFinished`, so completed or failed Jobs are cleaned up automatically after their TTL expires.
+- Hook Jobs use `backoffLimit`, so Kubernetes may retry failed Jobs before marking them failed.
 
 ## Monitoring
 

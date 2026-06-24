@@ -9,7 +9,7 @@ Boundary controller state lives in PostgreSQL, so the deployment is stateless an
 A default install creates:
 
 - A Deployment with two controller replicas
-- Three Services: API (port 9200), Cluster (port 9201), and Ops (port 9203)
+- Three Services: API (port 9200, LoadBalancer), Cluster (port 9201, ClusterIP), and Ops (port 9203, ClusterIP); service types are configurable
 - A ConfigMap holding the rendered controller configuration
 - A PodDisruptionBudget to maintain availability during voluntary disruptions
 - Helm hook Jobs:
@@ -22,11 +22,11 @@ A default install creates:
 
 ### Version Requirements
 
-| Component | Minimum Version |
+| Component | Version |
 | --- | --- |
-| Kubernetes | 1.34.0 |
-| Helm | 3.0.0 |
-| PostgreSQL | 15.0.0 |
+| Kubernetes | 1.34 and above |
+| Helm | v3 and above |
+| PostgreSQL | 15 and above |
 
 ### Required Before Installing
 
@@ -36,7 +36,7 @@ Have these ready before running `helm install`:
 - **KMS configuration** — [KMS](https://developer.hashicorp.com/boundary/docs/configuration/kms) stanzas in `controller.config`
 - **Boundary license** — required for enterprise builds
 - **TLS certificate** — required for the API listener on port 9200
-- **Bootstrap admin credentials** — required when `bootstrapAdminAuthMethod.enabled=true`
+- **Bootstrap admin credentials** — required when `bootstrapAdmin.enabled=true`
 
 ## Step 1 — Create Kubernetes Secrets
 

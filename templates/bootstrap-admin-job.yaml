@@ -1,7 +1,7 @@
 # Copyright IBM Corp. 2026
 # SPDX-License-Identifier: MPL-2.0
 
-{{- if and .Values.bootstrapAdminAuthMethod.enabled (or .Release.IsInstall (and .Release.IsUpgrade .Values.bootstrapAdminAuthMethod.runOnUpgrade)) }}
+{{- if and .Values.bootstrapAdmin.enabled (or .Release.IsInstall (and .Release.IsUpgrade .Values.bootstrapAdmin.runOnUpgrade)) }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -11,7 +11,7 @@ metadata:
     {{- include "boundary.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller-bootstrap-admin
   annotations:
-    "helm.sh/hook": {{ if .Values.bootstrapAdminAuthMethod.runOnUpgrade }}post-install,post-upgrade{{ else }}post-install{{ end }}
+    "helm.sh/hook": {{ if .Values.bootstrapAdmin.runOnUpgrade }}post-install,post-upgrade{{ else }}post-install{{ end }}
     "helm.sh/hook-output-log-policy": hook-failed
     "helm.sh/hook-weight": "5"
     "helm.sh/hook-delete-policy": before-hook-creation
@@ -59,15 +59,15 @@ spec:
                   name: {{ include "boundary.controller.secretName" . }}
                   key: {{ .Values.secretRefs.keys.adminPassword }}
             - name: WAIT_TIMEOUT
-              value: {{ .Values.bootstrapAdminAuthMethod.waitTimeoutSeconds | quote }}
+              value: {{ .Values.bootstrapAdmin.waitTimeoutSeconds | quote }}
             - name: BOUNDARY_AUTH_METHOD_NAME
-              value: {{ .Values.bootstrapAdminAuthMethod.authMethodName | quote }}
+              value: {{ .Values.bootstrapAdmin.authMethodName | quote }}
             - name: BOUNDARY_USER_RESOURCE_NAME
-              value: {{ .Values.bootstrapAdminAuthMethod.userResourceName | quote }}
+              value: {{ .Values.bootstrapAdmin.userResourceName | quote }}
             - name: BOUNDARY_ACCOUNT_RESOURCE_NAME
-              value: {{ .Values.bootstrapAdminAuthMethod.accountResourceName | quote }}
+              value: {{ .Values.bootstrapAdmin.accountResourceName | quote }}
             - name: BOUNDARY_ROLE_NAME
-              value: {{ .Values.bootstrapAdminAuthMethod.roleName | quote }}
+              value: {{ .Values.bootstrapAdmin.roleName | quote }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -75,7 +75,7 @@ spec:
             - "sh"
             - "/etc/boundary/bootstrap-admin.sh"
           resources:
-            {{- toYaml .Values.bootstrapAdminAuthMethod.resources | nindent 12 }}
+            {{- toYaml .Values.bootstrapAdmin.resources | nindent 12 }}
           volumeMounts:
             - name: config
               mountPath: /etc/boundary

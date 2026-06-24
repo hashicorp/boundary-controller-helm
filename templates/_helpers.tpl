@@ -229,7 +229,7 @@ Runs only when secretRefs.validateExisting=true.
 {{- if eq (include "boundary.controller.usesEnvMigrationUrl" . | trim) "true" -}}
 {{- $requiredKeys = append $requiredKeys .Values.secretRefs.keys.migrationUrl -}}
 {{- end -}}
-{{- if .Values.bootstrapAdminAuthMethod.enabled -}}
+{{- if .Values.bootstrapAdmin.enabled -}}
 {{- $requiredKeys = append $requiredKeys .Values.secretRefs.keys.adminUsername -}}
 {{- $requiredKeys = append $requiredKeys .Values.secretRefs.keys.adminPassword -}}
 {{- end -}}

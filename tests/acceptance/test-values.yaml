@@ -73,7 +73,7 @@ controller:
       }
     }
 
-bootstrapAdminAuthMethod:
+bootstrapAdmin:
   enabled: true
   waitTimeoutSeconds: 300
 
