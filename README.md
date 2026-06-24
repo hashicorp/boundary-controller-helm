@@ -38,28 +38,21 @@ Have these ready before running `helm install`:
 - **TLS certificate** — required for the API listener on port 9200
 - **Bootstrap admin credentials** — required when `bootstrapAdmin.enabled=true`
 
-## Step 1 — Create Kubernetes Secrets
+## Step 1 — Provision Secrets
 
-The chart reads sensitive values from a Kubernetes Secret. Create it before installing:
+The chart reads sensitive values from a Kubernetes Secret referenced by `secretRefs.secretName` (default: `boundary-controller-secrets`). The Secret can be created with `kubectl`, the Vault Secrets Operator, or the External Secrets Operator etc.
 
-```bash
-kubectl create secret generic boundary-controller-secrets \
-  --namespace boundary \
-  --from-literal=database-url="postgres://boundary:password@postgres:5432/boundary?sslmode=require" \
-  --from-literal=migration-url="postgres://boundary-migrator:password@postgres:5432/boundary?sslmode=require" \
-  --from-literal=license="<boundary-enterprise-license>" \
-  --from-literal=admin-username="admin" \
-  --from-literal=admin-password="<secure-password>"
-```
+The Secret must contain the following keys (key names are configurable via `secretRefs.keys.*`):
 
-Create the TLS Secret (required — the API listener on port 9200 mandates TLS):
+| Key | Description | Required |
+| --- | --- | --- |
+| `database-url` | PostgreSQL connection URL for the controller (`env://BOUNDARY_PG_URL`) | Always |
+| `migration-url` | PostgreSQL connection URL for migrations (`env://BOUNDARY_PG_MIGRATION_URL`) | When referenced in `controller.config` |
+| `license` | Boundary Enterprise license string | Always |
+| `admin-username` | Bootstrap admin username | When `bootstrapAdmin.enabled=true` |
+| `admin-password` | Bootstrap admin password | When `bootstrapAdmin.enabled=true` |
 
-```bash
-kubectl create secret tls boundary-controller-tls \
-  --namespace boundary \
-  --cert=tls.crt \
-  --key=tls.key
-```
+A Kubernetes TLS Secret containing `tls.crt` and `tls.key` is also required when `tls.disabled=false` (the default). Set `tls.secretName` to match the Secret name.
 
 ## Step 2 — Install the Chart
 
@@ -127,10 +120,6 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
 ```
 
 **Step 2 — Back up the database** before making any schema changes. Migrations are not reversed by a Helm rollback — if something goes wrong, you will need to restore from this backup.
-
-```bash
-pg_dump -h <host> -U <user> -d boundary -F c -f boundary-backup-$(date +%Y%m%d%H%M%S).dump
-```
 
 **Step 3 — Run the migration job.** Pass `--set database.migrate.enabled=true` as a one-time flag — do not add it to your values file.
 

@@ -3,29 +3,52 @@
 
 nameOverride: ""
 fullnameOverride: ""
-namespace: "" # Leave empty to use the Helm release namespace.
+# Overrides the namespace for all resources. Leave empty to use the Helm release namespace.
+namespace: ""
+
+# ---------------------------------------------------------------------------
+# Image
+# ---------------------------------------------------------------------------
 
 image:
   repository: hashicorp/boundary-enterprise
+  # Defaults to Chart.appVersion when empty.
   tag: ""
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
 
+# ---------------------------------------------------------------------------
+# TLS
+# ---------------------------------------------------------------------------
+
 tls:
-  disabled: false # When false, TLS is enabled (HTTPS probes, TLS secret mounted). Set to true to disable TLS (HTTP probes, no TLS secret required).
+  # When false, the TLS Secret is mounted and probes use HTTPS.
+  # When true, no Secret is required and probes use HTTP.
+  disabled: false
   secretName: "boundary-controller-tls"
   mountPath: "/etc/boundary/tls"
 
+# ---------------------------------------------------------------------------
+# Secret References
+# ---------------------------------------------------------------------------
+
 secretRefs:
   secretName: "boundary-controller-secrets"
-  validateExisting: false # When true, validates the Secret exists with all keys at render time. Set false for offline rendering.
+  # When true, validates the Secret exists with all required keys at render time.
+  # Set to false for offline rendering (helm template without cluster access).
+  validateExisting: false
   keys:
     databaseUrl: "database-url"
+    # Required only when env://BOUNDARY_PG_MIGRATION_URL is referenced in controller.config.
     migrationUrl: "migration-url"
     license: "license"
     adminUsername: "admin-username"
     adminPassword: "admin-password"
+
+# ---------------------------------------------------------------------------
+# Controller
+# ---------------------------------------------------------------------------
 
 controller:
   replicas: 2
@@ -105,14 +128,18 @@ controller:
     }
 
   livenessProbe:
-    scheme: "" # Auto-derived from tls.disabled (HTTPS/HTTP). Override if needed.
+    # Probe scheme for /health on the ops listener. Auto-derived from tls.disabled
+    # (HTTPS when false, HTTP when true). Override only if needed.
+    scheme: ""
     initialDelaySeconds: 60
     periodSeconds: 10
     failureThreshold: 3
     timeoutSeconds: 5
 
   readinessProbe:
-    scheme: "" # Auto-derived from tls.disabled (HTTPS/HTTP). Override if needed.
+    # Probe scheme for /health on the ops listener. Auto-derived from tls.disabled
+    # (HTTPS when false, HTTP when true). Override only if needed.
+    scheme: ""
     initialDelaySeconds: 15
     periodSeconds: 10
     failureThreshold: 3
@@ -126,27 +153,37 @@ controller:
       cpu: 250m
       memory: 512Mi
 
+  # Use annotations for cloud-provider load balancer customization (AWS NLB, GCP L4, Azure).
   service:
     api:
       type: LoadBalancer
       port: 9200
       targetPort: 9200
       annotations: {}
+    # Cluster listener — internal worker registration. Use LoadBalancer only
+    # if workers run outside the cluster network.
     cluster:
       type: ClusterIP
       port: 9201
       targetPort: 9201
       annotations: {}
+    # Ops listener — health checks and metrics. Not exposed externally.
     ops:
       type: ClusterIP
       port: 9203
       targetPort: 9203
       annotations: {}
 
+# ---------------------------------------------------------------------------
+# Database Jobs
+# ---------------------------------------------------------------------------
+
 database:
   init:
+    # Enable on first install only.
     enabled: false
   migrate:
+    # Enable as a one-time flag during upgrades.
     enabled: false
   resources:
     limits:
@@ -156,7 +193,12 @@ database:
       cpu: 100m
       memory: 128Mi
   repair:
+    # When set, runs a repair migration for the specified version during upgrade.
     version: ""
+
+# ---------------------------------------------------------------------------
+# Bootstrap Admin
+# ---------------------------------------------------------------------------
 
 bootstrapAdmin:
   enabled: false
@@ -201,8 +243,14 @@ tolerations: []
 affinity: {}
 extraEnv: []
 
-serviceAccount: # Chart does not create ServiceAccounts; provide an existing one.
-  name: "default" # Quick start only — use a dedicated ServiceAccount in production.
+# ---------------------------------------------------------------------------
+# ServiceAccount
+# ---------------------------------------------------------------------------
+
+# The chart does not create a ServiceAccount. Reference an existing one.
+serviceAccount:
+  # Use a dedicated ServiceAccount in production instead of the default.
+  name: "default"
   automountServiceAccountToken: false
 
 podDisruptionBudget:
@@ -210,4 +258,5 @@ podDisruptionBudget:
   minAvailable: 1
   # maxUnavailable: 1
 
-terminationGracePeriodSeconds: 15 # Should exceed graceful_shutdown_wait_duration in controller.config (default 10s).
+# Must exceed graceful_shutdown_wait_duration in controller.config (default 10s).
+terminationGracePeriodSeconds: 15

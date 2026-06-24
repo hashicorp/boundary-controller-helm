@@ -583,7 +583,7 @@ Active sessions are maintained by workers, not controllers. A controller restart
 All controller state lives in PostgreSQL. Controller pods are stateless and can be replaced or scaled without data loss.
 
 **Backup:**
-- Take regular PostgreSQL backups using your managed database provider's snapshot feature or `pg_dump`.
+- Take regular PostgreSQL backups using your managed database provider's snapshot feature.
 - Back up KMS keys (or ensure your KMS provider — AWS KMS, Vault, etc. — has its own backup and disaster recovery). If the root KMS key is lost, the Boundary database cannot be decrypted.
 - Store Helm values files and the Boundary Enterprise license in version control or a secrets manager.
 
