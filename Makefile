@@ -397,7 +397,7 @@ acceptance-helm:
 		exit 1; \
 	fi
 	@BOOTSTRAP_ADMIN_USERNAME=$${BOOTSTRAP_ADMIN_USERNAME:-admin}; \
-	CONTROLLER_IMAGE=$${BOUNDARY_CONTROLLER_IMAGE:-hashicorp/boundary-enterprise:0.21-ent}; \
+	CONTROLLER_IMAGE=$${BOUNDARY_CONTROLLER_IMAGE:-hashicorp/boundary-enterprise:0.21.3-ent}; \
 	POSTGRES_IMAGE=$${POSTGRES_IMAGE:-postgres:16}; \
 	echo "Pre-loading controller image into KIND: $$CONTROLLER_IMAGE"; \
 	if ! docker image inspect "$$CONTROLLER_IMAGE" >/dev/null 2>&1; then \

@@ -127,7 +127,7 @@ preload_kind_image() {
 
 # -- preload_controller_image: pull image locally then load into KIND node ------
 preload_controller_image() {
-    local image="${BOUNDARY_CONTROLLER_IMAGE:-hashicorp/boundary-enterprise:0.21-ent}"
+    local image="${BOUNDARY_CONTROLLER_IMAGE:-hashicorp/boundary-enterprise:0.21.3-ent}"
     preload_kind_image "${image}" "Controller"
 }
 

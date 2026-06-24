@@ -139,7 +139,7 @@ variable "tls_disabled" {
 variable "image_tag" {
   description = "Boundary Enterprise image tag."
   type        = string
-  default     = "0.21-ent"
+  default     = "0.21.3-ent"
 }
 
 variable "additional_helm_values" {
