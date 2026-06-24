@@ -5,12 +5,14 @@ suite: Controller deployment
 templates:
   - templates/configmap.yaml
   - templates/deployment.yaml
+values:
+  - fixtures/feature-enabled.yaml
 tests:
   - it: renders the default tag and hardened pod settings
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: hashicorp/boundary-enterprise:0.21-ent
+          value: hashicorp/boundary-enterprise:0.21.3-ent
         template: templates/deployment.yaml
       - equal:
           path: spec.template.spec.automountServiceAccountToken
@@ -187,6 +189,20 @@ tests:
         template: templates/deployment.yaml
   - it: renders secretRefs key remapping in deployment env vars
     set:
+      controller:
+        config: |
+          listener "tcp" {
+            address = "0.0.0.0:9200"
+            purpose = "api"
+            tls_cert_file = "/etc/boundary/tls/tls.crt"
+            tls_key_file  = "/etc/boundary/tls/tls.key"
+          }
+          controller {
+            license = "env://BOUNDARY_LICENSE"
+            database {
+              url = "env://BOUNDARY_PG_URL"
+            }
+          }
       secretRefs:
         keys:
           databaseUrl: db-url-key

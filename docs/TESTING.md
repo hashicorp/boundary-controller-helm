@@ -330,7 +330,7 @@ GKE-specific keys (set in `tests/integration/.env`):
 - Optional: `TF_VAR_gke_cluster_name` (default: `boundary-controller-cluster`)
 - Optional: `TF_VAR_gke_kubernetes_version` — pin a specific GKE master version; leave empty for release-channel default
 - Optional sizing: `TF_VAR_node_machine_type` (default: `e2-standard-2`), `TF_VAR_node_count` (default: `2`)
-- Optional image: `TF_VAR_image_tag` (default: `0.21-ent`)
+- Optional image: `TF_VAR_image_tag` (default: `0.21.3-ent`)
 
 You can copy starter keys from `tests/integration/.env.example`.
 

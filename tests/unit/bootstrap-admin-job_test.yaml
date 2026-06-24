@@ -4,12 +4,14 @@
 suite: Bootstrap admin job
 templates:
   - templates/bootstrap-admin-job.yaml
+values:
+  - fixtures/feature-enabled.yaml
 tests:
   - it: renders the default image tag for the bootstrap job
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: hashicorp/boundary-enterprise:0.21-ent
+          value: hashicorp/boundary-enterprise:0.21.3-ent
       - equal:
           path: metadata.annotations["helm.sh/hook-weight"]
           value: "5"

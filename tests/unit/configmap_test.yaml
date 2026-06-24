@@ -51,6 +51,8 @@ tests:
       database:
         init:
           enabled: true
+      bootstrapAdmin:
+        enabled: true
     asserts:
       - hasDocuments:
           count: 3
@@ -63,20 +65,18 @@ tests:
       - equal:
           path: metadata.annotations["helm.sh/hook-delete-policy"]
           value: before-hook-creation,hook-succeeded,hook-failed
-  - it: renders tpl-expanded TLS mount path in controller config
+  - it: renders default TLS cert and key paths in controller config
     set:
       database:
         init:
           enabled: false
-      tls:
-        mountPath: /custom/tls
     asserts:
       - matchRegex:
           path: data["controller.hcl"]
-          pattern: 'tls_cert_file = "/custom/tls/tls.crt"'
+          pattern: 'tls_cert_file = "/etc/boundary/tls/tls.crt"'
       - matchRegex:
           path: data["controller.hcl"]
-          pattern: 'tls_key_file  = "/custom/tls/tls.key"'
+          pattern: 'tls_key_file  = "/etc/boundary/tls/tls.key"'
   - it: applies nameOverride and namespace in configmap metadata
     documentIndex: 0
     set:

@@ -74,4 +74,9 @@ controller:
     }
 
 bootstrapAdmin:
+  enabled: true
   waitTimeoutSeconds: 300
+
+database:
+  init:
+    enabled: true

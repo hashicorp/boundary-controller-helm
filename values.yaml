@@ -1,93 +1,70 @@
 # Copyright IBM Corp. 2026
 # SPDX-License-Identifier: MPL-2.0
 
-# Default values for Boundary Controller Helm Chart
-
-# --------------------------------------------------
-# Naming and Namespace
-# --------------------------------------------------
-
 nameOverride: ""
 fullnameOverride: ""
-
-# Namespace to deploy resources into, keep empty to use the namespace provided via --namespace flag during helm install/upgrade
-# If set, all resources will be deployed into the specified namespace regardless of the Helm release namespace.
+# Overrides the namespace for all resources. Leave empty to use the Helm release namespace.
 namespace: ""
 
-# --------------------------------------------------
+# ---------------------------------------------------------------------------
 # Image
-# --------------------------------------------------
+# ---------------------------------------------------------------------------
 
-# Boundary image configuration
 image:
   repository: hashicorp/boundary-enterprise
+  # Defaults to Chart.appVersion when empty.
   tag: ""
   pullPolicy: IfNotPresent
 
-# https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry
-# Image pull secret to use for registry authentication.
 imagePullSecrets: []
-# imagePullSecrets:
-#   - name: image-pull-secret
 
-# --------------------------------------------------
+# ---------------------------------------------------------------------------
 # TLS
-# --------------------------------------------------
+# ---------------------------------------------------------------------------
 
 tls:
-  # Set to false to enable TLS for API and Ops listeners
-  disabled: true
-  # Name of the Kubernetes TLS Secret containing tls.crt and tls.key
+  # When false, the TLS Secret is mounted and probes use HTTPS.
+  # When true, no Secret is required and probes use HTTP.
+  disabled: false
   secretName: "boundary-controller-tls"
-  # Path where TLS certs are mounted inside the container
   mountPath: "/etc/boundary/tls"
 
-# --------------------------------------------------
+# ---------------------------------------------------------------------------
 # Secret References
-# --------------------------------------------------
+# ---------------------------------------------------------------------------
 
-# Secret keys consumed by Boundary via environment variables.
 secretRefs:
   secretName: "boundary-controller-secrets"
-  # When true templates validate that the Secret exists in the effective chart namespace
-  # (the release namespace unless overridden by .Values.namespace) and contains all configured keys.
-  # Keep false for offline rendering (helm template) without cluster access.
+  # When true, validates the Secret exists with all required keys at render time.
+  # Set to false for offline rendering (helm template without cluster access).
   validateExisting: false
   keys:
-    # https://developer.hashicorp.com/boundary/docs/configuration/controller
-    # postgresql://<username>:<password>@<hostname>:5432/boundary?sslmode=require
     databaseUrl: "database-url"
-    # Optional alternate URL for migration/repair workflows.
-    # migrationUrl: "migration-url"
-    # https://developer.hashicorp.com/boundary/docs/configuration/controller#license
+    # Required only when env://BOUNDARY_PG_MIGRATION_URL is referenced in controller.config.
+    migrationUrl: "migration-url"
     license: "license"
     adminUsername: "admin-username"
     adminPassword: "admin-password"
 
-# --------------------------------------------------
+# ---------------------------------------------------------------------------
 # Controller
-# --------------------------------------------------
+# ---------------------------------------------------------------------------
 
-# Controller deployment configuration
 controller:
   replicas: 2
   rollingUpdate:
     maxUnavailable: 1
     maxSurge: 1
 
-  # Boundary controller configuration in HCL format.  
-  # Rendered with tpl, so .Values references can be used inside this block.
-  # Secret values can be consumed via environment variables (e.g. license, database URL) and referenced in the config using env://VAR_NAME syntax.
-  # https://developer.hashicorp.com/boundary/docs/configuration/controller
   config: |
     disable_mlock = true
 
     listener "tcp" {
       address = "0.0.0.0:9200"
       purpose = "api"
-      tls_disable   = {{ .Values.tls.disabled }}
-      tls_cert_file = "{{ .Values.tls.mountPath }}/tls.crt"
-      tls_key_file  = "{{ .Values.tls.mountPath }}/tls.key"
+      tls_disable   = true
+      tls_cert_file = "/etc/boundary/tls/tls.crt"
+      tls_key_file  = "/etc/boundary/tls/tls.key"
     }
 
     listener "tcp" {
@@ -98,91 +75,61 @@ controller:
     listener "tcp" {
       address = "0.0.0.0:9203"
       purpose = "ops"
-      tls_disable = {{ .Values.tls.disabled }}
-      tls_cert_file = "{{ .Values.tls.mountPath }}/tls.crt"
-      tls_key_file  = "{{ .Values.tls.mountPath }}/tls.key"
+      tls_disable   = true
+      tls_cert_file = "/etc/boundary/tls/tls.crt"
+      tls_key_file  = "/etc/boundary/tls/tls.key"
     }
 
     controller {
       name = "boundary-controller"
-      description = "Boundary Controller running in Kubernetes"
-      # If controller.service.cluster.type is LoadBalancer, set this to its external DNS/IP:9201.
-      public_cluster_addr = "{{ printf "%s:9201" (include "boundary.controller.clusterServiceName" .) }}"
-      license = "env://BOUNDARY_LICENSE"
+      description = "Boundary controller running in Kubernetes"
+      public_cluster_addr = "boundary-controller-cluster.boundary.svc.cluster.local:9201"
+      license = "<your-license-here>"
+
       database {
-        url = "env://BOUNDARY_PG_URL"
-        # migration_url = "env://BOUNDARY_PG_MIGRATION_URL"
-      }
-      graceful_shutdown_wait_duration = "10s"
-
-      # Rate limiting examples to conserve controller resources
-      # total limit for all resources and actions
-      api_rate_limit {
-        resources = ["*"]
-        actions   = ["*"]
-        per     = "total"
-        limit   = 500
-        period  = "1s"
-      }
-
-      # Limit for ip addresses to all resources+actions to prevent a malicious
-      # host that is fabricating tokens, or spamming unauthed endpoints
-      api_rate_limit {
-        resources = ["*"]
-        actions   = ["*"]
-        per     = "ip-address"
-        limit   = 100
-        period  = "1s"
-      }
-
-      # Limit of all authed requests, to prevent one user consuming all of the total limit
-      api_rate_limit {
-        resources = ["*"]
-        actions   = ["*"]
-        per     = "auth-token"
-        limit   = 100
-        period  = "1s"
+        url = "postgres://<user>:<password>@<host>:5432/<dbname>?sslmode=require"
       }
     }
 
-    # https://developer.hashicorp.com/boundary/docs/configuration/kms#configuration
-    kms "awskms" {
-      purpose    = "root"
-      region     = "us-east-1"
-      kms_key_id = "alias/boundary-root"
+    # AEAD is for development and testing only — keys are stored in plaintext.
+    # Replace with a production KMS provider before deploying.
+    # https://developer.hashicorp.com/boundary/docs/configuration/kms/aead
+    kms "aead" {
+      purpose   = "root"
+      aead_type = "aes-gcm"
+      key       = "sP1fnF5Xz85RrXyELHFeZg9Ad2qt4Z4bgNHVGtD6sFo="
+      key_id    = "global_root"
     }
 
-    kms "awskms" {
-      purpose    = "recovery"
-      region     = "us-east-1"
-      kms_key_id = "alias/boundary-recovery"
+    kms "aead" {
+      purpose   = "recovery"
+      aead_type = "aes-gcm"
+      key       = "8fZBjCUfN0TzjEGLQldGY4+iE9AkOvCfjh7+p0GtRBQ="
+      key_id    = "global_recovery"
     }
 
-    kms "awskms" {
-      purpose    = "worker-auth"
-      region     = "us-east-1"
-      kms_key_id = "alias/boundary-worker-auth"
+    kms "aead" {
+      purpose   = "worker-auth"
+      aead_type = "aes-gcm"
+      key       = "ATTK2pMjMTEJGlAkUJAePnFMlNLQaXBnhSqJHVlJeKQ="
+      key_id    = "global_worker-auth"
     }
 
-    # https://developer.hashicorp.com/boundary/docs/monitor/events/common
     events {
-      audit_enabled = false
-      observations_enabled = false
-      sysevents_enabled = false
-      telemetry_enabled = false
+      audit_enabled        = true
+      sysevents_enabled    = true
+      observations_enabled = true
       sink "stderr" {
-        name = "errors"
-        description = "All error events"
-        event_types = ["error"]
+        name = "all-events"
+        description = "All events sent to stderr"
+        event_types = ["*"]
         format = "hclog-text"
       }
     }
 
-  # Liveness & Readiness probe configuration
-  # `scheme:` will be auto-derived 
-  # defaults: `HTTPS` when tls.disabled=false, `HTTP` when tls.disabled=true.
-  # Optional explicit override. Leave empty to auto-derive from tls.disabled.
   livenessProbe:
+    # Probe scheme for /health on the ops listener. Auto-derived from tls.disabled
+    # (HTTPS when false, HTTP when true). Override only if needed.
     scheme: ""
     initialDelaySeconds: 60
     periodSeconds: 10
@@ -190,13 +137,14 @@ controller:
     timeoutSeconds: 5
 
   readinessProbe:
+    # Probe scheme for /health on the ops listener. Auto-derived from tls.disabled
+    # (HTTPS when false, HTTP when true). Override only if needed.
     scheme: ""
     initialDelaySeconds: 15
     periodSeconds: 10
     failureThreshold: 3
     timeoutSeconds: 5
 
-  # Resource limits and requests for the controller container. Adjust based on your environment and expected load.
   resources:
     limits:
       cpu: 500m
@@ -205,40 +153,38 @@ controller:
       cpu: 250m
       memory: 512Mi
 
-  # Service configuration for API, Cluster, and Ops listeners
-  # annotations{} are cloud-provider specific.
-  # https://developer.hashicorp.com/boundary/docs/monitor/listeners
-  # Choose service type LoadBalancer or ClusterIP based on requirements.
+  # Use annotations for cloud-provider load balancer customization (AWS NLB, GCP L4, Azure).
   service:
     api:
       type: LoadBalancer
       port: 9200
       targetPort: 9200
       annotations: {}
+    # Cluster listener — internal worker registration. Use LoadBalancer only
+    # if workers run outside the cluster network.
     cluster:
       type: ClusterIP
       port: 9201
       targetPort: 9201
       annotations: {}
+    # Ops listener — health checks and metrics. Not exposed externally.
     ops:
       type: ClusterIP
       port: 9203
       targetPort: 9203
       annotations: {}
 
-# --------------------------------------------------
+# ---------------------------------------------------------------------------
 # Database Jobs
-# --------------------------------------------------
+# ---------------------------------------------------------------------------
 
-# Database configuration and jobs
 database:
   init:
-    # Run database init job during install
-    enabled: true
-  migrate:
-    # Enable database migration job during upgrades
+    # Enable on first install only.
     enabled: false
-  # Resource limits and requests for database init/migration jobs
+  migrate:
+    # Enable as a one-time flag during upgrades.
+    enabled: false
   resources:
     limits:
       cpu: 500m
@@ -247,28 +193,21 @@ database:
       cpu: 100m
       memory: 128Mi
   repair:
-    # If set, runs the repair function for the provided migration version
+    # When set, runs a repair migration for the specified version during upgrade.
     version: ""
 
-# --------------------------------------------------
+# ---------------------------------------------------------------------------
 # Bootstrap Admin
-# --------------------------------------------------
+# ---------------------------------------------------------------------------
 
-# Bootstrap admin user configuration.
-# When enabled, a bootstrap admin user is created on initial install and optionally during upgrades.
-# This can be used for initial login and setup of Boundary.
 bootstrapAdmin:
-  enabled: true
+  enabled: false
   runOnUpgrade: false
-  # Max job wait time for the Boundary API to become reachable before failing
   waitTimeoutSeconds: 120
-  authMethodName: "bootstrap-password"
-  # Boundary user resource display name (from `boundary users create -name`), not the login credential.
+  authMethodName: "bootstrap-auth-method"
   userResourceName: "bootstrap-admin"
-  # Boundary account resource display name (from `boundary accounts create password -name`).
   accountResourceName: "bootstrap-admin"
   roleName: "bootstrap-global-admin"
-  # Resource limits and requests for bootstrap admin job
   resources:
     limits:
       cpu: 500m
@@ -277,11 +216,6 @@ bootstrapAdmin:
       cpu: 100m
       memory: 128Mi
 
-# --------------------------------------------------
-# Pod and Container Security
-# --------------------------------------------------
-
-# Pod security context
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 100
@@ -291,7 +225,6 @@ podSecurityContext:
   seccompProfile:
     type: RuntimeDefault
 
-# Container security context
 containerSecurityContext:
   runAsNonRoot: true
   runAsUser: 100
@@ -304,48 +237,26 @@ containerSecurityContext:
   seccompProfile:
     type: RuntimeDefault
 
-# --------------------------------------------------
-# Scheduling and Metadata
-# --------------------------------------------------
-
-# Pod annotations
 podAnnotations: {}
-
-# Node selector
 nodeSelector: {}
-
-# Tolerations
 tolerations: []
-
-# Affinity rules
 affinity: {}
-
-# Additional environment variables injected into controller and hook job containers.
 extraEnv: []
 
-# --------------------------------------------------
-# Service Account
-# --------------------------------------------------
+# ---------------------------------------------------------------------------
+# ServiceAccount
+# ---------------------------------------------------------------------------
 
-# ServiceAccount configuration
-# Chart does not create ServiceAccounts. Provide an existing ServiceAccount name.
-# Existing ServiceAccount used by the controller Deployment and hook Jobs.
-# The default "default" value is for quick start only; use a dedicated ServiceAccount in production.
+# The chart does not create a ServiceAccount. Reference an existing one.
 serviceAccount:
+  # Use a dedicated ServiceAccount in production instead of the default.
   name: "default"
   automountServiceAccountToken: false
 
-# --------------------------------------------------
-# Availability and Shutdown
-# --------------------------------------------------
-
-# PodDisruptionBudget — prevents both replicas being evicted simultaneously
-# Use either minAvailable or maxUnavailable, not both
 podDisruptionBudget:
   enabled: true
   minAvailable: 1
-  # maxUnavailable: 1 
+  # maxUnavailable: 1
 
-# Seconds Kubernetes waits before sending SIGKILL after SIGTERM.
-# Should exceed controller.config graceful_shutdown_wait_duration (default 10s).
+# Must exceed graceful_shutdown_wait_duration in controller.config (default 10s).
 terminationGracePeriodSeconds: 15

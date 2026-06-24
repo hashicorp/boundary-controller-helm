@@ -4,6 +4,8 @@
 suite: Database init job
 templates:
   - templates/db-init-job.yaml
+values:
+  - fixtures/feature-enabled.yaml
 tests:
   - it: renders the init job with the expected command
     asserts:
@@ -131,6 +133,12 @@ tests:
             readOnly: true
   - it: renders secretRefs key remapping for database URL and license in init job
     set:
+      controller:
+        config: |
+          controller {
+            license = "env://BOUNDARY_LICENSE"
+            database { url = "env://BOUNDARY_PG_URL" }
+          }
       secretRefs:
         keys:
           databaseUrl: db-url-key

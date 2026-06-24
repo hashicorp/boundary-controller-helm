@@ -196,7 +196,7 @@ resource "helm_release" "boundary_controller" {
       value = var.api_service_type
     },
     {
-      name  = "controller.bootstrapAdmin.runOnUpgrade"
+      name  = "bootstrapAdmin.runOnUpgrade"
       value = "true"
     },
   ]
