@@ -13,7 +13,7 @@ image:
 imagePullSecrets: []
 
 tls:
-  disabled: false # Set to false to enable TLS. Required for the API listener on port 9200.
+  disabled: false # When false, TLS is enabled (HTTPS probes, TLS secret mounted). Set to true to disable TLS (HTTP probes, no TLS secret required).
   secretName: "boundary-controller-tls"
   mountPath: "/etc/boundary/tls"
 

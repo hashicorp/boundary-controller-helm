@@ -1,0 +1,15 @@
+# Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
+
+# Unit test fixture: enables optional features that are off by default,
+# and sets safe test defaults (e.g. TLS disabled to avoid secret dependencies).
+# Included at the suite level in test files that test these features.
+bootstrapAdminAuthMethod:
+  enabled: true
+
+database:
+  init:
+    enabled: true
+
+tls:
+  disabled: true

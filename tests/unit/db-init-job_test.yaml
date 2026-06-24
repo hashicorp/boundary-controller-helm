@@ -4,6 +4,8 @@
 suite: Database init job
 templates:
   - templates/db-init-job.yaml
+values:
+  - fixtures/feature-enabled.yaml
 tests:
   - it: renders the init job with the expected command
     asserts:

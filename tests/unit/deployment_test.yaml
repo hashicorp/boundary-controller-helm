@@ -5,12 +5,14 @@ suite: Controller deployment
 templates:
   - templates/configmap.yaml
   - templates/deployment.yaml
+values:
+  - fixtures/feature-enabled.yaml
 tests:
   - it: renders the default tag and hardened pod settings
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: hashicorp/boundary-enterprise:0.21-ent
+          value: hashicorp/boundary-enterprise:0.21.3-ent
         template: templates/deployment.yaml
       - equal:
           path: spec.template.spec.automountServiceAccountToken
