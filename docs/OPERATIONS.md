@@ -39,6 +39,182 @@ Important characteristics:
 
 Kubernetes-specific settings control how the controller runs in Kubernetes — image, resources, services, security contexts, scheduling, and service account configuration. These do not replace or generate the Boundary runtime configuration. See [values.yaml](values.yaml) for the full list of available values.
 
+## Values Reference
+
+The following tables list every Helm value, its default, and a description.
+
+### Naming and namespace values
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `nameOverride` | `""` | Overrides the chart-generated resource base name |
+| `fullnameOverride` | `""` | Fully overrides the chart-generated resource name |
+| `namespace` | `""` | Overrides the namespace for namespaced resources. Empty uses the Helm release namespace. |
+
+### Image values
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `image.repository` | `hashicorp/boundary-enterprise` | Controller image repository |
+| `image.tag` | `""` | Controller image tag. When empty, the chart uses `Chart.appVersion`. |
+| `image.pullPolicy` | `IfNotPresent` | Kubernetes image pull policy |
+| `imagePullSecrets` | `[]` | Optional image pull secrets for private registries |
+
+### TLS values
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `tls.disabled` | `false` | When `true`, disables TLS: no Secret is mounted and probes use HTTP. Default `false` enables TLS with HTTPS probes. |
+| `tls.secretName` | `boundary-controller-tls` | Name of the Kubernetes TLS Secret mounted when TLS is enabled |
+| `tls.mountPath` | `/etc/boundary/tls` | Container path where the TLS Secret is mounted |
+
+### Secret reference values
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `secretRefs.secretName` | `boundary-controller-secrets` | Existing Secret that contains database, license, and bootstrap admin values |
+| `secretRefs.validateExisting` | `false` | When `true`, validates the referenced Secret and required keys during rendering |
+| `secretRefs.keys.databaseUrl` | `database-url` | Secret key injected as `BOUNDARY_PG_URL` |
+| `secretRefs.keys.migrationUrl` | `migration-url` | Secret key injected as `BOUNDARY_PG_MIGRATION_URL` when referenced in `controller.config` |
+| `secretRefs.keys.license` | `license` | Secret key injected as `BOUNDARY_LICENSE` |
+| `secretRefs.keys.adminUsername` | `admin-username` | Secret key used by the bootstrap admin Job |
+| `secretRefs.keys.adminPassword` | `admin-password` | Secret key used by the bootstrap admin Job |
+
+### Controller runtime values
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `controller.replicas` | `2` | Number of controller replicas in the Deployment |
+| `controller.rollingUpdate.maxUnavailable` | `1` | Maximum unavailable pods during a rolling update |
+| `controller.rollingUpdate.maxSurge` | `1` | Maximum extra pods during a rolling update |
+| `controller.config` | Embedded sample HCL | Boundary controller HCL stored in a ConfigMap and mounted into the controller container and hook Jobs |
+
+### Listener Service values
+
+#### API Service
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `controller.service.api.type` | `LoadBalancer` | Kubernetes Service type for Boundary API traffic |
+| `controller.service.api.port` | `9200` | Service port for API traffic |
+| `controller.service.api.targetPort` | `9200` | Container port targeted by the API Service. Must match the API listener in `controller.config`. |
+| `controller.service.api.annotations` | `{}` | Annotations added to the API Service |
+
+#### Cluster Service
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `controller.service.cluster.type` | `ClusterIP` | Kubernetes Service type for worker registration and controller cluster traffic |
+| `controller.service.cluster.port` | `9201` | Service port for cluster traffic |
+| `controller.service.cluster.targetPort` | `9201` | Container port targeted by the cluster Service. Must match the cluster listener in `controller.config`. |
+| `controller.service.cluster.annotations` | `{}` | Annotations added to the cluster Service |
+
+#### Ops Service
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `controller.service.ops.type` | `ClusterIP` | Kubernetes Service type for health and metrics traffic |
+| `controller.service.ops.port` | `9203` | Service port for the operations endpoint |
+| `controller.service.ops.targetPort` | `9203` | Container port targeted by the ops Service. Must match the ops listener in `controller.config`. |
+| `controller.service.ops.annotations` | `{}` | Annotations added to the ops Service |
+
+### Probe values
+
+Probe schemes are auto-derived from `tls.disabled`: `HTTPS` when `tls.disabled=false`, `HTTP` when `tls.disabled=true`. Override per-probe with `scheme` if needed.
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `controller.livenessProbe.scheme` | `""` | Probe scheme for `/health` on the ops listener. Auto-derived from `tls.disabled`. Override if needed. |
+| `controller.livenessProbe.initialDelaySeconds` | `60` | Initial liveness probe delay |
+| `controller.livenessProbe.periodSeconds` | `10` | Liveness probe period |
+| `controller.livenessProbe.failureThreshold` | `3` | Liveness probe failure threshold |
+| `controller.livenessProbe.timeoutSeconds` | `5` | Liveness probe timeout |
+| `controller.readinessProbe.scheme` | `""` | Readiness probe scheme for `/health` on the ops listener. Auto-derived from `tls.disabled`. Override if needed. |
+| `controller.readinessProbe.initialDelaySeconds` | `15` | Initial readiness probe delay |
+| `controller.readinessProbe.periodSeconds` | `10` | Readiness probe period |
+| `controller.readinessProbe.failureThreshold` | `3` | Readiness probe failure threshold |
+| `controller.readinessProbe.timeoutSeconds` | `5` | Readiness probe timeout |
+
+### Resource values
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `controller.resources.requests.cpu` | `250m` | CPU request for the controller container |
+| `controller.resources.requests.memory` | `512Mi` | Memory request for the controller container |
+| `controller.resources.limits.cpu` | `500m` | CPU limit for the controller container |
+| `controller.resources.limits.memory` | `1Gi` | Memory limit for the controller container |
+
+### Database job values
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `database.init.enabled` | `false` | Runs the pre-install database initialization Job |
+| `database.migrate.enabled` | `false` | Runs the pre-upgrade database migration Job |
+| `database.repair.version` | `""` | When set with `database.migrate.enabled=true`, also runs a pre-upgrade repair migration Job for the specified version |
+| `database.resources.requests.cpu` | `100m` | CPU request for database Jobs |
+| `database.resources.requests.memory` | `128Mi` | Memory request for database Jobs |
+| `database.resources.limits.cpu` | `500m` | CPU limit for database Jobs |
+| `database.resources.limits.memory` | `512Mi` | Memory limit for database Jobs |
+
+### Bootstrap admin values
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `bootstrapAdminAuthMethod.enabled` | `false` | Runs the bootstrap admin Job after install |
+| `bootstrapAdminAuthMethod.runOnUpgrade` | `false` | Also runs the bootstrap admin Job after upgrades when `true` |
+| `bootstrapAdminAuthMethod.waitTimeoutSeconds` | `120` | Maximum time the bootstrap Job waits for the controller API to become reachable |
+| `bootstrapAdminAuthMethod.authMethodName` | `bootstrap-auth-method` | Name of the password auth method created or reused by the Job |
+| `bootstrapAdminAuthMethod.userResourceName` | `bootstrap-admin` | Boundary user resource name created or reused by the Job |
+| `bootstrapAdminAuthMethod.accountResourceName` | `bootstrap-admin` | Boundary account resource name created or reused by the Job |
+| `bootstrapAdminAuthMethod.roleName` | `bootstrap-global-admin` | Boundary role name created or reused by the Job |
+| `bootstrapAdminAuthMethod.resources.requests.cpu` | `100m` | CPU request for the bootstrap Job |
+| `bootstrapAdminAuthMethod.resources.requests.memory` | `128Mi` | Memory request for the bootstrap Job |
+| `bootstrapAdminAuthMethod.resources.limits.cpu` | `500m` | CPU limit for the bootstrap Job |
+| `bootstrapAdminAuthMethod.resources.limits.memory` | `512Mi` | Memory limit for the bootstrap Job |
+
+### Security context values
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `podSecurityContext.runAsUser` | `100` | UID the pod runs as |
+| `podSecurityContext.runAsGroup` | `1000` | GID the pod runs as |
+| `podSecurityContext.runAsNonRoot` | `true` | Requires the container to run as a non-root user |
+| `podSecurityContext.fsGroup` | `1000` | GID applied to mounted volumes |
+| `podSecurityContext.fsGroupChangePolicy` | `OnRootMismatch` | Controls when Kubernetes recursively changes volume ownership |
+| `podSecurityContext.seccompProfile.type` | `RuntimeDefault` | Seccomp profile applied to the pod |
+| `containerSecurityContext.runAsNonRoot` | `true` | Requires the container to run as non-root |
+| `containerSecurityContext.runAsUser` | `100` | UID the container runs as |
+| `containerSecurityContext.runAsGroup` | `1000` | GID the container runs as |
+| `containerSecurityContext.allowPrivilegeEscalation` | `false` | Prevents the process from gaining additional privileges |
+| `containerSecurityContext.readOnlyRootFilesystem` | `true` | Mounts the container root filesystem as read-only |
+| `containerSecurityContext.capabilities.drop` | `["ALL"]` | Linux capabilities dropped from the container |
+| `containerSecurityContext.seccompProfile.type` | `RuntimeDefault` | Seccomp profile applied to the container |
+
+### ServiceAccount values
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `serviceAccount.name` | `default` | Existing ServiceAccount used by the Deployment and hook Jobs. The chart does not create a ServiceAccount. |
+| `serviceAccount.automountServiceAccountToken` | `false` | Controls whether the pod service account token is mounted |
+
+### Availability and shutdown values
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `podDisruptionBudget.enabled` | `true` | Creates a PodDisruptionBudget for controller pods |
+| `podDisruptionBudget.minAvailable` | `1` | Minimum available controller pods during voluntary disruptions |
+| `podDisruptionBudget.maxUnavailable` | not set | Optional alternative to `minAvailable`. Use only one of the two. |
+| `terminationGracePeriodSeconds` | `15` | Kubernetes termination grace period before SIGKILL. Must exceed `graceful_shutdown_wait_duration` in `controller.config`. |
+
+### Scheduling values
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `podAnnotations` | `{}` | Additional pod annotations |
+| `nodeSelector` | `{}` | Node selector constraints |
+| `tolerations` | `[]` | Pod tolerations |
+| `affinity` | `{}` | Pod affinity rules |
+
 ## Required Controller Configuration
 
 This chart ships with an embedded default `controller.config` that uses `aead` for KMS. AEAD is suitable for development and testing only — keys are stored in plaintext in the ConfigMap. Replace with a proper KMS provider before deploying to production.

@@ -22,7 +22,7 @@ secretRefs:
   validateExisting: false # When true, validates the Secret exists with all keys at render time. Set false for offline rendering.
   keys:
     databaseUrl: "database-url"
-    # migrationUrl: "migration-url"
+    migrationUrl: "migration-url"
     license: "license"
     adminUsername: "admin-username"
     adminPassword: "admin-password"
