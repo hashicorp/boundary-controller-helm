@@ -29,9 +29,9 @@ variable "aks_cluster_name" {
 }
 
 variable "aks_kubernetes_version" {
-  description = "Kubernetes version for AKS cluster. Leave empty for provider default."
+  description = "Kubernetes version for AKS cluster. Must satisfy the chart's kubeVersion (>= 1.34). Leave empty for the provider default."
   type        = string
-  default     = ""
+  default     = "1.34"
 }
 
 variable "node_vm_size" {
@@ -51,9 +51,15 @@ variable "node_count" {
 # ---------------------------------------------------------------------------
 
 variable "chart_path" {
-  description = "Path to the boundary-controller Helm chart directory (relative to this module or absolute)."
+  description = "Local chart path or chart name (for repository-based installs)."
   type        = string
   default     = "../../../../"
+}
+
+variable "chart_repository" {
+  description = "Helm repository URL used when deploying a released chart (leave blank for local path installs)."
+  type        = string
+  default     = ""
 }
 
 variable "release_name" {
@@ -69,7 +75,7 @@ variable "release_namespace" {
 }
 
 variable "chart_version" {
-  description = "Chart version to deploy (leave blank when using a local path)."
+  description = "Chart version to deploy (typically set for repository-based installs; leave blank when using a local path)."
   type        = string
   default     = ""
 }

@@ -23,6 +23,23 @@ HELM_TEST_RELEASE ?= boundary-controller
 HELM_TEST_NAMESPACE ?= boundary
 HELM_TEST_KUBE_CONTEXT ?=
 
+# Prints which chart source the cloud install targets will use, based on the
+# TF_VAR_chart_* values. Blank TF_VAR_chart_repository => local chart; set => published chart.
+define chart_source_banner
+	if [ -n "$${TF_VAR_chart_repository:-}" ]; then \
+		printf '\033[1;32m========================================================\033[0m\n'; \
+		printf '\033[1;32m🌐 CHART SOURCE: PUBLISHED CHART\033[0m\n'; \
+		printf '   Chart:      %s\n' "$${TF_VAR_chart_path:-boundary-controller}"; \
+		printf '   Version:    %s\n' "$${TF_VAR_chart_version:-<unset>}"; \
+		printf '   Repository: %s\n' "$${TF_VAR_chart_repository}"; \
+		printf '\033[1;32m========================================================\033[0m\n'; \
+	else \
+		printf '\033[1;33m========================================================\033[0m\n'; \
+		printf '\033[1;33m📦 CHART SOURCE: LOCAL CHART\033[0m  (path: %s)\n' "$${TF_VAR_chart_path:-../../../../}"; \
+		printf '\033[1;33m========================================================\033[0m\n'; \
+	fi
+endef
+
 # ================================
 # Help Target
 # ================================
@@ -598,6 +615,7 @@ eks-apply: eks-setup
 	@echo "✅ kubeconfig updated"
 	@echo ""
 	@echo "--- Step 2/2: Apply remaining resources (KMS, IAM, Kubernetes, Helm) ---"
+	@$(chart_source_banner)
 	@terraform -chdir=$(INTEGRATION_DIR) apply -auto-approve
 	@$(MAKE) eks-db-init-recovery
 	@echo "✅ Terraform apply complete (infrastructure, PostgreSQL, and Helm chart)"
@@ -751,6 +769,7 @@ aks-apply: aks-setup aks-auth-check
 	@echo "✅ kubeconfig updated"
 	@echo ""
 	@echo "--- Step 2/3: Full Terraform apply (Kubernetes + Helm) ---"
+	@$(chart_source_banner)
 	@terraform -chdir=$(AKS_INTEGRATION_DIR) apply -auto-approve
 	@echo "✅ Full Terraform apply completed"
 	@echo ""
@@ -867,6 +886,7 @@ gke-apply: gke-setup
 	@echo "✅ kubeconfig updated"
 	@echo ""
 	@echo "--- Step 2/2: Apply remaining resources (IAM, Kubernetes, Helm) ---"
+	@$(chart_source_banner)
 	@terraform -chdir=$(GKE_INTEGRATION_DIR) apply -auto-approve
 	@$(MAKE) gke-db-init-recovery
 	@echo "✅ Terraform apply complete (infrastructure, PostgreSQL, and Helm chart)"

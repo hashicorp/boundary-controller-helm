@@ -149,6 +149,7 @@ resource "helm_release" "boundary_controller" {
   name             = var.release_name
   namespace        = kubernetes_namespace_v1.boundary.metadata[0].name
   chart            = var.chart_path
+  repository       = var.chart_repository != "" ? var.chart_repository : null
   version          = var.chart_version != "" ? var.chart_version : null
   create_namespace = false
   wait             = false
@@ -197,6 +198,12 @@ resource "helm_release" "boundary_controller" {
     },
     {
       name  = "bootstrapAdmin.runOnUpgrade"
+      value = "true"
+    },
+    # Enable the pre-install DB init hook (chart default is false). Guarded by
+    # .Release.IsInstall, so it only runs on the first install, not on upgrades.
+    {
+      name  = "database.init.enabled"
       value = "true"
     },
   ]
