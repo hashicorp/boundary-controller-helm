@@ -96,4 +96,89 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: "missing expected key path"
+  - it: passes when secretRefs.secretName is set and all env refs use correct var names
+    set:
+      tls:
+        disabled: true
+      secretRefs:
+        secretName: "my-secrets"
+      controller:
+        config: |
+          database {
+            url = "env://BOUNDARY_PG_URL"
+          }
+          controller {
+            license = "env://BOUNDARY_LICENSE"
+          }
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: fails when secretRefs.secretName is set and database url uses wrong env var name
+    set:
+      secretRefs:
+        secretName: "my-secrets"
+      controller:
+        config: |
+          database {
+            url = "env://WRONG_ENV_VAR"
+          }
+    asserts:
+      - failedTemplate:
+          errorPattern: "when secrets are enabled.*use \"env://BOUNDARY_PG_URL\" for the database url"
+  - it: fails when secretRefs.secretName is set and migration_url uses wrong env var name
+    set:
+      secretRefs:
+        secretName: "my-secrets"
+      controller:
+        config: |
+          database {
+            url = "env://BOUNDARY_PG_URL"
+            migration_url = "env://MY_MIGRATION_URL"
+          }
+    asserts:
+      - failedTemplate:
+          errorPattern: "when secrets are enabled.*use \"env://BOUNDARY_PG_MIGRATION_URL\" for the migration_url"
+  - it: fails when secretRefs.secretName is set and license uses wrong env var name
+    set:
+      secretRefs:
+        secretName: "my-secrets"
+      controller:
+        config: |
+          controller {
+            license = "env://MY_LICENSE"
+          }
+    asserts:
+      - failedTemplate:
+          errorPattern: "when secrets are enabled.*use \"env://BOUNDARY_LICENSE\" for the license"
+  - it: passes when secretRefs.secretName is set and custom env var is covered by extraEnv
+    set:
+      tls:
+        disabled: true
+      secretRefs:
+        secretName: "my-secrets"
+      extraEnv:
+        - name: MY_CUSTOM_DB_URL
+          value: "postgres://user:pass@host/db"
+      controller:
+        config: |
+          database {
+            url = "env://MY_CUSTOM_DB_URL"
+          }
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: skips env ref validation when secretRefs.secretName is not set
+    set:
+      tls:
+        disabled: true
+      secretRefs:
+        secretName: ""
+      controller:
+        config: |
+          database {
+            url = "env://WRONG_ENV_VAR"
+          }
+    asserts:
+      - hasDocuments:
+          count: 0
 

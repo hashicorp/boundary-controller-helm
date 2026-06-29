@@ -280,6 +280,52 @@ Runs only when secretRefs.validateExisting=true.
 {{- end }}
 
 {{/*
+Validate that controller.config uses the correct env:// variable names for
+every secret the chart injects from secretRefs.secretName.
+Only runs when secretRefs.secretName is set.
+
+The chart injects exactly these env var names:
+  BOUNDARY_PG_URL            → database { url }
+  BOUNDARY_PG_MIGRATION_URL  → database { migration_url }
+  BOUNDARY_LICENSE           → controller { license }
+
+If the config contains an env:// reference for one of these fields but uses
+the wrong variable name, the chart will inject the correct name while Boundary
+reads a different one — silently producing an empty or missing value.
+*/}}
+{{- define "boundary.controller.validateEnvSecretRefs" -}}
+{{- if .Values.secretRefs.secretName -}}
+{{- $renderedConfig := tpl .Values.controller.config . -}}
+{{- $configNoComments := regexReplaceAll "(?m)^\\s*#.*$" $renderedConfig "" -}}
+{{- $extraEnvNames := list -}}
+{{- range .Values.extraEnv -}}
+{{- $extraEnvNames = append $extraEnvNames .name -}}
+{{- end -}}
+{{- /* database { url } — chart injects BOUNDARY_PG_URL. \b prevents matching migration_url. */ -}}
+{{- if and (regexMatch "\\burl\\s*=\\s*\"env://" $configNoComments) (not (regexMatch "\\burl\\s*=\\s*\"env://BOUNDARY_PG_URL\"" $configNoComments)) -}}
+{{- $varName := trimPrefix "env://" (regexFind "env://[^\"]*" (regexFind "\\burl\\s*=\\s*\"env://[^\"]*\"" $configNoComments)) -}}
+{{- if not (has $varName $extraEnvNames) -}}
+{{- fail (printf "Invalid controller.config: when secrets are enabled (secretRefs.secretName is set), use \"env://BOUNDARY_PG_URL\" for the database url env reference in your controller.config, or add \"env://%s\" to extraEnv." $varName) -}}
+{{- end -}}
+{{- end -}}
+{{- /* database { migration_url } — chart injects BOUNDARY_PG_MIGRATION_URL. */ -}}
+{{- if and (regexMatch "migration_url\\s*=\\s*\"env://" $configNoComments) (not (regexMatch "migration_url\\s*=\\s*\"env://BOUNDARY_PG_MIGRATION_URL\"" $configNoComments)) -}}
+{{- $varName := trimPrefix "env://" (regexFind "env://[^\"]*" (regexFind "migration_url\\s*=\\s*\"env://[^\"]*\"" $configNoComments)) -}}
+{{- if not (has $varName $extraEnvNames) -}}
+{{- fail (printf "Invalid controller.config: when secrets are enabled (secretRefs.secretName is set), use \"env://BOUNDARY_PG_MIGRATION_URL\" for the migration_url env reference in your controller.config, or add \"env://%s\" to extraEnv." $varName) -}}
+{{- end -}}
+{{- end -}}
+{{- /* controller { license } — chart injects BOUNDARY_LICENSE. */ -}}
+{{- if and (regexMatch "license\\s*=\\s*\"env://" $configNoComments) (not (regexMatch "license\\s*=\\s*\"env://BOUNDARY_LICENSE\"" $configNoComments)) -}}
+{{- $varName := trimPrefix "env://" (regexFind "env://[^\"]*" (regexFind "license\\s*=\\s*\"env://[^\"]*\"" $configNoComments)) -}}
+{{- if not (has $varName $extraEnvNames) -}}
+{{- fail (printf "Invalid controller.config: when secrets are enabled (secretRefs.secretName is set), use \"env://BOUNDARY_LICENSE\" for the license env reference in your controller.config, or add \"env://%s\" to extraEnv." $varName) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Validate controller config patterns that Boundary cannot resolve safely at runtime.
 */}}
 {{- define "boundary.controller.validateConfig" -}}
