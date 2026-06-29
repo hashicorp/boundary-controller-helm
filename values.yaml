@@ -23,11 +23,21 @@ imagePullSecrets: []
 # ---------------------------------------------------------------------------
 
 tls:
-  # When false, the TLS Secret is mounted and probes use HTTPS.
-  # When true, no Secret is required and probes use HTTP.
+  # When false, the TLS Secret is mounted for listeners that reference tls_cert_file/tls_key_file.
+  # When true, no Secret is required.
+  # Probe scheme (HTTP/HTTPS) is derived from the ops listener's tls_disable param, not this flag.
   disabled: false
   secretName: "boundary-controller-tls"
   mountPath: "/etc/boundary/tls"
+  # The TLS certificate must include SANs for every hostname the chart uses internally.
+  # Required SANs (adjust if nameOverride/fullnameOverride is set):
+  #   DNS:<fullname>                                     (e.g. boundary-controller)
+  #   DNS:<fullname>-api                                 (e.g. boundary-controller-api)
+  #   DNS:<fullname>.boundary.svc.cluster.local
+  #   DNS:<fullname>-api.boundary.svc.cluster.local
+  #   DNS:localhost
+  # The bootstrap-admin job connects to https://<fullname>-api:<port> and verifies
+  # the cert against BOUNDARY_CACERT — if the SAN is missing, the job will time out.
 
 # ---------------------------------------------------------------------------
 # Secret References
@@ -128,8 +138,8 @@ controller:
     }
 
   livenessProbe:
-    # Probe scheme for /health on the ops listener. Auto-derived from tls.disabled
-    # (HTTPS when false, HTTP when true). Override only if needed.
+    # Probe scheme for /health on the ops listener. Auto-derived from the ops
+    # listener's tls_disable param (HTTP unless tls_disable=false). Override only if needed.
     scheme: ""
     initialDelaySeconds: 60
     periodSeconds: 10
@@ -137,8 +147,8 @@ controller:
     timeoutSeconds: 5
 
   readinessProbe:
-    # Probe scheme for /health on the ops listener. Auto-derived from tls.disabled
-    # (HTTPS when false, HTTP when true). Override only if needed.
+    # Probe scheme for /health on the ops listener. Auto-derived from the ops
+    # listener's tls_disable param (HTTP unless tls_disable=false). Override only if needed.
     scheme: ""
     initialDelaySeconds: 15
     periodSeconds: 10

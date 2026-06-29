@@ -124,15 +124,45 @@ Build the controller image reference.
 {{- end }}
 
 {{/*
-Resolve HTTP probe scheme.
-If an explicit scheme is set (HTTP/HTTPS), use it. Otherwise derive from tls.disabled.
+Determines whether the ops listener has TLS disabled, by inspecting the ops
+listener block in controller.config directly.
+
+Rule: only an explicit tls_disable = false in the ops block means TLS is on.
+Anything else — tls_disable = true, absent, or no ops block at all — means HTTP.
+The global tls.disabled value is intentionally not used here; the probe scheme
+must reflect what the ops port actually serves, not the chart-level TLS toggle.
+*/}}
+{{- define "boundary.controller.opsListenerTlsDisabled" -}}
+{{- $configNoComments := regexReplaceAll "(?m)^\\s*#.*$" .Values.controller.config "" -}}
+{{- $opsBlock := regexFind "(?s)listener\\s+\"tcp\"\\s*\\{[^}]*purpose\\s*=\\s*\"ops\"[^}]*\\}" $configNoComments -}}
+{{- if and (ne $opsBlock "") (regexMatch "tls_disable\\s*=\\s*false" $opsBlock) -}}
+false
+{{- else -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+Resolves the HTTP probe scheme (HTTP or HTTPS) for liveness and readiness probes.
+
+Priority order:
+  1. controller.livenessProbe.scheme / controller.readinessProbe.scheme is set
+     explicitly to "HTTP" or "HTTPS" → use that value as-is.
+  2. Otherwise, delegate to boundary.controller.opsListenerTlsDisabled, which
+     reads tls_disable directly from the ops listener block in controller.config.
+
+Examples:
+  - ops: tls_disable=false          → HTTPS (only case that means TLS is on)
+  - ops: tls_disable=true           → HTTP
+  - ops: no tls_disable param        → HTTP  (absent = disabled by default)
+  - no ops block in config           → HTTP
 */}}
 {{- define "boundary.controller.probeScheme" -}}
 {{- $root := .root -}}
 {{- $explicit := upper (trim (default "" .explicitScheme)) -}}
 {{- if or (eq $explicit "HTTP") (eq $explicit "HTTPS") -}}
 {{- $explicit -}}
-{{- else if $root.Values.tls.disabled -}}
+{{- else if eq (include "boundary.controller.opsListenerTlsDisabled" $root | trim) "true" -}}
 HTTP
 {{- else -}}
 HTTPS

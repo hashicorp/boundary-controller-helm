@@ -135,6 +135,12 @@ tests:
           scheme: ""
         readinessProbe:
           scheme: ""
+        config: |
+          listener "tcp" {
+            address = "0.0.0.0:9203"
+            purpose = "ops"
+            tls_disable = false
+          }
     asserts:
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
@@ -143,6 +149,77 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
           value: HTTPS
+        template: templates/deployment.yaml
+  - it: uses HTTP probe when ops listener has tls_disable=true and global tls.disabled=false
+    set:
+      tls:
+        disabled: false
+      controller:
+        livenessProbe:
+          scheme: ""
+        readinessProbe:
+          scheme: ""
+        config: |
+          listener "tcp" {
+            address = "0.0.0.0:9203"
+            purpose = "ops"
+            tls_disable = true
+          }
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
+          value: HTTP
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
+          value: HTTP
+        template: templates/deployment.yaml
+  - it: uses HTTPS probe when ops listener has tls_disable=false regardless of global tls.disabled
+    set:
+      tls:
+        disabled: true
+      controller:
+        livenessProbe:
+          scheme: ""
+        readinessProbe:
+          scheme: ""
+        config: |
+          listener "tcp" {
+            address = "0.0.0.0:9203"
+            purpose = "ops"
+            tls_disable = false
+          }
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
+          value: HTTPS
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
+          value: HTTPS
+        template: templates/deployment.yaml
+  - it: uses HTTP probe when ops listener has no tls_disable param regardless of global tls.disabled
+    set:
+      tls:
+        disabled: false
+      controller:
+        livenessProbe:
+          scheme: ""
+        readinessProbe:
+          scheme: ""
+        config: |
+          listener "tcp" {
+            address = "0.0.0.0:9203"
+            purpose = "ops"
+          }
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
+          value: HTTP
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
+          value: HTTP
         template: templates/deployment.yaml
   - it: renders custom TLS mountPath and secretName when TLS is enabled
     set:
