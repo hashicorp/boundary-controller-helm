@@ -52,7 +52,27 @@ The Secret must contain the following keys (key names are configurable via `secr
 | `admin-username` | Bootstrap admin username | When `bootstrapAdmin.enabled=true` |
 | `admin-password` | Bootstrap admin password | When `bootstrapAdmin.enabled=true` |
 
+> **Note**
+> When `secretRefs.secretName` is set, the chart validates that `controller.config` uses the correct `env://` variable names for any secret-backed fields. Using a different variable name causes the chart to fail during rendering before installation completes. The required names are:
+>
+> - `env://BOUNDARY_PG_URL` for `database { url }`
+> - `env://BOUNDARY_PG_MIGRATION_URL` for `database { migration_url }`
+> - `env://BOUNDARY_LICENSE` for `controller { license }`
+>
+> If you use a different variable name and it is not declared in `extraEnv`, the chart fails during rendering with an error message that identifies the field and the expected variable name.
+
 A Kubernetes TLS Secret containing `tls.crt` and `tls.key` is also required when `tls.disabled=false` (the default). Set `tls.secretName` to match the Secret name.
+
+> **Note**
+> The TLS certificate must include SANs for every hostname the chart uses internally. The required SANs are (adjust if `nameOverride` or `fullnameOverride` is set):
+>
+> - `DNS:<fullname>` (for example, `boundary-controller`)
+> - `DNS:<fullname>-api` (for example, `boundary-controller-api`)
+> - `DNS:<fullname>.boundary.svc.cluster.local`
+> - `DNS:<fullname>-api.boundary.svc.cluster.local`
+> - `DNS:localhost`
+>
+> The bootstrap admin Job connects to `https://<fullname>-api:<port>` and verifies the certificate against `BOUNDARY_CACERT`. If the SAN is missing, the Job will time out.
 
 ## Step 2 — Install the Chart
 

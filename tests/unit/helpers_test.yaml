@@ -14,7 +14,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: hashicorp/boundary-enterprise:0.21.3-ent
+          value: hashicorp/boundary-enterprise:1.0.0-ent
         template: templates/deployment.yaml
 
   - it: uses overridden image tag via image helper

@@ -124,15 +124,47 @@ Build the controller image reference.
 {{- end }}
 
 {{/*
-Resolve HTTP probe scheme.
-If an explicit scheme is set (HTTP/HTTPS), use it. Otherwise derive from tls.disabled.
+Determines whether the ops listener has TLS disabled, by inspecting the ops
+listener block in controller.config directly.
+
+Rules:
+  - Absent ops block                 → true  (no listener, probe scheme is moot; default HTTP)
+  - ops block with tls_disable=true  → true  (explicit opt-out)
+  - ops block with tls_disable=false → false (explicit TLS on)
+  - ops block, tls_disable absent    → false (Boundary HCL default: tls_disable=false)
+The global tls.disabled value is intentionally not used here; the probe scheme
+must reflect what the ops port actually serves, not the chart-level TLS toggle.
+*/}}
+{{- define "boundary.controller.opsListenerTlsDisabled" -}}
+{{- $configNoComments := regexReplaceAll "(?m)^\\s*#.*$" .Values.controller.config "" -}}
+{{- $opsBlock := regexFind "(?s)listener\\s+\"tcp\"\\s*\\{[^}]*purpose\\s*=\\s*\"ops\"[^}]*\\}" $configNoComments -}}
+{{- if or (eq $opsBlock "") (regexMatch "tls_disable\\s*=\\s*true" $opsBlock) -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{/*
+Resolves the HTTP probe scheme (HTTP or HTTPS) for liveness and readiness probes.
+
+Priority order:
+  1. controller.livenessProbe.scheme / controller.readinessProbe.scheme is set
+     explicitly to "HTTP" or "HTTPS" → use that value as-is.
+  2. Otherwise, delegate to boundary.controller.opsListenerTlsDisabled, which
+     reads tls_disable directly from the ops listener block in controller.config.
+
+Examples:
+  - ops: tls_disable=false          → HTTPS
+  - ops: tls_disable=true           → HTTP
+  - ops: no tls_disable param        → HTTPS (Boundary default: tls_disable=false)
 */}}
 {{- define "boundary.controller.probeScheme" -}}
 {{- $root := .root -}}
 {{- $explicit := upper (trim (default "" .explicitScheme)) -}}
 {{- if or (eq $explicit "HTTP") (eq $explicit "HTTPS") -}}
 {{- $explicit -}}
-{{- else if $root.Values.tls.disabled -}}
+{{- else if eq (include "boundary.controller.opsListenerTlsDisabled" $root | trim) "true" -}}
 HTTP
 {{- else -}}
 HTTPS
@@ -247,6 +279,52 @@ Runs only when secretRefs.validateExisting=true.
 {{- end }}
 {{- end }}
 {{- end }}
+{{- end }}
+
+{{/*
+Validate that controller.config uses the correct env:// variable names for
+every secret the chart injects from secretRefs.secretName.
+Only runs when secretRefs.secretName is set.
+
+The chart injects exactly these env var names:
+  BOUNDARY_PG_URL            → database { url }
+  BOUNDARY_PG_MIGRATION_URL  → database { migration_url }
+  BOUNDARY_LICENSE           → controller { license }
+
+If the config contains an env:// reference for one of these fields but uses
+the wrong variable name, the chart will inject the correct name while Boundary
+reads a different one — silently producing an empty or missing value.
+*/}}
+{{- define "boundary.controller.validateEnvSecretRefs" -}}
+{{- if .Values.secretRefs.secretName -}}
+{{- $renderedConfig := tpl .Values.controller.config . -}}
+{{- $configNoComments := regexReplaceAll "(?m)^\\s*#.*$" $renderedConfig "" -}}
+{{- $extraEnvNames := list -}}
+{{- range .Values.extraEnv -}}
+{{- $extraEnvNames = append $extraEnvNames .name -}}
+{{- end -}}
+{{- /* database { url } — chart injects BOUNDARY_PG_URL. \b prevents matching migration_url. */ -}}
+{{- if and (regexMatch "\\burl\\s*=\\s*\"env://" $configNoComments) (not (regexMatch "\\burl\\s*=\\s*\"env://BOUNDARY_PG_URL\"" $configNoComments)) -}}
+{{- $varName := trimPrefix "env://" (regexFind "env://[^\"]*" (regexFind "\\burl\\s*=\\s*\"env://[^\"]*\"" $configNoComments)) -}}
+{{- if not (has $varName $extraEnvNames) -}}
+{{- fail (printf "Invalid controller.config: when secrets are enabled (secretRefs.secretName is set), use \"env://BOUNDARY_PG_URL\" for the database url env reference in your controller.config, or add \"env://%s\" to extraEnv." $varName) -}}
+{{- end -}}
+{{- end -}}
+{{- /* database { migration_url } — chart injects BOUNDARY_PG_MIGRATION_URL. */ -}}
+{{- if and (regexMatch "migration_url\\s*=\\s*\"env://" $configNoComments) (not (regexMatch "migration_url\\s*=\\s*\"env://BOUNDARY_PG_MIGRATION_URL\"" $configNoComments)) -}}
+{{- $varName := trimPrefix "env://" (regexFind "env://[^\"]*" (regexFind "migration_url\\s*=\\s*\"env://[^\"]*\"" $configNoComments)) -}}
+{{- if not (has $varName $extraEnvNames) -}}
+{{- fail (printf "Invalid controller.config: when secrets are enabled (secretRefs.secretName is set), use \"env://BOUNDARY_PG_MIGRATION_URL\" for the migration_url env reference in your controller.config, or add \"env://%s\" to extraEnv." $varName) -}}
+{{- end -}}
+{{- end -}}
+{{- /* controller { license } — chart injects BOUNDARY_LICENSE. */ -}}
+{{- if and (regexMatch "license\\s*=\\s*\"env://" $configNoComments) (not (regexMatch "license\\s*=\\s*\"env://BOUNDARY_LICENSE\"" $configNoComments)) -}}
+{{- $varName := trimPrefix "env://" (regexFind "env://[^\"]*" (regexFind "license\\s*=\\s*\"env://[^\"]*\"" $configNoComments)) -}}
+{{- if not (has $varName $extraEnvNames) -}}
+{{- fail (printf "Invalid controller.config: when secrets are enabled (secretRefs.secretName is set), use \"env://BOUNDARY_LICENSE\" for the license env reference in your controller.config, or add \"env://%s\" to extraEnv." $varName) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- end }}
 
 {{/*
