@@ -127,18 +127,21 @@ Build the controller image reference.
 Determines whether the ops listener has TLS disabled, by inspecting the ops
 listener block in controller.config directly.
 
-Rule: only an explicit tls_disable = false in the ops block means TLS is on.
-Anything else — tls_disable = true, absent, or no ops block at all — means HTTP.
+Rules:
+  - Absent ops block                 → true  (no listener, probe scheme is moot; default HTTP)
+  - ops block with tls_disable=true  → true  (explicit opt-out)
+  - ops block with tls_disable=false → false (explicit TLS on)
+  - ops block, tls_disable absent    → false (Boundary HCL default: tls_disable=false)
 The global tls.disabled value is intentionally not used here; the probe scheme
 must reflect what the ops port actually serves, not the chart-level TLS toggle.
 */}}
 {{- define "boundary.controller.opsListenerTlsDisabled" -}}
 {{- $configNoComments := regexReplaceAll "(?m)^\\s*#.*$" .Values.controller.config "" -}}
 {{- $opsBlock := regexFind "(?s)listener\\s+\"tcp\"\\s*\\{[^}]*purpose\\s*=\\s*\"ops\"[^}]*\\}" $configNoComments -}}
-{{- if and (ne $opsBlock "") (regexMatch "tls_disable\\s*=\\s*false" $opsBlock) -}}
-false
-{{- else -}}
+{{- if or (eq $opsBlock "") (regexMatch "tls_disable\\s*=\\s*true" $opsBlock) -}}
 true
+{{- else -}}
+false
 {{- end -}}
 {{- end }}
 
@@ -152,10 +155,9 @@ Priority order:
      reads tls_disable directly from the ops listener block in controller.config.
 
 Examples:
-  - ops: tls_disable=false          → HTTPS (only case that means TLS is on)
+  - ops: tls_disable=false          → HTTPS
   - ops: tls_disable=true           → HTTP
-  - ops: no tls_disable param        → HTTP  (absent = disabled by default)
-  - no ops block in config           → HTTP
+  - ops: no tls_disable param        → HTTPS (Boundary default: tls_disable=false)
 */}}
 {{- define "boundary.controller.probeScheme" -}}
 {{- $root := .root -}}

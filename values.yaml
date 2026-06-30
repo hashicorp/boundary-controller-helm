@@ -139,7 +139,7 @@ controller:
 
   livenessProbe:
     # Probe scheme for /health on the ops listener. Auto-derived from the ops
-    # listener's tls_disable param (HTTP unless tls_disable=false). Override only if needed.
+    # listener's tls_disable param (HTTPS unless tls_disable=true). Override only if needed.
     scheme: ""
     initialDelaySeconds: 60
     periodSeconds: 10
@@ -148,7 +148,7 @@ controller:
 
   readinessProbe:
     # Probe scheme for /health on the ops listener. Auto-derived from the ops
-    # listener's tls_disable param (HTTP unless tls_disable=false). Override only if needed.
+    # listener's tls_disable param (HTTPS unless tls_disable=true). Override only if needed.
     scheme: ""
     initialDelaySeconds: 15
     periodSeconds: 10

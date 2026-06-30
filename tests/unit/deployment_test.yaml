@@ -198,7 +198,7 @@ tests:
           path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
           value: HTTPS
         template: templates/deployment.yaml
-  - it: uses HTTP probe when ops listener has no tls_disable param regardless of global tls.disabled
+  - it: uses HTTPS probe when ops listener has no tls_disable param regardless of global tls.disabled
     set:
       tls:
         disabled: false
@@ -215,11 +215,11 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
-          value: HTTP
+          value: HTTPS
         template: templates/deployment.yaml
       - equal:
           path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
-          value: HTTP
+          value: HTTPS
         template: templates/deployment.yaml
   - it: renders custom TLS mountPath and secretName when TLS is enabled
     set:
