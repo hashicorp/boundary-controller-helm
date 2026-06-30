@@ -4,6 +4,24 @@ All notable changes to the Boundary Controller Helm Chart will be documented in 
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-06-30
+
+### Fixed
+
+- Probe scheme auto-derivation now correctly reads `tls_disable` from the ops listener block in `controller.config` instead of the chart-level `tls.disabled` flag. The prior logic had the polarity inverted: absent `tls_disable` was treated as TLS off; it is now correctly treated as TLS on (matching Boundary's HCL default where `tls_disable` defaults to `false`).
+- When the ops listener block has no `tls_disable` parameter, the probe scheme now resolves to `HTTPS` instead of `HTTP`.
+- When no ops listener block is present in `controller.config`, the probe scheme defaults to `HTTP`.
+
+### Added
+
+- Render-time validation that `controller.config` uses the correct `env://` variable names for secret-backed fields when `secretRefs.secretName` is set (`env://BOUNDARY_PG_URL`, `env://BOUNDARY_PG_MIGRATION_URL`, `env://BOUNDARY_LICENSE`). Using a wrong variable name now fails at render time with an actionable error rather than silently producing a missing value at runtime.
+
+### Changed
+
+- Default controller image updated to `hashicorp/boundary-enterprise:1.0.0-ent`.
+
+---
+
 ## [0.1.0-beta] - 2026-06-24
 
 Initial public beta release of the Boundary Controller Helm chart.
