@@ -13,10 +13,10 @@ A default install creates:
 - A ConfigMap holding the rendered controller configuration
 - A PodDisruptionBudget to maintain availability during voluntary disruptions
 - Helm hook Jobs:
-  - **Database init** — runs on fresh install (`database.init.enabled=true`)
+  - **Database init** — runs on install when `database.init.enabled=true`
   - **Database migrate** — runs on upgrade when `database.migrate.enabled=true`
   - **Database repair** — runs on upgrade when `database.repair.version` is set
-  - **Bootstrap admin** — runs on install (and optionally on upgrade)
+  - **Bootstrap admin** — runs on install when `bootstrapAdmin.enabled=true` (and optionally on upgrade when `bootstrapAdmin.runOnUpgrade=true`)
 
 ## Prerequisites
 
