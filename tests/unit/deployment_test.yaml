@@ -597,3 +597,55 @@ tests:
           content:
             name: tls-certs
         template: templates/deployment.yaml
+  - it: uses openshift podSecurityContext and omits runAsUser when openshift.enabled is true
+    set:
+      openshift:
+        enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.securityContext.seccompProfile.type
+          value: RuntimeDefault
+        template: templates/deployment.yaml
+      - notExists:
+          path: spec.template.spec.securityContext.runAsUser
+        template: templates/deployment.yaml
+      - notExists:
+          path: spec.template.spec.securityContext.fsGroup
+        template: templates/deployment.yaml
+  - it: uses openshift containerSecurityContext when openshift.enabled is true
+    set:
+      openshift:
+        enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          content: ALL
+        template: templates/deployment.yaml
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext.runAsGroup
+        template: templates/deployment.yaml
+  - it: uses default podSecurityContext with runAsUser when openshift.enabled is false
+    set:
+      openshift:
+        enabled: false
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 100
+        template: templates/deployment.yaml

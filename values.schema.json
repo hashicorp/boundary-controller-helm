@@ -334,6 +334,52 @@
     "terminationGracePeriodSeconds": {
       "type": "integer",
       "minimum": 1
+    },
+    "openshift": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "podSecurityContext": {
+          "type": "object"
+        },
+        "containerSecurityContext": {
+          "type": "object"
+        },
+        "route": {
+          "type": "object",
+          "properties": {
+            "api": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "host": {
+                  "type": "string"
+                },
+                "tls": {
+                  "type": "object",
+                  "properties": {
+                    "termination": {
+                      "type": "string",
+                      "enum": ["edge", "reencrypt", "passthrough"]
+                    },
+                    "insecureEdgeTerminationPolicy": {
+                      "type": "string",
+                      "enum": ["Allow", "Redirect", "None"]
+                    }
+                  }
+                },
+                "annotations": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "additionalProperties": true

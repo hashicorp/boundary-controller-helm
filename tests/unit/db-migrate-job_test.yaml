@@ -216,3 +216,45 @@ tests:
       - equal:
           path: metadata.namespace
           value: boundary
+  - it: uses openshift podSecurityContext and omits runAsUser in migrate job when openshift.enabled is true
+    set:
+      database:
+        migrate:
+          enabled: true
+      openshift:
+        enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - notExists:
+          path: spec.template.spec.securityContext.runAsUser
+      - notExists:
+          path: spec.template.spec.securityContext.fsGroup
+  - it: uses openshift containerSecurityContext in migrate job when openshift.enabled is true
+    set:
+      database:
+        migrate:
+          enabled: true
+      openshift:
+        enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext.runAsGroup
+  - it: uses default podSecurityContext with runAsUser in migrate job when openshift.enabled is false
+    set:
+      database:
+        migrate:
+          enabled: true
+      openshift:
+        enabled: false
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 100
