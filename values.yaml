@@ -72,7 +72,7 @@ controller:
     listener "tcp" {
       address = "0.0.0.0:9200"
       purpose = "api"
-      tls_disable   = true
+      tls_disable   = false
       tls_cert_file = "/etc/boundary/tls/tls.crt"
       tls_key_file  = "/etc/boundary/tls/tls.key"
     }
@@ -85,7 +85,7 @@ controller:
     listener "tcp" {
       address = "0.0.0.0:9203"
       purpose = "ops"
-      tls_disable   = true
+      tls_disable   = false
       tls_cert_file = "/etc/boundary/tls/tls.crt"
       tls_key_file  = "/etc/boundary/tls/tls.key"
     }
