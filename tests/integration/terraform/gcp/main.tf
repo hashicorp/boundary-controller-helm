@@ -171,6 +171,12 @@ resource "helm_release" "boundary_controller" {
       name  = "bootstrapAdmin.waitTimeoutSeconds"
       value = "300"
     },
+    # Enable the pre-install DB init hook (chart default is false). Guarded by
+    # .Release.IsInstall, so it only runs on the first install, not on upgrades.
+    {
+      name  = "database.init.enabled"
+      value = "true"
+    },
     {
       name  = "podDisruptionBudget.enabled"
       value = tostring(local.pdb_enabled)

@@ -30,9 +30,8 @@ The chart includes comprehensive test coverage for validation before deployment:
 - [Cloud Integration Tests (EKS/AKS/GKE)](#cloud-integration-tests-eksaksgke)
 	- [Prerequisites](#prerequisites-1)
 	- [Environment Keys](#environment-keys)
+	- [Chart Source Selection](#chart-source-selection)
 	- [Run EKS Integration](#run-eks-integration)
-		- [Run With Local Repo Chart](#run-with-local-repo-chart)
-		- [Run With Released Chart](#run-with-released-chart)
 	- [Run AKS Integration](#run-aks-integration)
 	- [Run GKE Integration](#run-gke-integration)
 	- [Expected Runtime](#expected-runtime)
@@ -334,7 +333,65 @@ GKE-specific keys (set in `tests/integration/.env`):
 
 You can copy starter keys from `tests/integration/.env.example`.
 
+### Chart Source Selection
+
+The integration tests can deploy **either** the local chart in this repository
+**or** the public HashiCorp chart from a Helm repository. By default they install
+the **local chart** (`TF_VAR_chart_path=../../../../`). The same three variables
+control the chart source for **all clouds** (EKS, AKS, and GKE).
+
+> **Note:** Replace `<released-version>` with the chart version you want to
+> install. At the time of writing the latest published version is `0.1.0-beta`,
+> but this changes with future releases — check the
+> [chart's ArtifactHub page](https://artifacthub.io/packages/helm/hashicorp/boundary-controller)
+> (or run `helm search repo hashicorp/boundary-controller --versions`) for the
+> current version.
+
+**Local chart (default)** — installs straight from the chart sources in this repo:
+
+```bash
+TF_VAR_chart_path=../../../../
+TF_VAR_chart_repository=
+TF_VAR_chart_version=
+```
+
+**Public HashiCorp chart** — installs the released chart from ArtifactHub
+([boundary-controller](https://artifacthub.io/packages/helm/hashicorp/boundary-controller)):
+
+```bash
+TF_VAR_chart_path=boundary-controller
+TF_VAR_chart_repository=https://helm.releases.hashicorp.com
+TF_VAR_chart_version=<released-version>
+```
+
+A blank `TF_VAR_chart_repository` always installs the local chart; setting it
+switches to the published chart. The integration test scripts are identical for
+both modes — they validate the deployed release in-cluster.
+
 ### Run EKS Integration
+
+First choose the chart source (see [Chart Source Selection](#chart-source-selection))
+by setting the values in `tests/integration/.env`:
+
+**Local chart (default)**
+
+```bash
+# tests/integration/.env
+TF_VAR_chart_path=../../../../
+TF_VAR_chart_repository=
+TF_VAR_chart_version=
+```
+
+**Public HashiCorp chart**
+
+```bash
+# tests/integration/.env
+TF_VAR_chart_path=boundary-controller
+TF_VAR_chart_repository=https://helm.releases.hashicorp.com
+TF_VAR_chart_version=<released-version>
+```
+
+Then run the same targets for whichever source you picked:
 
 ```bash
 # Provision + deploy
@@ -353,46 +410,30 @@ make eks-destroy
 make eks-destroy DESTROY_EKS_RESOURCES=true
 ```
 
-#### Run With Local Repo Chart
+### Run AKS Integration
 
-Use these values in `tests/integration/.env` (default behavior):
+First choose the chart source (see [Chart Source Selection](#chart-source-selection))
+by setting the values in `tests/integration/.env`:
+
+**Local chart (default)**
 
 ```bash
+# tests/integration/.env
 TF_VAR_chart_path=../../../../
 TF_VAR_chart_repository=
 TF_VAR_chart_version=
 ```
 
-Then run:
+**Public HashiCorp chart**
 
 ```bash
-make eks-apply
-make eks-test
-```
-
-#### Run With Released Chart
-
-Use these values in `tests/integration/.env` to install from a Helm repository:
-
-```bash
+# tests/integration/.env
 TF_VAR_chart_path=boundary-controller
-TF_VAR_chart_repository=https://<your-helm-repository>
+TF_VAR_chart_repository=https://helm.releases.hashicorp.com
 TF_VAR_chart_version=<released-version>
 ```
 
-Then run:
-
-```bash
-make eks-apply
-make eks-test
-```
-
-Notes:
-
-- Keep `TF_VAR_chart_version` set when using `TF_VAR_chart_repository`.
-- `eks-integration-test.sh` does not change for either mode; it validates the deployed release in-cluster.
-
-### Run AKS Integration
+Then run the same targets for whichever source you picked:
 
 ```bash
 # Provision + deploy
@@ -412,6 +453,29 @@ make aks-destroy DESTROY_AKS_RESOURCES=true
 ```
 
 ### Run GKE Integration
+
+First choose the chart source (see [Chart Source Selection](#chart-source-selection))
+by setting the values in `tests/integration/.env`:
+
+**Local chart (default)**
+
+```bash
+# tests/integration/.env
+TF_VAR_chart_path=../../../../
+TF_VAR_chart_repository=
+TF_VAR_chart_version=
+```
+
+**Public HashiCorp chart**
+
+```bash
+# tests/integration/.env
+TF_VAR_chart_path=boundary-controller
+TF_VAR_chart_repository=https://helm.releases.hashicorp.com
+TF_VAR_chart_version=<released-version>
+```
+
+Then run the same targets for whichever source you picked:
 
 ```bash
 # Provision GKE cluster + deploy chart

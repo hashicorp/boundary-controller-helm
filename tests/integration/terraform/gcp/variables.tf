@@ -28,9 +28,9 @@ variable "gke_cluster_name" {
 }
 
 variable "gke_kubernetes_version" {
-  description = "Minimum Kubernetes master version for the GKE cluster (e.g. '1.31'). Leave empty to use the GKE release-channel default."
+  description = "Minimum Kubernetes master version for the GKE cluster (e.g. '1.34'). Must satisfy the chart's kubeVersion (>= 1.34). Leave empty to use the GKE release-channel default."
   type        = string
-  default     = ""
+  default     = "1.34"
 }
 
 # ---------------------------------------------------------------------------

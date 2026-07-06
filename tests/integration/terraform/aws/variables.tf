@@ -17,9 +17,9 @@ variable "eks_cluster_name" {
 }
 
 variable "eks_kubernetes_version" {
-  description = "Kubernetes version for the EKS cluster."
+  description = "Kubernetes version for the EKS cluster. Must satisfy the chart's kubeVersion (>= 1.34)."
   type        = string
-  default     = "1.31"
+  default     = "1.34"
 }
 
 # ---------------------------------------------------------------------------

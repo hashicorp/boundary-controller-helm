@@ -344,6 +344,12 @@ resource "helm_release" "boundary_controller" {
       name  = "bootstrapAdmin.runOnUpgrade"
       value = "true"
     },
+    # Enable the pre-install DB init hook (chart default is false). Guarded by
+    # .Release.IsInstall, so it only runs on the first install, not on upgrades.
+    {
+      name  = "database.init.enabled"
+      value = "true"
+    },
   ]
 
   # -----------------------------------------------------------------------
