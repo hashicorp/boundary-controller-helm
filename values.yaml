@@ -29,15 +29,9 @@ tls:
   disabled: false
   secretName: "boundary-controller-tls"
   mountPath: "/etc/boundary/tls"
-  # The TLS certificate must include SANs for every hostname the chart uses internally.
-  # Required SANs (adjust if nameOverride/fullnameOverride is set):
-  #   DNS:<fullname>                                     (e.g. boundary-controller)
-  #   DNS:<fullname>-api                                 (e.g. boundary-controller-api)
-  #   DNS:<fullname>.boundary.svc.cluster.local
-  #   DNS:<fullname>-api.boundary.svc.cluster.local
-  #   DNS:localhost
-  # The bootstrap-admin job connects to https://<fullname>-api:<port> and verifies
-  # the cert against BOUNDARY_CACERT — if the SAN is missing, the job will time out.
+  # The TLS certificate must include the following SAN (adjust if nameOverride/fullnameOverride is set):
+  #   DNS:<fullname>-api  (e.g. boundary-controller-api)
+  # The bootstrap-admin job verifies the cert against this name — the job will time out if it is missing.
 
 # ---------------------------------------------------------------------------
 # Secret References

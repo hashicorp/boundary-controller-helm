@@ -64,15 +64,11 @@ The Secret must contain the following keys (key names are configurable via `secr
 A Kubernetes TLS Secret containing `tls.crt` and `tls.key` is also required when `tls.disabled=false` (the default). Set `tls.secretName` to match the Secret name.
 
 > **Note**
-> The TLS certificate must include SANs for every hostname the chart uses internally. The required SANs are (adjust if `nameOverride` or `fullnameOverride` is set):
+> The TLS certificate must include the following SAN (adjust if `nameOverride` or `fullnameOverride` is set):
 >
-> - `DNS:<fullname>` (for example, `boundary-controller`)
 > - `DNS:<fullname>-api` (for example, `boundary-controller-api`)
-> - `DNS:<fullname>.boundary.svc.cluster.local`
-> - `DNS:<fullname>-api.boundary.svc.cluster.local`
-> - `DNS:localhost`
 >
-> The bootstrap admin Job connects to `https://<fullname>-api:<port>` and verifies the certificate against `BOUNDARY_CACERT`. If the SAN is missing, the Job will time out.
+> The bootstrap admin Job verifies the certificate against this name — the Job will time out if it is missing.
 
 ## Step 2 — Install the Chart
 
