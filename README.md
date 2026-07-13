@@ -170,6 +170,8 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
 
 **Step 4 — Restore controllers** and clear the one-time migration flags:
 
+Set `controller.replicas` to the count you need for your deployment. The example below uses `2` because it is the chart default.
+
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
