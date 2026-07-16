@@ -9,10 +9,10 @@
 #     -f values.openshift.yaml \
 #     -f my-secrets-values.yaml
 
-# TODO: replace with official OpenShift-certified image when available.
+# Official multi-arch UBI-based enterprise image (amd64 + arm64).
 image:
-  repository: public.ecr.aws/g0u5x5a3/boundary-ent
-  tag: "0.21.0-ubi-arm64"
+  repository: public.ecr.aws/g0u5x5a3/boundary-enterprise
+  tag: "1.0.0-ent-ubi"
 
 openshift:
   enabled: true

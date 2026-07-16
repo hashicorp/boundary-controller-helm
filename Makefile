@@ -15,6 +15,7 @@ export K8S_MATRIX_VERSIONS
 .PHONY: setup-helm setup-kubeconform setup-trivy setup-kubescape setup-helm-unittest lint-helm-k8s trivy-scan kubescape-scan
 .PHONY: acceptance-setup acceptance-helm acceptance-test acceptance-full acceptance-cleanup
 .PHONY: kind-matrix-test
+.PHONY: microshift-setup microshift-helm microshift-test microshift-full microshift-cleanup
 .PHONY: eks-setup eks-apply eks-db-init-recovery eks-test eks-full eks-destroy
 .PHONY: gke-setup gke-apply gke-db-init-recovery gke-test gke-full gke-destroy
 .PHONY: aks-auth-check aks-setup aks-apply aks-db-init-recovery aks-test aks-full aks-destroy
@@ -73,6 +74,13 @@ help:
 	@echo "  make acceptance-full         - Full acceptance workflow (setup + helm + test)"
 	@echo "  make acceptance-cleanup      - Delete acceptance KIND cluster and cached KIND binaries"
 	@echo "  make kind-matrix-test        - Run controller-api-test.sh across K8s versions using KIND (requires acceptance-setup)"
+	@echo ""
+	@echo "MicroShift (OpenShift CI) targets:"
+	@echo "  make microshift-setup    - Start MicroShift AIO cluster in Docker (no external cluster needed)"
+	@echo "  make microshift-helm     - Deploy PostgreSQL + install controller chart with values.openshift.yaml"
+	@echo "  make microshift-test     - Run OpenShift acceptance smoke test against MicroShift"
+	@echo "  make microshift-full     - Full MicroShift workflow (setup + helm + test)"
+	@echo "  make microshift-cleanup  - Remove MicroShift container and clean up"
 	@echo ""
 	@echo "EKS Integration Testing targets:"
 	@echo "  make eks-setup               - Initialise Terraform for EKS integration tests"
@@ -966,3 +974,284 @@ gke-destroy:
 		echo "ℹ️  Set DESTROY_GKE_RESOURCES=true to destroy GKE resources as well"; \
 	fi
 	@echo ""
+
+# ============================================================================
+# MicroShift (OpenShift CI) Targets
+# Runs acceptance tests on a self-contained OpenShift cluster inside Docker —
+# no external OCP cluster, CRC, or OCP_SERVER/OCP_TOKEN secrets required.
+# ============================================================================
+
+microshift-setup:
+	@echo "================================"
+	@echo "Setting up MicroShift (OpenShift CI)"
+	@echo "================================"
+	@echo ""
+	@echo "Checking dependencies..."
+	@command -v docker >/dev/null 2>&1 || (echo "❌ docker is not installed"; exit 1)
+	@echo "✅ docker is installed"
+	@command -v helm >/dev/null 2>&1 || (echo "❌ Helm not found. Run 'make setup-helm' first"; exit 1)
+	@echo "✅ helm is installed"
+	@if ! command -v oc >/dev/null 2>&1; then \
+		echo "Installing oc CLI..."; \
+		curl -Lo /tmp/oc.tar.gz https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz; \
+		sudo tar -xzf /tmp/oc.tar.gz -C /usr/local/bin oc; \
+		rm -f /tmp/oc.tar.gz; \
+	fi
+	@echo "✅ oc CLI is installed ($$(oc version --client 2>/dev/null | head -n1))"
+	@echo ""
+	@echo "Creating storage loop device and LVM volume group for MicroShift (4 GB)..."
+	@sudo truncate -s 4G /tmp/microshift-disk.img
+	@LOOP=$$(sudo losetup --find --show /tmp/microshift-disk.img) && \
+		echo "$$LOOP" > /tmp/microshift-loop-device && \
+		echo "✅ Loop device: $$LOOP"
+	@sudo apt-get install -y --quiet lvm2 2>/dev/null || true
+	@LOOP_DEV=$$(cat /tmp/microshift-loop-device) && \
+		sudo pvcreate "$$LOOP_DEV" && \
+		sudo vgcreate rhel "$$LOOP_DEV" && \
+		echo "✅ LVM volume group 'rhel' created on $$LOOP_DEV"
+	@echo "Configuring iptables-legacy (required for MicroShift networking on Ubuntu)..."
+	@sudo apt-get install -y --quiet iptables 2>/dev/null || true
+	@sudo update-alternatives --set iptables /usr/sbin/iptables-legacy 2>/dev/null || true
+	@sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy 2>/dev/null || true
+	@echo "✅ iptables-legacy configured"
+	@echo ""
+	@echo "Configuring CRI-O storage driver (vfs required for overlay-on-overlay CI environments)..."
+	@printf '[storage]\ndriver = "vfs"\ngraphroot = "/var/lib/containers/storage"\nrunroot = "/run/containers/storage"\n' > /tmp/microshift-storage.conf
+	@echo "✅ CRI-O storage config created (vfs)"
+	@echo ""
+	@echo "Starting MicroShift AIO cluster (this may take 3-5 minutes)..."
+	@docker run -d \
+		--name microshift \
+		--privileged \
+		--cgroupns=host \
+		--network host \
+		--tmpfs /run \
+		--tmpfs /tmp \
+		-v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+		-v /lib/modules:/lib/modules:ro \
+		-v /tmp/microshift-storage.conf:/etc/containers/storage.conf:ro \
+		-v microshift-data:/var/lib/microshift \
+		quay.io/microshift/microshift-aio:latest
+	@echo "Waiting for MicroShift node to be Ready (up to 10 minutes)..."
+	@i=0; while [ $$i -lt 120 ]; do \
+		if docker exec microshift kubectl \
+				--kubeconfig /var/lib/microshift/resources/kubeadmin/kubeconfig \
+				get nodes --no-headers 2>/dev/null | grep -q ' Ready'; then \
+			echo "✅ MicroShift node is Ready"; break; \
+		fi; \
+		if [ $$(( $$i % 6 )) -eq 0 ]; then \
+			echo "  Container status: $$(docker inspect microshift --format '{{.State.Status}}' 2>/dev/null)"; \
+			echo "  Service status: microshift=$$(docker exec microshift systemctl is-active microshift 2>/dev/null) crio=$$(docker exec microshift systemctl is-active crio 2>/dev/null)"; \
+			docker exec microshift journalctl -u microshift --no-pager --lines=3 2>/dev/null || true; \
+		fi; \
+		echo "  waiting... ($$(( $$i * 5 ))s)"; \
+		sleep 5; i=$$(( $$i + 1 )); \
+		if [ $$i -eq 120 ]; then \
+			echo "❌ MicroShift node never became Ready after 10 minutes."; \
+			docker exec microshift journalctl -u microshift --no-pager --lines=50 2>/dev/null || true; \
+			exit 1; \
+		fi; \
+	done
+	@echo ""
+	@echo "Configuring kubeconfig..."
+	@mkdir -p ~/.kube
+	@docker cp microshift:/var/lib/microshift/resources/kubeadmin/kubeconfig ~/.kube/config
+	@echo "✅ Kubeconfig configured"
+	@echo "Waiting for CNI config file in /etc/cni/net.d/..."
+	@timeout 300 bash -c \
+		'until docker exec microshift ls /etc/cni/net.d/ 2>/dev/null | grep -qE "\.conf|\.conflist"; do sleep 5; done' \
+		|| echo "⚠️  CNI config not found; pod networking may not work"
+	@echo "✅ CNI config file present"
+	@docker exec microshift ls -la /etc/cni/net.d/ 2>/dev/null || true
+	@echo "Ensuring pod egress NAT (10.42.0.0/16 → internet)..."
+	@sudo sysctl -w net.ipv4.ip_forward=1 2>/dev/null || true
+	@# On Ubuntu 22.04, Docker uses iptables-nft which runs BEFORE iptables-legacy.
+	@# Apply rules to BOTH backends so FORWARD/MASQUERADE work for pod traffic.
+	@for ipt in iptables iptables-nft; do \
+		sudo $$ipt -t nat -C POSTROUTING -s 10.42.0.0/16 ! -d 10.42.0.0/16 -j MASQUERADE 2>/dev/null \
+			|| sudo $$ipt -t nat -I POSTROUTING 1 -s 10.42.0.0/16 ! -d 10.42.0.0/16 -j MASQUERADE 2>/dev/null \
+			|| true; \
+		sudo $$ipt -I FORWARD 1 -s 10.42.0.0/16 -j ACCEPT 2>/dev/null || true; \
+		sudo $$ipt -I FORWARD 1 -d 10.42.0.0/16 -j ACCEPT 2>/dev/null || true; \
+		sudo $$ipt -I FORWARD 1 -s 10.43.0.0/16 -j ACCEPT 2>/dev/null || true; \
+		sudo $$ipt -I FORWARD 1 -d 10.43.0.0/16 -j ACCEPT 2>/dev/null || true; \
+	done
+	@echo "✅ Pod egress NAT + FORWARD rules applied to both iptables-legacy and iptables-nft"
+	@echo "Waiting for CoreDNS pods to be Running..."
+	@timeout 180 bash -c \
+		'until docker exec microshift kubectl --kubeconfig /var/lib/microshift/resources/kubeadmin/kubeconfig \
+		get pods -n openshift-dns --no-headers 2>/dev/null | grep "dns-default" | grep -q " Running "; do sleep 5; done' \
+		|| echo "⚠️  DNS pods not yet Running; continuing"
+	@echo "✅ DNS pods ready"
+	@kubectl cluster-info || true
+	@echo "✅ MicroShift cluster is ready"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  - Install Helm chart: make microshift-helm"
+	@echo "  - Run tests:          make microshift-test"
+	@echo "  - Full workflow:      make microshift-full"
+
+microshift-helm:
+	@echo "============================================"
+	@echo "Installing Helm Chart on MicroShift (Controller)"
+	@echo "============================================"
+	@echo ""
+	@command -v helm >/dev/null 2>&1 || (echo "❌ Helm not found"; exit 1)
+	@if [ -z "$$BOUNDARY_LICENSE" ]; then \
+		echo "❌ BOUNDARY_LICENSE is not set. Add it to .env or export it."; \
+		exit 1; \
+	fi
+	@if [ -z "$$BOOTSTRAP_ADMIN_PASSWORD" ]; then \
+		echo "❌ BOOTSTRAP_ADMIN_PASSWORD is not set. Add it to .env or export it."; \
+		exit 1; \
+	fi
+	@BOOTSTRAP_ADMIN_USERNAME=$${BOOTSTRAP_ADMIN_USERNAME:-admin}; \
+	echo "Creating namespace boundary..."; \
+	kubectl create namespace boundary --dry-run=client -o yaml | kubectl apply -f -; \
+	echo "Deploying in-cluster PostgreSQL..."; \
+	kubectl apply -f tests/acceptance/postgres.yaml; \
+	echo "Waiting for PostgreSQL to be ready..."; \
+	kubectl wait --for=condition=ready pod \
+		-n boundary \
+		-l "app=postgres" \
+		--timeout=300s; \
+	echo "✅ PostgreSQL ready"; \
+	echo ""; \
+	echo "Resolving PostgreSQL pod IP (bypass ClusterIP DNAT in MicroShift)..."; \
+	PG_POD_IP=$$(kubectl get pod -n boundary -l app=postgres \
+		-o jsonpath='{.items[0].status.podIP}' 2>/dev/null || true); \
+	[ -n "$$PG_POD_IP" ] || { echo "❌ Could not get postgres pod IP"; exit 1; }; \
+	echo "✅ PostgreSQL pod IP: $$PG_POD_IP"; \
+	echo ""; \
+	echo "Creating boundary-controller-secrets Secret..."; \
+	kubectl create secret generic boundary-controller-secrets \
+		--namespace boundary \
+		--from-literal="database-url=postgresql://boundary:boundary-test-pw@$$PG_POD_IP:5432/boundary?sslmode=disable" \
+		--from-literal="license=$$BOUNDARY_LICENSE" \
+		--from-literal="admin-username=$$BOOTSTRAP_ADMIN_USERNAME" \
+		--from-literal="admin-password=$$BOOTSTRAP_ADMIN_PASSWORD" \
+		--dry-run=client -o yaml | kubectl apply -f -; \
+	echo "✅ Secret created"
+	@echo "Running database init manually (bypass Helm pre-install hook for visibility)..."
+	@kubectl delete pod boundary-db-init -n boundary --ignore-not-found 2>/dev/null || true
+	@BOUNDARY_LICENSE_VAL="$$BOUNDARY_LICENSE"; \
+	PG_POD_IP=$$(kubectl get pod -n boundary -l app=postgres \
+		-o jsonpath='{.items[0].status.podIP}' 2>/dev/null); \
+	kubectl run boundary-db-init \
+		--image=public.ecr.aws/g0u5x5a3/boundary-enterprise:1.0.0-ent-ubi \
+		--namespace=boundary \
+		--restart=Never \
+		--env="SKIP_SETCAP=1" \
+		--env="BOUNDARY_PG_URL=postgresql://boundary:boundary-test-pw@$$PG_POD_IP:5432/boundary?sslmode=disable" \
+		--env="BOUNDARY_LICENSE=$$BOUNDARY_LICENSE_VAL" \
+		--command -- sh -c \
+		'printf "disable_mlock=true\ncontroller {\n  name=\"boundary-controller\"\n  license=\"env://BOUNDARY_LICENSE\"\n  database {\n    url=\"env://BOUNDARY_PG_URL\"\n  }\n}\nkms \"aead\" {\n  purpose=\"root\"\n  aead_type=\"aes-gcm\"\n  key=\"8fZBjCUfN0TzjEGLQldGY4+iE9AkOvCfjh7+p0GtRBQ=\"\n  key_id=\"acceptance-root\"\n}\nkms \"aead\" {\n  purpose=\"worker-auth\"\n  aead_type=\"aes-gcm\"\n  key=\"GQ7m2L5rWy90P1xvR8wzWQvV54nA9M4V3x3K8Fv5YyQ=\"\n  key_id=\"acceptance-worker-auth\"\n}\nkms \"aead\" {\n  purpose=\"recovery\"\n  aead_type=\"aes-gcm\"\n  key=\"L0t7m4mP6jS2hD9Qx1bYf3nV7kR5cW8pE2uA9zN6qHs=\"\n  key_id=\"acceptance-recovery\"\n}\n" > /tmp/init.hcl && boundary database init -skip-initial-authenticated-user-role-creation -skip-auth-method-creation -skip-host-resources-creation -skip-scopes-creation -skip-target-creation -config /tmp/init.hcl'
+	@echo "Waiting for db-init pod (up to 3m)..."
+	@kubectl wait pod/boundary-db-init -n boundary \
+		--for=jsonpath='{.status.phase}'=Succeeded \
+		--timeout=180s 2>/dev/null \
+		|| (echo "--- db-init pod status ---"; \
+			kubectl get pod boundary-db-init -n boundary -o wide 2>/dev/null; \
+			echo "--- db-init pod logs ---"; \
+			kubectl logs boundary-db-init -n boundary 2>/dev/null || true; \
+			echo "❌ Database init failed"; exit 1)
+	@echo "--- db-init pod logs ---"
+	@kubectl logs boundary-db-init -n boundary 2>/dev/null || true
+	@kubectl delete pod boundary-db-init -n boundary --ignore-not-found 2>/dev/null || true
+	@echo "✅ Database initialized"
+	@echo "Pre-creating service account and granting anyuid SCC..."
+	@kubectl create serviceaccount boundary-controller -n boundary 2>/dev/null || true
+	@oc adm policy add-scc-to-user anyuid -z boundary-controller -n boundary
+	@echo "✅ anyuid SCC granted (bypasses namespace UID range restriction)"
+	@echo "Installing boundary-controller chart with OpenShift values..."
+	@helm upgrade --install boundary-controller . \
+		--namespace boundary \
+		--create-namespace \
+		-f values.openshift.yaml \
+		-f tests/acceptance/test-values.yaml \
+		--set controller.replicas=1 \
+		--set database.init.enabled=false \
+		--set bootstrapAdmin.enabled=false \
+		--set 'openshift.podSecurityContext.runAsUser=1001' \
+		--set 'openshift.containerSecurityContext.runAsUser=1001' \
+		--wait \
+		--timeout 5m
+	@echo "✅ Helm chart installed on MicroShift"
+	@echo "Waiting for controller pod to be Running and stable (up to 3m)..."
+	@timeout 180 bash -c \
+		'until kubectl get pods -n boundary -l app.kubernetes.io/name=boundary-controller \
+		--no-headers 2>/dev/null | grep -q " Running "; do sleep 3; done' \
+		|| (echo "--- All namespace events ---"; \
+		    kubectl get events -n boundary --sort-by=.lastTimestamp 2>/dev/null | tail -20 || true; \
+		    echo "--- Controller pod status ---"; \
+		    kubectl get pods -n boundary 2>/dev/null; \
+		    echo "--- Deployment describe ---"; \
+		    kubectl describe deployment boundary-controller -n boundary 2>/dev/null | tail -30 || true; \
+		    echo "--- Controller pod logs ---"; \
+		    kubectl logs -n boundary -l app.kubernetes.io/name=boundary-controller --tail=50 2>/dev/null || true; \
+		    exit 1)
+	@echo "✅ Controller pod is Running"
+	@echo ""
+	@oc get all -n boundary
+
+microshift-test:
+	@echo "================================"
+	@echo "MicroShift OpenShift Acceptance Tests"
+	@echo "================================"
+	@echo ""
+	@command -v oc >/dev/null 2>&1 || (echo "❌ oc CLI not found"; exit 1)
+	@echo "Resolving Route host for API accessibility test..."
+	@ROUTE_HOST=$$(kubectl get route boundary-controller-api-route -n boundary \
+		-o jsonpath='{.spec.host}' 2>/dev/null || true); \
+	if [ -n "$$ROUTE_HOST" ]; then \
+		grep -qF "$$ROUTE_HOST" /etc/hosts 2>/dev/null \
+			|| echo "127.0.0.1  $$ROUTE_HOST" | sudo tee -a /etc/hosts > /dev/null; \
+		echo "✅ Route host resolved: $$ROUTE_HOST → 127.0.0.1"; \
+	else \
+		echo "⚠️  Route host not found; API reachability test may warn"; \
+	fi
+	@echo "--- Controller pod logs (last 20 lines) ---"
+	@kubectl logs -n boundary -l app.kubernetes.io/name=boundary-controller --tail=20 2>/dev/null || true
+	@bash tests/acceptance/ocp-smoke-test.sh
+	@echo "✅ All MicroShift acceptance tests passed!"
+	@echo ""
+
+microshift-full:
+	@echo "================================"
+	@echo "Running Full MicroShift Acceptance Workflow"
+	@echo "================================"
+	@echo ""
+	@if docker inspect microshift >/dev/null 2>&1; then \
+		echo "⚠️  MicroShift container already exists — skipping microshift-setup"; \
+	else \
+		$(MAKE) microshift-setup; \
+	fi
+	@$(MAKE) microshift-helm
+	@$(MAKE) microshift-test
+	@echo ""
+	@echo "To cleanup, run: make microshift-cleanup"
+	@echo ""
+
+microshift-cleanup:
+	@echo "================================"
+	@echo "Cleaning up MicroShift"
+	@echo "================================"
+	@echo ""
+	@echo "Uninstalling Helm release..."
+	@helm uninstall boundary-controller --namespace boundary 2>/dev/null \
+		&& echo "✅ Helm release uninstalled" \
+		|| echo "⚠️  Helm release not found"
+	@echo "Stopping and removing MicroShift container..."
+	@docker stop microshift 2>/dev/null || true
+	@docker rm microshift 2>/dev/null || true
+	@echo "✅ MicroShift container removed"
+	@docker volume rm microshift-data 2>/dev/null || true
+	@echo "Removing loop device, LVM and disk image..."
+	@sudo vgremove -f rhel 2>/dev/null || true
+	@LOOP=$$(sudo losetup -j /tmp/microshift-disk.img 2>/dev/null | awk -F: '{print $$1}' | head -1); \
+	if [ -n "$$LOOP" ]; then \
+		sudo pvremove -f "$$LOOP" 2>/dev/null || true; \
+		sudo losetup -d "$$LOOP" 2>/dev/null || true; \
+	fi
+	@sudo rm -f /tmp/microshift-disk.img /tmp/microshift-storage.conf /tmp/microshift-loop-device
+	@echo "✅ MicroShift cleanup complete"
