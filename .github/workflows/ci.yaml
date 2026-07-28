@@ -253,15 +253,14 @@ jobs:
   # OpenShift acceptance test using MicroShift AIO — self-contained OCP cluster
   # inside Docker on the GitHub runner. No external OCP cluster, CRC, or
   # OCP_SERVER/OCP_TOKEN secrets required.
-  # Runs on every PR to main (including drafts) so OpenShift regressions are
-  # caught immediately.
   # ---------------------------------------------------------------------------
   openshift-acceptance-test:
     name: OpenShift Acceptance Test (MicroShift)
     if: |
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
-       github.base_ref == 'main')
+       github.base_ref == 'main' &&
+       github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     needs: [unit-test, security]
     env:

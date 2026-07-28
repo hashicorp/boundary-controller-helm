@@ -1019,6 +1019,7 @@ microshift-setup:
 	@printf '[storage]\ndriver = "vfs"\ngraphroot = "/var/lib/containers/storage"\nrunroot = "/run/containers/storage"\n' > /tmp/microshift-storage.conf
 	@echo "✅ CRI-O storage config created (vfs)"
 	@echo ""
+	@# Pinned to MicroShift AIO latest as of 2025-07 — update digest when upgrading
 	@echo "Starting MicroShift AIO cluster (this may take 3-5 minutes)..."
 	@docker run -d \
 		--name microshift \
@@ -1031,7 +1032,7 @@ microshift-setup:
 		-v /lib/modules:/lib/modules:ro \
 		-v /tmp/microshift-storage.conf:/etc/containers/storage.conf:ro \
 		-v microshift-data:/var/lib/microshift \
-		quay.io/microshift/microshift-aio:latest
+		quay.io/microshift/microshift-aio@sha256:e5c53f97b43a042e4bdceeccf980bcdf8630ece81cb75f8fd11d7d8564edc832
 	@echo "Waiting for MicroShift node to be Ready (up to 10 minutes)..."
 	@i=0; while [ $$i -lt 120 ]; do \
 		if docker exec microshift kubectl \

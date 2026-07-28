@@ -354,3 +354,27 @@ Validate controller config patterns that Boundary cannot resolve safely at runti
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{/*
+Resolve the pod-level security context.
+Uses OpenShift overrides when openshift.enabled=true, otherwise the standard podSecurityContext.
+*/}}
+{{- define "boundary.controller.podSecurityContext" -}}
+{{- if .Values.openshift.enabled -}}
+{{- toYaml .Values.openshift.podSecurityContext -}}
+{{- else -}}
+{{- toYaml .Values.podSecurityContext -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Resolve the container-level security context.
+Uses OpenShift overrides when openshift.enabled=true, otherwise the standard containerSecurityContext.
+*/}}
+{{- define "boundary.controller.containerSecurityContext" -}}
+{{- if .Values.openshift.enabled -}}
+{{- toYaml .Values.openshift.containerSecurityContext -}}
+{{- else -}}
+{{- toYaml .Values.containerSecurityContext -}}
+{{- end -}}
+{{- end }}

@@ -30,11 +30,7 @@ spec:
       {{- end }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       securityContext:
-        {{- if .Values.openshift.enabled }}
-        {{- toYaml .Values.openshift.podSecurityContext | nindent 8 }}
-        {{- else }}
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
-        {{- end }}
+        {{- include "boundary.controller.podSecurityContext" . | nindent 8 }}
       serviceAccountName: {{ include "boundary.controller.serviceAccountName" . }}
       restartPolicy: Never
       containers:
@@ -42,11 +38,7 @@ spec:
           image: "{{ include "boundary.controller.image" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
-            {{- if .Values.openshift.enabled }}
-            {{- toYaml .Values.openshift.containerSecurityContext | nindent 12 }}
-            {{- else }}
-            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
-            {{- end }}
+            {{- include "boundary.controller.containerSecurityContext" . | nindent 12 }}
           env:
             - name: SKIP_SETCAP
               value: "1"
