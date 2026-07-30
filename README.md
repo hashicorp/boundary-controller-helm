@@ -177,7 +177,6 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
   --version 0.1.0 \
   --namespace boundary \
   --values my-values.yaml \
-  --set controller.replicas=2 \
   --set database.migrate.enabled=false \
   --set database.repair.version="" \
   --rollback-on-failure \
