@@ -4,6 +4,14 @@ All notable changes to the Boundary Controller Helm Chart will be documented in 
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-30
+
+### Changed
+
+- Default controller image updated to `hashicorp/boundary-enterprise:1.0.1-ent`.
+
+---
+
 ## [0.1.0] - 2026-06-30
 
 ### Fixed
