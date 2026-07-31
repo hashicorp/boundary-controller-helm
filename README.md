@@ -112,7 +112,6 @@ For a standard upgrade with no schema changes:
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0 \
   --namespace boundary \
   --values my-values.yaml \
   --rollback-on-failure \
@@ -127,7 +126,6 @@ Database migration is required when upgrading to a new Boundary version that inc
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0 \
   --namespace boundary \
   --values my-values.yaml \
   --set controller.replicas=0 \
@@ -143,7 +141,6 @@ Without repair:
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0 \
   --namespace boundary \
   --values my-values.yaml \
   --set controller.replicas=0 \
@@ -156,7 +153,6 @@ With repair (use only when directed by Boundary migration failure output):
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0 \
   --namespace boundary \
   --values my-values.yaml \
   --set controller.replicas=0 \
@@ -174,7 +170,6 @@ Set `controller.replicas` to the count you need for your deployment. The example
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0 \
   --namespace boundary \
   --values my-values.yaml \
   --set database.migrate.enabled=false \
