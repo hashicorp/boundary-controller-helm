@@ -2,8 +2,6 @@
 
 All notable changes to the Boundary Controller Helm Chart will be documented in this file.
 
-## [Unreleased]
-
 ## [0.1.1] - 2026-07-30
 
 ### Changed
