@@ -267,6 +267,8 @@ jobs:
       BOUNDARY_LICENSE: ${{ secrets.BOUNDARY_LICENSE }}
       BOOTSTRAP_ADMIN_USERNAME: ${{ secrets.BOOTSTRAP_ADMIN_USERNAME }}
       BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
+      RH_REGISTRY_USER: ${{ secrets.RH_REGISTRY_USER }}
+      RH_REGISTRY_TOKEN: ${{ secrets.RH_REGISTRY_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

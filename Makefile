@@ -1133,13 +1133,41 @@ microshift-helm:
 		--from-literal="admin-password=$$BOOTSTRAP_ADMIN_PASSWORD" \
 		--dry-run=client -o yaml | kubectl apply -f -; \
 	echo "✅ Secret created"
+	@echo "Injecting Red Hat registry credentials into MicroShift CRI-O..."
+	@if [ -n "$${RH_REGISTRY_USER:-}" ] && [ -n "$${RH_REGISTRY_TOKEN:-}" ]; then \
+		AUTH_B64=$$(printf '%s:%s' "$${RH_REGISTRY_USER}" "$${RH_REGISTRY_TOKEN}" | base64 -w0); \
+		printf '{"auths":{"registry.connect.redhat.com":{"auth":"%s"}}}\n' "$${AUTH_B64}" > /tmp/rh-auth.json; \
+		docker exec microshift mkdir -p /etc/containers; \
+		docker cp /tmp/rh-auth.json microshift:/etc/containers/auth.json; \
+		rm -f /tmp/rh-auth.json; \
+		echo "✅ CRI-O auth configured for registry.connect.redhat.com"; \
+		echo "Pre-pulling boundary-enterprise image into CRI-O cache (up to 3 attempts)..."; \
+		PULL_IMAGE="registry.connect.redhat.com/hashicorp/boundary-enterprise:1.0-ent"; \
+		PULL_OK=0; \
+		for attempt in 1 2 3; do \
+			echo "  attempt $$attempt/3..."; \
+			if docker exec microshift \
+				crictl pull \
+				--creds "$${RH_REGISTRY_USER}:$${RH_REGISTRY_TOKEN}" \
+				"$$PULL_IMAGE"; then \
+				PULL_OK=1; break; \
+			fi; \
+			echo "  pull attempt $$attempt failed, retrying in 10s..."; \
+			sleep 10; \
+		done; \
+		[ "$$PULL_OK" = "1" ] \
+			&& echo "✅ Image pre-pulled into CRI-O: $$PULL_IMAGE" \
+			|| { echo "❌ crictl pull failed after 3 attempts — check RH_REGISTRY_USER/RH_REGISTRY_TOKEN"; exit 1; }; \
+	else \
+		echo "⚠️  RH_REGISTRY_USER/TOKEN not set — image pull may fail"; \
+	fi
 	@echo "Running database init manually (bypass Helm pre-install hook for visibility)..."
 	@kubectl delete pod boundary-db-init -n boundary --ignore-not-found 2>/dev/null || true
 	@BOUNDARY_LICENSE_VAL="$$BOUNDARY_LICENSE"; \
 	PG_POD_IP=$$(kubectl get pod -n boundary -l app=postgres \
 		-o jsonpath='{.items[0].status.podIP}' 2>/dev/null); \
 	kubectl run boundary-db-init \
-		--image=public.ecr.aws/g0u5x5a3/boundary-enterprise:1.0.0-ent-ubi \
+		--image=registry.connect.redhat.com/hashicorp/boundary-enterprise:1.0-ent \
 		--namespace=boundary \
 		--restart=Never \
 		--env="SKIP_SETCAP=1" \
@@ -1176,7 +1204,19 @@ microshift-helm:
 		--set 'openshift.podSecurityContext.runAsUser=1001' \
 		--set 'openshift.containerSecurityContext.runAsUser=1001' \
 		--wait \
-		--timeout 5m
+		--timeout 8m \
+		|| { \
+			echo "❌ Helm install timed out or failed. Diagnostics:"; \
+			echo "--- Pod list ---"; \
+			kubectl get pods -n boundary -o wide 2>/dev/null || true; \
+			echo "--- Pod events ---"; \
+			kubectl get events -n boundary --sort-by='.lastTimestamp' 2>/dev/null | tail -20 || true; \
+			echo "--- Pod describe ---"; \
+			kubectl describe pods -n boundary 2>/dev/null | tail -40 || true; \
+			echo "--- CRI-O journal (last 30 lines) ---"; \
+			docker exec microshift journalctl -u crio --no-pager --lines=30 2>/dev/null || true; \
+			exit 1; \
+		}
 	@echo "✅ Helm chart installed on MicroShift"
 	@echo "Waiting for controller pod to be Running and stable (up to 3m)..."
 	@timeout 180 bash -c \

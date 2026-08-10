@@ -117,6 +117,20 @@ Get the OpenShift Route name for the controller API port
 {{- end }}
 
 {{/*
+Get the OpenShift Route name for the controller cluster port
+*/}}
+{{- define "boundary.controller.route.cluster.name" -}}
+{{- printf "%s-cluster-route" (include "boundary.controller.serviceName" .) }}
+{{- end }}
+
+{{/*
+Get the OpenShift Route name for the controller ops port
+*/}}
+{{- define "boundary.controller.route.ops.name" -}}
+{{- printf "%s-ops-route" (include "boundary.controller.serviceName" .) }}
+{{- end }}
+
+{{/*
 Get the service account name for the controller
 */}}
 {{- define "boundary.controller.serviceAccountName" -}}

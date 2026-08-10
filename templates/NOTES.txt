@@ -45,6 +45,25 @@ Next steps:
    kubectl get pods -n {{ include "boundary.namespace" . }} -l app.kubernetes.io/component=controller
 {{- end }}
 
+{{- if .Values.openshift.enabled }}
+2. To get OpenShift Route hostnames:
+
+   oc get routes -n {{ include "boundary.namespace" . }}
+{{- if .Values.openshift.route.api.enabled }}
+
+   API Route:     oc get route {{ include "boundary.controller.route.api.name" . }} -n {{ include "boundary.namespace" . }} -o jsonpath='{.spec.host}'
+{{- end }}
+{{- if .Values.openshift.route.cluster.enabled }}
+   Cluster Route: oc get route {{ include "boundary.controller.route.cluster.name" . }} -n {{ include "boundary.namespace" . }} -o jsonpath='{.spec.host}'
+{{- end }}
+{{- if .Values.openshift.route.ops.enabled }}
+   Ops Route:     oc get route {{ include "boundary.controller.route.ops.name" . }} -n {{ include "boundary.namespace" . }} -o jsonpath='{.spec.host}'
+{{- end }}
+
+3. To access the Boundary UI via the API Route:
+
+   https://<API_ROUTE_HOST>
+{{- else }}
 2. To fetch external addresses on LoadBalancer Services:
 
    kubectl get svc {{ include "boundary.controller.apiServiceName" . }} -n {{ include "boundary.namespace" . }}
@@ -60,5 +79,6 @@ Next steps:
 3. To access the Boundary UI using the API Service external address:
 
    {{ if .Values.tls.disabled }}http{{ else }}https{{ end }}://<EXTERNAL_ADDRESS>:{{ .Values.controller.service.api.port }}
+{{- end }}
 
 For more information, visit https://www.boundaryproject.io/

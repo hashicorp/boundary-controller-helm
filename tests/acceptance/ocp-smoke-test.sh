@@ -128,23 +128,49 @@ SVC_TYPE=$(oc get service "${DEPLOY}-api" -n "${NAMESPACE}" \
 pass "API service type is ClusterIP"
 echo ""
 
-# ── Test 8: OpenShift Route exists ────────────────────────────────────────
-echo "Test 8: Validating OpenShift Route exists..."
-ROUTE_NAME="${DEPLOY}-api-route"
-oc get route "${ROUTE_NAME}" -n "${NAMESPACE}" >/dev/null 2>&1 \
-    || fail "Route '${ROUTE_NAME}' not found in namespace '${NAMESPACE}'"
-pass "Route '${ROUTE_NAME}' exists"
+# ── Test 8: All three OpenShift Routes exist ─────────────────────────────
+echo "Test 8: Validating all OpenShift Routes exist (api, cluster, ops)..."
 
-ROUTE_TLS=$(oc get route "${ROUTE_NAME}" -n "${NAMESPACE}" \
+# API route — edge TLS
+ROUTE_API="${DEPLOY}-api-route"
+oc get route "${ROUTE_API}" -n "${NAMESPACE}" >/dev/null 2>&1 \
+    || fail "API Route '${ROUTE_API}' not found in namespace '${NAMESPACE}'"
+pass "API Route '${ROUTE_API}' exists"
+ROUTE_API_TLS=$(oc get route "${ROUTE_API}" -n "${NAMESPACE}" \
     -o jsonpath='{.spec.tls.termination}' 2>/dev/null || true)
-[ "${ROUTE_TLS}" = "edge" ] \
-    || fail "Route TLS termination is '${ROUTE_TLS}', expected 'edge'"
-pass "Route TLS termination is 'edge'"
-
-ROUTE_HOST=$(oc get route "${ROUTE_NAME}" -n "${NAMESPACE}" \
+[ "${ROUTE_API_TLS}" = "edge" ] \
+    || fail "API Route TLS termination is '${ROUTE_API_TLS}', expected 'edge'"
+pass "API Route TLS termination is 'edge'"
+ROUTE_HOST=$(oc get route "${ROUTE_API}" -n "${NAMESPACE}" \
     -o jsonpath='{.spec.host}' 2>/dev/null || true)
-[ -n "${ROUTE_HOST}" ] || fail "Route has no host assigned"
-pass "Route host: ${ROUTE_HOST}"
+[ -n "${ROUTE_HOST}" ] || fail "API Route has no host assigned"
+pass "API Route host: ${ROUTE_HOST}"
+
+# Cluster route — passthrough TLS (required for worker→controller mTLS)
+ROUTE_CLUSTER="${DEPLOY}-cluster-route"
+oc get route "${ROUTE_CLUSTER}" -n "${NAMESPACE}" >/dev/null 2>&1 \
+    || fail "Cluster Route '${ROUTE_CLUSTER}' not found — workers outside the cluster cannot connect on port 9201"
+pass "Cluster Route '${ROUTE_CLUSTER}' exists"
+ROUTE_CLUSTER_TLS=$(oc get route "${ROUTE_CLUSTER}" -n "${NAMESPACE}" \
+    -o jsonpath='{.spec.tls.termination}' 2>/dev/null || true)
+[ "${ROUTE_CLUSTER_TLS}" = "passthrough" ] \
+    || fail "Cluster Route TLS termination is '${ROUTE_CLUSTER_TLS}', expected 'passthrough' (Boundary handles its own mTLS)"
+pass "Cluster Route TLS termination is 'passthrough'"
+CLUSTER_ROUTE_HOST=$(oc get route "${ROUTE_CLUSTER}" -n "${NAMESPACE}" \
+    -o jsonpath='{.spec.host}' 2>/dev/null || true)
+[ -n "${CLUSTER_ROUTE_HOST}" ] || fail "Cluster Route has no host assigned"
+pass "Cluster Route host: ${CLUSTER_ROUTE_HOST}"
+
+# Ops route — edge TLS (health checks)
+ROUTE_OPS="${DEPLOY}-ops-route"
+oc get route "${ROUTE_OPS}" -n "${NAMESPACE}" >/dev/null 2>&1 \
+    || fail "Ops Route '${ROUTE_OPS}' not found — health checks not reachable from outside"
+pass "Ops Route '${ROUTE_OPS}' exists"
+ROUTE_OPS_TLS=$(oc get route "${ROUTE_OPS}" -n "${NAMESPACE}" \
+    -o jsonpath='{.spec.tls.termination}' 2>/dev/null || true)
+[ "${ROUTE_OPS_TLS}" = "edge" ] \
+    || fail "Ops Route TLS termination is '${ROUTE_OPS_TLS}', expected 'edge'"
+pass "Ops Route TLS termination is 'edge'"
 echo ""
 
 # ── Test 9: Controller API reachable via Route ────────────────────────────
@@ -191,8 +217,8 @@ echo "  Deployment:      ${DEPLOY} — Available"
 echo "  Pod:             ${POD}"
 echo "  runAsUser:       ${RUN_AS_USER} (OCP-assigned)"
 echo "  API service:     ClusterIP"
-echo "  Route host:      https://${ROUTE_HOST}"
-echo "  Route TLS:       edge"
+echo "  API Route:       https://${ROUTE_HOST}  [edge TLS]"
+echo "  Cluster Route:   ${CLUSTER_ROUTE_HOST}:9201  [passthrough TLS]"
 echo "  API HTTP code:   ${API_HTTP_CODE}"
 echo "  Ops health:      OK"
 echo ""

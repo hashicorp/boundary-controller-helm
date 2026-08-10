@@ -56,6 +56,11 @@ secretRefs:
 
 controller:
   replicas: 2
+  # On OpenShift: set to the cluster Route hostname after first install so external workers
+  # can reach the controller. Get it with:
+  #   oc get route boundary-controller-cluster-route -n <namespace> -o jsonpath='{.spec.host}'
+  # Leave empty to use the internal ClusterIP service name (only works for in-cluster workers).
+  publicClusterAddr: ""
   rollingUpdate:
     maxUnavailable: 1
     maxSurge: 1
@@ -87,8 +92,11 @@ controller:
     controller {
       name = "boundary-controller"
       description = "Boundary controller running in Kubernetes"
-      public_cluster_addr = "boundary-controller-cluster.boundary.svc.cluster.local:9201"
-      license = "<your-license-here>"
+      # On OpenShift: after install, update this to the cluster Route hostname:
+      #   oc get route boundary-controller-cluster-route -n <ns> -o jsonpath='{.spec.host}'
+      # On non-OpenShift with LoadBalancer: set this to the external DNS/IP:9201.
+      public_cluster_addr = "{{ .Values.controller.publicClusterAddr | default (printf "%s:9201" (include "boundary.controller.clusterServiceName" .)) }}"
+      license = "env://BOUNDARY_LICENSE"
 
       database {
         url = "postgres://<user>:<password>@<host>:5432/<dbname>?sslmode=require"
@@ -299,6 +307,24 @@ openshift:
       tls:
         # edge terminates TLS at the OCP router; the controller API listener runs with tls_disable=true.
         # Switch to reencrypt if you configure TLS on the API listener.
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+      annotations: {}
+    cluster:
+      enabled: true
+      # Leave empty to let OpenShift auto-assign a hostname.
+      host: ""
+      tls:
+        # passthrough is required — the cluster port carries Boundary's own mTLS.
+        # The OCP router forwards raw TCP; Boundary terminates TLS itself.
+        termination: passthrough
+      annotations: {}
+    ops:
+      enabled: true
+      # Leave empty to let OpenShift auto-assign a hostname.
+      host: ""
+      tls:
+        # edge terminates TLS at the OCP router; the ops listener runs with tls_disable=true.
         termination: edge
         insecureEdgeTerminationPolicy: Redirect
       annotations: {}

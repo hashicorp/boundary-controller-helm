@@ -9,10 +9,15 @@
 #     -f values.openshift.yaml \
 #     -f my-secrets-values.yaml
 
-# Official multi-arch UBI-based enterprise image (amd64 + arm64).
 image:
-  repository: public.ecr.aws/g0u5x5a3/boundary-enterprise
-  tag: "1.0.0-ent-ubi"
+  repository: registry.connect.redhat.com/hashicorp/boundary-enterprise
+  tag: "1.0-ent"
+
+# TLS — disabled on API and Ops listeners because the OCP router (edge termination)
+# handles TLS externally. The cluster listener (9201) always uses Boundary's own mTLS
+# regardless of this setting — do not change that.
+tls:
+  disabled: true
 
 openshift:
   enabled: true
@@ -24,6 +29,23 @@ openshift:
       host: ""
       tls:
         # edge terminates TLS at the OCP router; controller API listener runs with tls_disable=true.
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+      annotations: {}
+    cluster:
+      enabled: true
+      # Leave empty to let OpenShift auto-assign a hostname.
+      host: ""
+      tls:
+        # passthrough is required — the cluster port carries Boundary's own mTLS.
+        termination: passthrough
+      annotations: {}
+    ops:
+      enabled: true
+      # Leave empty to let OpenShift auto-assign a hostname.
+      host: ""
+      tls:
+        # edge terminates TLS at the OCP router; ops listener runs with tls_disable=true.
         termination: edge
         insecureEdgeTerminationPolicy: Redirect
       annotations: {}
@@ -44,6 +66,12 @@ serviceAccount:
   automountServiceAccountToken: false
 
 controller:
+  # After install, set this to the cluster Route hostname so external workers can reach
+  # the controller on port 9201. Get the hostname with:
+  #   oc get route boundary-controller-cluster-route -n <namespace> -o jsonpath='{.spec.host}'
+  # Then upgrade:
+  #   helm upgrade boundary-controller . -f values.openshift.yaml --set controller.publicClusterAddr=<hostname>
+  publicClusterAddr: ""
   service:
     api:
       # On OpenShift the API port is exposed via the Route above; a LoadBalancer is not needed.
