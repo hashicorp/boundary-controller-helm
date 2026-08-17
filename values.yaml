@@ -278,9 +278,9 @@ terminationGracePeriodSeconds: 15
 # --------------------------------------------------
 
 # Set openshift.enabled=true when deploying on OpenShift.
-# - Forces the API Service type to ClusterIP (a Route handles external traffic instead).
-# - Drops the fixed runAsUser/runAsGroup/fsGroup so OpenShift's SCC assigns a valid UID from the namespace range.
-# - Renders a route.openshift.io/v1 Route for the controller API port.
+# - Forces all Service types to ClusterIP; Routes handle external traffic instead.
+# - Drops fixed runAsUser/runAsGroup/fsGroup so OpenShift's SCC assigns a valid UID from the namespace range.
+# - Renders a route.openshift.io/v1 Route for every listener port (api, cluster, ops).
 openshift:
   enabled: false
   # Pod security context used instead of podSecurityContext when openshift.enabled=true.
@@ -301,17 +301,18 @@ openshift:
       type: RuntimeDefault
   route:
     api:
-      enabled: true
       # Leave empty to let OpenShift auto-assign a hostname from the cluster's ingress domain.
       host: ""
       tls:
         # edge terminates TLS at the OCP router; the controller API listener runs with tls_disable=true.
-        # Switch to reencrypt if you configure TLS on the API listener.
+        # Switch to reencrypt if you configure TLS on the API listener (tls.disabled=false).
+        # When using reencrypt, set destinationCACertificate to the PEM of the CA cert
+        # that signed the pod TLS certificate so the OCP router can verify the backend.
         termination: edge
         insecureEdgeTerminationPolicy: Redirect
+        destinationCACertificate: ""
       annotations: {}
     cluster:
-      enabled: true
       # Leave empty to let OpenShift auto-assign a hostname.
       host: ""
       tls:
@@ -320,11 +321,12 @@ openshift:
         termination: passthrough
       annotations: {}
     ops:
-      enabled: true
       # Leave empty to let OpenShift auto-assign a hostname.
       host: ""
       tls:
         # edge terminates TLS at the OCP router; the ops listener runs with tls_disable=true.
+        # Switch to reencrypt + set destinationCACertificate when tls.disabled=false.
         termination: edge
         insecureEdgeTerminationPolicy: Redirect
+        destinationCACertificate: ""
       annotations: {}

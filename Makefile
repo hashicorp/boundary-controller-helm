@@ -1218,10 +1218,9 @@ microshift-helm:
 			exit 1; \
 		}
 	@echo "✅ Helm chart installed on MicroShift"
-	@echo "Waiting for controller pod to be Running and stable (up to 3m)..."
-	@timeout 180 bash -c \
-		'until kubectl get pods -n boundary -l app.kubernetes.io/name=boundary-controller \
-		--no-headers 2>/dev/null | grep -q " Running "; do sleep 3; done' \
+	@echo "Waiting for controller deployment to be Available (up to 5m)..."
+	@oc wait --for=condition=Available deployment/boundary-controller \
+		-n boundary --timeout=300s \
 		|| (echo "--- All namespace events ---"; \
 		    kubectl get events -n boundary --sort-by=.lastTimestamp 2>/dev/null | tail -20 || true; \
 		    echo "--- Controller pod status ---"; \
@@ -1231,7 +1230,14 @@ microshift-helm:
 		    echo "--- Controller pod logs ---"; \
 		    kubectl logs -n boundary -l app.kubernetes.io/name=boundary-controller --tail=50 2>/dev/null || true; \
 		    exit 1)
-	@echo "✅ Controller pod is Running"
+	@echo "✅ Controller deployment is Available"
+	@echo "Waiting for controller pod to reach Running phase (up to 2m)..."
+	@oc wait pod \
+		-n boundary \
+		-l app.kubernetes.io/name=boundary-controller \
+		--for=condition=Ready \
+		--timeout=120s
+	@echo "✅ Controller pod is Ready"
 	@echo ""
 	@oc get all -n boundary
 

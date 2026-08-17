@@ -16,21 +16,10 @@ tests:
       - hasDocuments:
           count: 0
 
-  - it: does not render api route when route.api.enabled is false (cluster+ops still render)
-    set:
-      openshift:
-        enabled: true
-        route:
-          api:
-            enabled: false
-    asserts:
-      - hasDocuments:
-          count: 2
-
   # -----------------------------------------------------------------------
   # Document count
   # -----------------------------------------------------------------------
-  - it: renders 3 routes when openshift.enabled and all routes enabled
+  - it: renders 3 routes when openshift.enabled is true
     set:
       openshift:
         enabled: true
@@ -116,7 +105,6 @@ tests:
         enabled: true
         route:
           api:
-            enabled: true
             tls:
               termination: reencrypt
               insecureEdgeTerminationPolicy: None
@@ -129,13 +117,77 @@ tests:
           path: spec.tls.insecureEdgeTerminationPolicy
           value: None
 
+  - it: api route renders destinationCACertificate when reencrypt and tls enabled
+    set:
+      tls:
+        disabled: false
+      openshift:
+        enabled: true
+        route:
+          api:
+            tls:
+              termination: reencrypt
+              destinationCACertificate: "-----BEGIN CERTIFICATE-----\nMIIFake\n-----END CERTIFICATE-----\n"
+    documentIndex: 0
+    asserts:
+      - matchRegex:
+          path: spec.tls.destinationCACertificate
+          pattern: "BEGIN CERTIFICATE"
+
+  - it: api route does not render destinationCACertificate when tls.disabled is true
+    set:
+      tls:
+        disabled: true
+      openshift:
+        enabled: true
+        route:
+          api:
+            tls:
+              termination: reencrypt
+              destinationCACertificate: "-----BEGIN CERTIFICATE-----\nMIIFake\n-----END CERTIFICATE-----\n"
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: spec.tls.destinationCACertificate
+
+  - it: api route does not render destinationCACertificate when termination is edge
+    set:
+      tls:
+        disabled: false
+      openshift:
+        enabled: true
+        route:
+          api:
+            tls:
+              termination: edge
+              destinationCACertificate: "-----BEGIN CERTIFICATE-----\nMIIFake\n-----END CERTIFICATE-----\n"
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: spec.tls.destinationCACertificate
+
+  - it: api route does not render destinationCACertificate when value is empty
+    set:
+      tls:
+        disabled: false
+      openshift:
+        enabled: true
+        route:
+          api:
+            tls:
+              termination: reencrypt
+              destinationCACertificate: ""
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: spec.tls.destinationCACertificate
+
   - it: api route renders spec.host when set
     set:
       openshift:
         enabled: true
         route:
           api:
-            enabled: true
             host: boundary.example.com
     documentIndex: 0
     asserts:
@@ -149,7 +201,6 @@ tests:
         enabled: true
         route:
           api:
-            enabled: true
             host: ""
     documentIndex: 0
     asserts:
@@ -162,7 +213,6 @@ tests:
         enabled: true
         route:
           api:
-            enabled: true
             annotations:
               haproxy.router.openshift.io/timeout: 60s
     documentIndex: 0
@@ -224,7 +274,6 @@ tests:
         enabled: true
         route:
           cluster:
-            enabled: true
             host: ""
     documentIndex: 1
     asserts:
@@ -237,24 +286,12 @@ tests:
         enabled: true
         route:
           cluster:
-            enabled: true
             host: cluster.example.com
     documentIndex: 1
     asserts:
       - equal:
           path: spec.host
           value: cluster.example.com
-
-  - it: does not render cluster route when route.cluster.enabled is false
-    set:
-      openshift:
-        enabled: true
-        route:
-          cluster:
-            enabled: false
-    asserts:
-      - hasDocuments:
-          count: 2
 
   # -----------------------------------------------------------------------
   # Ops Route (documentIndex: 2)
@@ -306,16 +343,38 @@ tests:
           path: spec.tls.insecureEdgeTerminationPolicy
           value: Redirect
 
-  - it: does not render ops route when route.ops.enabled is false
+  - it: ops route renders destinationCACertificate when reencrypt and tls enabled
     set:
+      tls:
+        disabled: false
       openshift:
         enabled: true
         route:
           ops:
-            enabled: false
+            tls:
+              termination: reencrypt
+              destinationCACertificate: "-----BEGIN CERTIFICATE-----\nMIIFake\n-----END CERTIFICATE-----\n"
+    documentIndex: 2
     asserts:
-      - hasDocuments:
-          count: 2
+      - matchRegex:
+          path: spec.tls.destinationCACertificate
+          pattern: "BEGIN CERTIFICATE"
+
+  - it: ops route does not render destinationCACertificate when tls.disabled is true
+    set:
+      tls:
+        disabled: true
+      openshift:
+        enabled: true
+        route:
+          ops:
+            tls:
+              termination: reencrypt
+              destinationCACertificate: "-----BEGIN CERTIFICATE-----\nMIIFake\n-----END CERTIFICATE-----\n"
+    documentIndex: 2
+    asserts:
+      - notExists:
+          path: spec.tls.destinationCACertificate
 
   - it: ops route renders spec.host when set
     set:
@@ -323,7 +382,6 @@ tests:
         enabled: true
         route:
           ops:
-            enabled: true
             host: ops.example.com
     documentIndex: 2
     asserts:

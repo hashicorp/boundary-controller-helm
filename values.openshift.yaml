@@ -17,23 +17,22 @@ image:
 # handles TLS externally. The cluster listener (9201) always uses Boundary's own mTLS
 # regardless of this setting — do not change that.
 tls:
-  disabled: true
+  disabled: false
 
 openshift:
   enabled: true
   route:
     api:
-      enabled: true
       # Leave empty to let OpenShift auto-assign a hostname from the cluster's
       # ingress domain (e.g. boundary-controller-api-boundary.apps.cluster.example.com).
       host: ""
       tls:
-        # edge terminates TLS at the OCP router; controller API listener runs with tls_disable=true.
-        termination: edge
+        # reencrypt: OCP router terminates external TLS, then re-encrypts to the pod (tls_disable=false).
+        # Use edge + tls_disable=true when you do NOT want TLS on the pod listener.
+        termination: reencrypt
         insecureEdgeTerminationPolicy: Redirect
       annotations: {}
     cluster:
-      enabled: true
       # Leave empty to let OpenShift auto-assign a hostname.
       host: ""
       tls:
@@ -41,12 +40,12 @@ openshift:
         termination: passthrough
       annotations: {}
     ops:
-      enabled: true
       # Leave empty to let OpenShift auto-assign a hostname.
       host: ""
       tls:
-        # edge terminates TLS at the OCP router; ops listener runs with tls_disable=true.
-        termination: edge
+        # reencrypt: OCP router terminates external TLS, then re-encrypts to the pod (tls_disable=false).
+        # Use edge + tls_disable=true when you do NOT want TLS on the pod listener.
+        termination: reencrypt
         insecureEdgeTerminationPolicy: Redirect
       annotations: {}
 
@@ -66,13 +65,18 @@ serviceAccount:
   automountServiceAccountToken: false
 
 controller:
-  # After install, set this to the cluster Route hostname so external workers can reach
-  # the controller on port 9201. Get the hostname with:
+  # After install, set publicClusterAddr to the cluster Route hostname so external workers
+  # can reach the controller on port 9201:
   #   oc get route boundary-controller-cluster-route -n <namespace> -o jsonpath='{.spec.host}'
   # Then upgrade:
   #   helm upgrade boundary-controller . -f values.openshift.yaml --set controller.publicClusterAddr=<hostname>
   publicClusterAddr: ""
   service:
     api:
-      # On OpenShift the API port is exposed via the Route above; a LoadBalancer is not needed.
+      # On OpenShift, service.yaml forces all types to ClusterIP; Routes handle external traffic.
+      # Keep this override so a plain `helm template` without openshift.enabled also renders ClusterIP.
+      type: ClusterIP
+    cluster:
+      type: ClusterIP
+    ops:
       type: ClusterIP

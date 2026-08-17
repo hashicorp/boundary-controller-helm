@@ -51,10 +51,17 @@ spec:
           SCHEME="{{ if .Values.tls.disabled }}http{{ else }}https{{ end }}"
           URL="${SCHEME}://{{ include "boundary.controller.opsServiceName" . }}.{{ include "boundary.namespace" . }}.svc.cluster.local:{{ .Values.controller.service.ops.port }}/health"
 
-          if ! wget -q -O /tmp/health.out "${URL}"; then
-            echo "Health check failed: unable to fetch ${URL}"
-            cat /tmp/health.out || true
-            exit 1
-          fi
+          echo "Waiting for ops health endpoint ${URL} (up to 60s)..."
+          i=0
+          while [ $i -lt 30 ]; do
+            if wget -q -O /tmp/health.out "${URL}" 2>/dev/null; then
+              echo "Health endpoint check passed"
+              exit 0
+            fi
+            i=$((i+1))
+            sleep 2
+          done
 
-          echo "Health endpoint check passed"
+          echo "Health check failed: unable to fetch ${URL} after 60s"
+          cat /tmp/health.out 2>/dev/null || true
+          exit 1

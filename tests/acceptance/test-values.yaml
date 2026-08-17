@@ -6,6 +6,17 @@
 tls:
   disabled: true
 
+# Route termination must match tls.disabled: when the pod listener has no TLS (tls_disable=true),
+# the OCP router must terminate TLS itself (edge). reencrypt requires a TLS-enabled pod listener.
+openshift:
+  route:
+    api:
+      tls:
+        termination: edge
+    ops:
+      tls:
+        termination: edge
+
 controller:
   replicas: 2
   config: |

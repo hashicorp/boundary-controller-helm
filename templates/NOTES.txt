@@ -1,4 +1,5 @@
 {{- $hasRepair := ne (printf "%v" (default "" .Values.database.repair.version) | trim) "" }}
+{{- $cli := ternary "oc" "kubectl" .Values.openshift.enabled }}
 Boundary controller chart has been {{ if .Release.IsInstall }}installed{{ else }}upgraded{{ end }} successfully.
 
 Release:   {{ .Release.Name }}
@@ -20,29 +21,29 @@ Next steps:
 {{- if .Release.IsInstall }}
 1. To check install-hook jobs:
 
-   kubectl get jobs -n {{ include "boundary.namespace" . }}
+   {{ $cli }} get jobs -n {{ include "boundary.namespace" . }}
 {{- if .Values.database.init.enabled }}
-   kubectl logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-init-db
+   {{ $cli }} logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-init-db
 {{- end }}
 {{- if .Values.bootstrapAdmin.enabled }}
-   kubectl logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-bootstrap-admin
+   {{ $cli }} logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-bootstrap-admin
 {{- end }}
 {{- else if and .Values.database.migrate.enabled $hasRepair }}
 1. To check pre-upgrade repair and migration hook jobs:
 
-   kubectl get jobs -n {{ include "boundary.namespace" . }}
-   kubectl logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-database-repair
-   kubectl logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-database-migration
+   {{ $cli }} get jobs -n {{ include "boundary.namespace" . }}
+   {{ $cli }} logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-database-repair
+   {{ $cli }} logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-database-migration
 {{- else if .Values.database.migrate.enabled }}
 1. To check pre-upgrade migration hook job:
 
-   kubectl get jobs -n {{ include "boundary.namespace" . }}
-   kubectl logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-database-migration
+   {{ $cli }} get jobs -n {{ include "boundary.namespace" . }}
+   {{ $cli }} logs -n {{ include "boundary.namespace" . }} job/{{ include "boundary.controller.serviceName" . }}-database-migration
 {{- else }}
 1. To verify rollout and pod status:
 
-   kubectl rollout status deployment/{{ include "boundary.controller.serviceName" . }} -n {{ include "boundary.namespace" . }}
-   kubectl get pods -n {{ include "boundary.namespace" . }} -l app.kubernetes.io/component=controller
+   {{ $cli }} rollout status deployment/{{ include "boundary.controller.serviceName" . }} -n {{ include "boundary.namespace" . }}
+   {{ $cli }} get pods -n {{ include "boundary.namespace" . }} -l app.kubernetes.io/component=controller
 {{- end }}
 
 {{- if .Values.openshift.enabled }}

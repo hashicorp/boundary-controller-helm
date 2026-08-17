@@ -1,7 +1,7 @@
 # Copyright IBM Corp. 2026
 # SPDX-License-Identifier: MPL-2.0
 
-{{- if and .Values.openshift.enabled .Values.openshift.route.api.enabled }}
+{{- if .Values.openshift.enabled }}
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
@@ -26,8 +26,12 @@ spec:
   tls:
     termination: {{ .Values.openshift.route.api.tls.termination }}
     insecureEdgeTerminationPolicy: {{ .Values.openshift.route.api.tls.insecureEdgeTerminationPolicy }}
+    {{- if and (not .Values.tls.disabled) (eq .Values.openshift.route.api.tls.termination "reencrypt") .Values.openshift.route.api.tls.destinationCACertificate }}
+    destinationCACertificate: |
+      {{- .Values.openshift.route.api.tls.destinationCACertificate | nindent 6 }}
+    {{- end }}
 {{- end }}
-{{- if and .Values.openshift.enabled .Values.openshift.route.cluster.enabled }}
+{{- if .Values.openshift.enabled }}
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
@@ -53,7 +57,7 @@ spec:
   tls:
     termination: {{ .Values.openshift.route.cluster.tls.termination }}
 {{- end }}
-{{- if and .Values.openshift.enabled .Values.openshift.route.ops.enabled }}
+{{- if .Values.openshift.enabled }}
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
@@ -79,4 +83,8 @@ spec:
   tls:
     termination: {{ .Values.openshift.route.ops.tls.termination }}
     insecureEdgeTerminationPolicy: {{ .Values.openshift.route.ops.tls.insecureEdgeTerminationPolicy }}
+    {{- if and (not .Values.tls.disabled) (eq .Values.openshift.route.ops.tls.termination "reencrypt") .Values.openshift.route.ops.tls.destinationCACertificate }}
+    destinationCACertificate: |
+      {{- .Values.openshift.route.ops.tls.destinationCACertificate | nindent 6 }}
+    {{- end }}
 {{- end }}
