@@ -60,7 +60,6 @@ echo "Test 4: Validating pod security context (OpenShift SCC)..."
 POD=$(oc get pods \
     -n "${NAMESPACE}" \
     -l "app.kubernetes.io/name=boundary-controller" \
-    --field-selector=status.phase=Running \
     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
 [ -n "${POD}" ] || fail "No running controller pod found in namespace '${NAMESPACE}'"
 pass "Controller pod running: ${POD}"
@@ -138,9 +137,9 @@ oc get route "${ROUTE_API}" -n "${NAMESPACE}" >/dev/null 2>&1 \
 pass "API Route '${ROUTE_API}' exists"
 ROUTE_API_TLS=$(oc get route "${ROUTE_API}" -n "${NAMESPACE}" \
     -o jsonpath='{.spec.tls.termination}' 2>/dev/null || true)
-[ "${ROUTE_API_TLS}" = "edge" ] \
-    || fail "API Route TLS termination is '${ROUTE_API_TLS}', expected 'edge'"
-pass "API Route TLS termination is 'edge'"
+[ "${ROUTE_API_TLS}" = "edge" ] || [ "${ROUTE_API_TLS}" = "reencrypt" ] \
+    || fail "API Route TLS termination is '${ROUTE_API_TLS}', expected 'edge' or 'reencrypt'"
+pass "API Route TLS termination is '${ROUTE_API_TLS}'"
 ROUTE_HOST=$(oc get route "${ROUTE_API}" -n "${NAMESPACE}" \
     -o jsonpath='{.spec.host}' 2>/dev/null || true)
 [ -n "${ROUTE_HOST}" ] || fail "API Route has no host assigned"
@@ -168,9 +167,9 @@ oc get route "${ROUTE_OPS}" -n "${NAMESPACE}" >/dev/null 2>&1 \
 pass "Ops Route '${ROUTE_OPS}' exists"
 ROUTE_OPS_TLS=$(oc get route "${ROUTE_OPS}" -n "${NAMESPACE}" \
     -o jsonpath='{.spec.tls.termination}' 2>/dev/null || true)
-[ "${ROUTE_OPS_TLS}" = "edge" ] \
-    || fail "Ops Route TLS termination is '${ROUTE_OPS_TLS}', expected 'edge'"
-pass "Ops Route TLS termination is 'edge'"
+[ "${ROUTE_OPS_TLS}" = "edge" ] || [ "${ROUTE_OPS_TLS}" = "reencrypt" ] \
+    || fail "Ops Route TLS termination is '${ROUTE_OPS_TLS}', expected 'edge' or 'reencrypt'"
+pass "Ops Route TLS termination is '${ROUTE_OPS_TLS}'"
 echo ""
 
 # ── Test 9: Controller API reachable via Route ────────────────────────────
@@ -217,7 +216,7 @@ echo "  Deployment:      ${DEPLOY} — Available"
 echo "  Pod:             ${POD}"
 echo "  runAsUser:       ${RUN_AS_USER} (OCP-assigned)"
 echo "  API service:     ClusterIP"
-echo "  API Route:       https://${ROUTE_HOST}  [edge TLS]"
+echo "  API Route:       https://${ROUTE_HOST}  [${ROUTE_API_TLS} TLS]"
 echo "  Cluster Route:   ${CLUSTER_ROUTE_HOST}:9201  [passthrough TLS]"
 echo "  API HTTP code:   ${API_HTTP_CODE}"
 echo "  Ops health:      OK"

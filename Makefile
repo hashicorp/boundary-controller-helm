@@ -1142,7 +1142,8 @@ microshift-helm:
 		rm -f /tmp/rh-auth.json; \
 		echo "✅ CRI-O auth configured for registry.connect.redhat.com"; \
 		echo "Pre-pulling boundary-enterprise image into CRI-O cache (up to 3 attempts)..."; \
-		PULL_IMAGE="registry.connect.redhat.com/hashicorp/boundary-enterprise:1.0-ent"; \
+		CHART_APP_VERSION=$$(grep '^appVersion:' Chart.yaml | sed 's/appVersion: *//;s/"//g'); \
+		PULL_IMAGE="registry.connect.redhat.com/hashicorp/boundary-enterprise:$${CHART_APP_VERSION}-ubi"; \
 		PULL_OK=0; \
 		for attempt in 1 2 3; do \
 			echo "  attempt $$attempt/3..."; \
@@ -1164,10 +1165,11 @@ microshift-helm:
 	@echo "Running database init manually (bypass Helm pre-install hook for visibility)..."
 	@kubectl delete pod boundary-db-init -n boundary --ignore-not-found 2>/dev/null || true
 	@BOUNDARY_LICENSE_VAL="$$BOUNDARY_LICENSE"; \
+	CHART_APP_VERSION=$$(grep '^appVersion:' Chart.yaml | sed 's/appVersion: *//;s/"//g'); \
 	PG_POD_IP=$$(kubectl get pod -n boundary -l app=postgres \
 		-o jsonpath='{.items[0].status.podIP}' 2>/dev/null); \
 	kubectl run boundary-db-init \
-		--image=registry.connect.redhat.com/hashicorp/boundary-enterprise:1.0-ent \
+		--image="registry.connect.redhat.com/hashicorp/boundary-enterprise:$${CHART_APP_VERSION}-ubi" \
 		--namespace=boundary \
 		--restart=Never \
 		--env="SKIP_SETCAP=1" \
@@ -1201,6 +1203,9 @@ microshift-helm:
 		--set controller.replicas=1 \
 		--set database.init.enabled=false \
 		--set bootstrapAdmin.enabled=false \
+		--set 'openshift.route.api.enabled=true' \
+		--set 'openshift.route.cluster.enabled=true' \
+		--set 'openshift.route.ops.enabled=true' \
 		--set 'openshift.podSecurityContext.runAsUser=1001' \
 		--set 'openshift.containerSecurityContext.runAsUser=1001' \
 		--wait \
@@ -1231,13 +1236,6 @@ microshift-helm:
 		    kubectl logs -n boundary -l app.kubernetes.io/name=boundary-controller --tail=50 2>/dev/null || true; \
 		    exit 1)
 	@echo "✅ Controller deployment is Available"
-	@echo "Waiting for controller pod to reach Running phase (up to 2m)..."
-	@oc wait pod \
-		-n boundary \
-		-l app.kubernetes.io/name=boundary-controller \
-		--for=condition=Ready \
-		--timeout=120s
-	@echo "✅ Controller pod is Ready"
 	@echo ""
 	@oc get all -n boundary
 
@@ -1247,6 +1245,13 @@ microshift-test:
 	@echo "================================"
 	@echo ""
 	@command -v oc >/dev/null 2>&1 || (echo "❌ oc CLI not found"; exit 1)
+	@echo "Waiting for controller pod to be Ready (up to 3m)..."
+	@kubectl wait pod \
+		-n boundary \
+		-l app.kubernetes.io/name=boundary-controller \
+		--for=condition=Ready \
+		--timeout=180s
+	@echo "✅ Controller pod is Ready"
 	@echo "Resolving Route host for API accessibility test..."
 	@ROUTE_HOST=$$(kubectl get route boundary-controller-api-route -n boundary \
 		-o jsonpath='{.spec.host}' 2>/dev/null || true); \
