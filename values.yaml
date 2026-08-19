@@ -264,7 +264,7 @@ terminationGracePeriodSeconds: 15
 # ---------------------------------------------------------------------------
 
 openshift:
-  enabled: true
+  enabled: false
   podSecurityContext:
     runAsNonRoot: true
     seccompProfile:
