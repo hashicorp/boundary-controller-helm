@@ -26,7 +26,7 @@ tls:
   # When false, the TLS Secret is mounted for listeners that reference tls_cert_file/tls_key_file.
   # When true, no Secret is required.
   # Probe scheme (HTTP/HTTPS) is derived from the ops listener's tls_disable param, not this flag.
-  disabled: true
+  disabled: false
   secretName: "boundary-controller-tls"
   mountPath: "/etc/boundary/tls"
 # ---------------------------------------------------------------------------
@@ -60,7 +60,7 @@ controller:
     listener "tcp" {
       address = "0.0.0.0:9200"
       purpose = "api"
-      tls_disable   = true
+      tls_disable   = "{{ .Values.tls.disabled}}"
       tls_cert_file = "{{ .Values.tls.mountPath }}/tls.crt"
       tls_key_file  = "{{ .Values.tls.mountPath }}/tls.key"
     }
@@ -73,11 +73,12 @@ controller:
     listener "tcp" {
       address = "0.0.0.0:9203"
       purpose = "ops"
-      tls_disable   = true
+      tls_disable   = "{{ .Values.tls.disabled}}"
       tls_cert_file = "{{ .Values.tls.mountPath }}/tls.crt"
       tls_key_file  = "{{ .Values.tls.mountPath }}/tls.key"
     }
 
+    # https://developer.hashicorp.com/boundary/docs/configuration/controller
     controller {
       name = "boundary-controller"
       public_cluster_addr = "{{ (printf "%s:9201" (include "boundary.controller.clusterServiceName" .)) }}"
@@ -282,16 +283,16 @@ openshift:
       enabled: true
       host: ""
       tls:
-        termination: edge
+        termination: reencrypt
         insecureEdgeTerminationPolicy: Redirect
         destinationCACertificate: ""
       annotations: {}
     cluster:
-      enabled: false
+      enabled: true
       host: ""
       annotations: {}
     ops:
-      enabled: false
+      enabled: true
       host: ""
       tls:
         termination: edge
