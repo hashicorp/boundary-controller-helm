@@ -35,6 +35,7 @@ run_optional() {
   echo "$WARNING_MESSAGE"
 }
 
+export BOUNDARY_TLS_INSECURE=true
 export BOUNDARY_RECOVERY_CONFIG=/etc/boundary/controller.hcl
 
 if [ -z "${BOUNDARY_ADMIN_USERNAME}" ] || [ -z "${BOUNDARY_ADMIN_PASSWORD}" ]; then

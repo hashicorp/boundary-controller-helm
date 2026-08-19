@@ -1,82 +1,67 @@
 # Copyright IBM Corp. 2026
 # SPDX-License-Identifier: MPL-2.0
 
-# These overrides are appropriate defaults for deploying this chart on OpenShift.
-# Usage:
-#   helm install boundary-controller . \
-#     --namespace boundary \
-#     --create-namespace \
-#     -f values.openshift.yaml \
-#     -f my-secrets-values.yaml
-
-image:
-  repository: registry.connect.redhat.com/hashicorp/boundary-enterprise
-  tag: "1.0-ent"
-
-# TLS — disabled on API and Ops listeners because the OCP router (edge termination)
-# handles TLS externally. The cluster listener (9201) always uses Boundary's own mTLS
-# regardless of this setting — do not change that.
 tls:
-  disabled: false
-
-openshift:
-  enabled: true
-  route:
-    api:
-      # Leave empty to let OpenShift auto-assign a hostname from the cluster's
-      # ingress domain (e.g. boundary-controller-api-boundary.apps.cluster.example.com).
-      host: ""
-      tls:
-        # reencrypt: OCP router terminates external TLS, then re-encrypts to the pod (tls_disable=false).
-        # Use edge + tls_disable=true when you do NOT want TLS on the pod listener.
-        termination: reencrypt
-        insecureEdgeTerminationPolicy: Redirect
-      annotations: {}
-    cluster:
-      # Leave empty to let OpenShift auto-assign a hostname.
-      host: ""
-      tls:
-        # passthrough is required — the cluster port carries Boundary's own mTLS.
-        termination: passthrough
-      annotations: {}
-    ops:
-      # Leave empty to let OpenShift auto-assign a hostname.
-      host: ""
-      tls:
-        # reencrypt: OCP router terminates external TLS, then re-encrypts to the pod (tls_disable=false).
-        # Use edge + tls_disable=true when you do NOT want TLS on the pod listener.
-        termination: reencrypt
-        insecureEdgeTerminationPolicy: Redirect
-      annotations: {}
-
-# ServiceAccount — provide an existing ServiceAccount bound to a compatible SCC.
-# After creating, grant the restricted-v2 SCC if your namespace policy requires it:
-#   oc adm policy add-scc-to-user restricted-v2 -z boundary-controller -n <namespace>
-#
-# SCC requirements for the boundary-controller pod:
-#   - runAsNonRoot: true   (OCP assigns a UID from the namespace range)
-#   - allowPrivilegeEscalation: false
-#   - readOnlyRootFilesystem: true
-#   - All capabilities dropped
-# The built-in "restricted-v2" SCC (OCP 4.11+) satisfies all of the above.
-# On OCP 4.10 and earlier, use "restricted".
-serviceAccount:
-  name: "boundary-controller"
-  automountServiceAccountToken: false
+  disabled: true
 
 controller:
-  # After install, set publicClusterAddr to the cluster Route hostname so external workers
-  # can reach the controller on port 9201:
-  #   oc get route boundary-controller-cluster-route -n <namespace> -o jsonpath='{.spec.host}'
-  # Then upgrade:
-  #   helm upgrade boundary-controller . -f values.openshift.yaml --set controller.publicClusterAddr=<hostname>
-  publicClusterAddr: ""
+  replicas: 2
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 1
   service:
     api:
-      # On OpenShift, service.yaml forces all types to ClusterIP; Routes handle external traffic.
-      # Keep this override so a plain `helm template` without openshift.enabled also renders ClusterIP.
-      type: ClusterIP
+      type: LoadBalancer
+      port: 9200
+      targetPort: 9200
+      annotations: {}
     cluster:
       type: ClusterIP
+      port: 9201
+      targetPort: 9201
+      annotations: {}
     ops:
       type: ClusterIP
+      port: 9203
+      targetPort: 9203
+      annotations: {}
+
+# ---------------------------------------------------------------------------
+# OpenShift
+# ---------------------------------------------------------------------------
+openshift:
+  enabled: true
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault
+  route:
+    api:
+      enabled: false
+      host: ""
+      tls:
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+        destinationCACertificate: ""
+      annotations: {}
+    cluster:
+      enabled: false
+      host: ""
+      annotations: {}
+    ops:
+      enabled: false
+      host: ""
+      tls:
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+        destinationCACertificate: ""
+      annotations: {}

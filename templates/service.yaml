@@ -14,7 +14,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  type: {{ if .Values.openshift.enabled }}ClusterIP{{ else }}{{ .Values.controller.service.api.type }}{{ end }}
+  type: {{ .Values.controller.service.api.type }}
   ports:
     - port: {{ .Values.controller.service.api.port }}
       targetPort: {{ .Values.controller.service.api.targetPort }}
@@ -37,7 +37,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  type: {{ if .Values.openshift.enabled }}ClusterIP{{ else }}{{ .Values.controller.service.cluster.type }}{{ end }}
+  type: {{ .Values.controller.service.cluster.type }}
   ports:
     - port: {{ .Values.controller.service.cluster.port }}
       targetPort: {{ .Values.controller.service.cluster.targetPort }}
@@ -60,7 +60,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  type: {{ if .Values.openshift.enabled }}ClusterIP{{ else }}{{ .Values.controller.service.ops.type }}{{ end }}
+  type: {{ .Values.controller.service.ops.type }}
   ports:
     - port: {{ .Values.controller.service.ops.port }}
       targetPort: {{ .Values.controller.service.ops.targetPort }}

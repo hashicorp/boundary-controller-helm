@@ -4,6 +4,7 @@
 nameOverride: ""
 fullnameOverride: ""
 # Overrides the namespace for all resources. Leave empty to use the Helm release namespace.
+# Set only for GitOps tools (e.g. ArgoCD) that track the release in a separate namespace.
 namespace: ""
 
 # ---------------------------------------------------------------------------
@@ -11,8 +12,7 @@ namespace: ""
 # ---------------------------------------------------------------------------
 
 image:
-  repository: hashicorp/boundary-enterprise
-  # Defaults to Chart.appVersion when empty.
+  repository: ""
   tag: ""
   pullPolicy: IfNotPresent
 
@@ -26,13 +26,9 @@ tls:
   # When false, the TLS Secret is mounted for listeners that reference tls_cert_file/tls_key_file.
   # When true, no Secret is required.
   # Probe scheme (HTTP/HTTPS) is derived from the ops listener's tls_disable param, not this flag.
-  disabled: false
+  disabled: true
   secretName: "boundary-controller-tls"
   mountPath: "/etc/boundary/tls"
-  # The TLS certificate must include the following SAN (adjust if nameOverride/fullnameOverride is set):
-  #   DNS:<fullname>-api  (e.g. boundary-controller-api)
-  # The bootstrap-admin job verifies the cert against this name — the job will time out if it is missing.
-
 # ---------------------------------------------------------------------------
 # Secret References
 # ---------------------------------------------------------------------------
@@ -40,11 +36,9 @@ tls:
 secretRefs:
   secretName: "boundary-controller-secrets"
   # When true, validates the Secret exists with all required keys at render time.
-  # Set to false for offline rendering (helm template without cluster access).
   validateExisting: false
   keys:
     databaseUrl: "database-url"
-    # Required only when env://BOUNDARY_PG_MIGRATION_URL is referenced in controller.config.
     migrationUrl: "migration-url"
     license: "license"
     adminUsername: "admin-username"
@@ -56,11 +50,6 @@ secretRefs:
 
 controller:
   replicas: 2
-  # On OpenShift: set to the cluster Route hostname after first install so external workers
-  # can reach the controller. Get it with:
-  #   oc get route boundary-controller-cluster-route -n <namespace> -o jsonpath='{.spec.host}'
-  # Leave empty to use the internal ClusterIP service name (only works for in-cluster workers).
-  publicClusterAddr: ""
   rollingUpdate:
     maxUnavailable: 1
     maxSurge: 1
@@ -71,9 +60,9 @@ controller:
     listener "tcp" {
       address = "0.0.0.0:9200"
       purpose = "api"
-      tls_disable   = false
-      tls_cert_file = "/etc/boundary/tls/tls.crt"
-      tls_key_file  = "/etc/boundary/tls/tls.key"
+      tls_disable   = true
+      tls_cert_file = "{{ .Values.tls.mountPath }}/tls.crt"
+      tls_key_file  = "{{ .Values.tls.mountPath }}/tls.key"
     }
 
     listener "tcp" {
@@ -84,23 +73,21 @@ controller:
     listener "tcp" {
       address = "0.0.0.0:9203"
       purpose = "ops"
-      tls_disable   = false
-      tls_cert_file = "/etc/boundary/tls/tls.crt"
-      tls_key_file  = "/etc/boundary/tls/tls.key"
+      tls_disable   = true
+      tls_cert_file = "{{ .Values.tls.mountPath }}/tls.crt"
+      tls_key_file  = "{{ .Values.tls.mountPath }}/tls.key"
     }
 
     controller {
       name = "boundary-controller"
-      description = "Boundary controller running in Kubernetes"
-      # On OpenShift: after install, update this to the cluster Route hostname:
-      #   oc get route boundary-controller-cluster-route -n <ns> -o jsonpath='{.spec.host}'
-      # On non-OpenShift with LoadBalancer: set this to the external DNS/IP:9201.
-      public_cluster_addr = "{{ .Values.controller.publicClusterAddr | default (printf "%s:9201" (include "boundary.controller.clusterServiceName" .)) }}"
+      public_cluster_addr = "{{ (printf "%s:9201" (include "boundary.controller.clusterServiceName" .)) }}"
       license = "env://BOUNDARY_LICENSE"
 
       database {
-        url = "postgres://<user>:<password>@<host>:5432/<dbname>?sslmode=require"
+        url = "env://BOUNDARY_PG_URL"
       }
+
+      graceful_shutdown_wait_duration = "10s"
     }
 
     # AEAD is for development and testing only — keys are stored in plaintext.
@@ -172,14 +159,13 @@ controller:
       port: 9200
       targetPort: 9200
       annotations: {}
-    # Cluster listener — internal worker registration. Use LoadBalancer only
-    # if workers run outside the cluster network.
+    # Cluster listener — internal worker registration.
     cluster:
       type: ClusterIP
       port: 9201
       targetPort: 9201
       annotations: {}
-    # Ops listener — health checks and metrics. Not exposed externally.
+    # Ops listener — health checks and metrics.
     ops:
       type: ClusterIP
       port: 9203
@@ -192,8 +178,7 @@ controller:
 
 database:
   init:
-    # Enable on first install only.
-    enabled: false
+    enabled: true
   migrate:
     # Enable as a one-time flag during upgrades.
     enabled: false
@@ -213,7 +198,7 @@ database:
 # ---------------------------------------------------------------------------
 
 bootstrapAdmin:
-  enabled: false
+  enabled: true
   runOnUpgrade: false
   waitTimeoutSeconds: 120
   authMethodName: "bootstrap-auth-method"
@@ -259,9 +244,9 @@ extraEnv: []
 # ServiceAccount
 # ---------------------------------------------------------------------------
 
-# The chart does not create a ServiceAccount. Reference an existing one.
+# The chart does not create a ServiceAccount. 
+# Use a dedicated ServiceAccount in production instead of the default.
 serviceAccount:
-  # Use a dedicated ServiceAccount in production instead of the default.
   name: "default"
   automountServiceAccountToken: false
 
@@ -273,23 +258,16 @@ podDisruptionBudget:
 # Must exceed graceful_shutdown_wait_duration in controller.config (default 10s).
 terminationGracePeriodSeconds: 15
 
-# --------------------------------------------------
+# ---------------------------------------------------------------------------
 # OpenShift
-# --------------------------------------------------
+# ---------------------------------------------------------------------------
 
-# Set openshift.enabled=true when deploying on OpenShift.
-# - Forces all Service types to ClusterIP; Routes handle external traffic instead.
-# - Drops fixed runAsUser/runAsGroup/fsGroup so OpenShift's SCC assigns a valid UID from the namespace range.
-# - Renders a route.openshift.io/v1 Route for every listener port (api, cluster, ops).
 openshift:
-  enabled: false
-  # Pod security context used instead of podSecurityContext when openshift.enabled=true.
-  # runAsUser/runAsGroup/fsGroup are intentionally absent so the namespace SCC assigns them.
+  enabled: true
   podSecurityContext:
     runAsNonRoot: true
     seccompProfile:
       type: RuntimeDefault
-  # Container security context used instead of containerSecurityContext when openshift.enabled=true.
   containerSecurityContext:
     runAsNonRoot: true
     allowPrivilegeEscalation: false
@@ -301,31 +279,21 @@ openshift:
       type: RuntimeDefault
   route:
     api:
-      # Leave empty to let OpenShift auto-assign a hostname from the cluster's ingress domain.
+      enabled: true
       host: ""
       tls:
-        # edge terminates TLS at the OCP router; the controller API listener runs with tls_disable=true.
-        # Switch to reencrypt if you configure TLS on the API listener (tls.disabled=false).
-        # When using reencrypt, set destinationCACertificate to the PEM of the CA cert
-        # that signed the pod TLS certificate so the OCP router can verify the backend.
         termination: edge
         insecureEdgeTerminationPolicy: Redirect
         destinationCACertificate: ""
       annotations: {}
     cluster:
-      # Leave empty to let OpenShift auto-assign a hostname.
+      enabled: false
       host: ""
-      tls:
-        # passthrough is required — the cluster port carries Boundary's own mTLS.
-        # The OCP router forwards raw TCP; Boundary terminates TLS itself.
-        termination: passthrough
       annotations: {}
     ops:
-      # Leave empty to let OpenShift auto-assign a hostname.
+      enabled: false
       host: ""
       tls:
-        # edge terminates TLS at the OCP router; the ops listener runs with tls_disable=true.
-        # Switch to reencrypt + set destinationCACertificate when tls.disabled=false.
         termination: edge
         insecureEdgeTerminationPolicy: Redirect
         destinationCACertificate: ""

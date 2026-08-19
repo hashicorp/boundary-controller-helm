@@ -16,8 +16,7 @@
       "type": "object",
       "properties": {
         "repository": {
-          "type": "string",
-          "minLength": 1
+          "type": "string"
         },
         "tag": {
           "type": "string"

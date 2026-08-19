@@ -1,7 +1,7 @@
 # Copyright IBM Corp. 2026
 # SPDX-License-Identifier: MPL-2.0
 
-{{- if .Values.openshift.enabled }}
+{{- if and .Values.openshift.enabled .Values.openshift.route.api.enabled }}
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
@@ -31,7 +31,8 @@ spec:
       {{- .Values.openshift.route.api.tls.destinationCACertificate | nindent 6 }}
     {{- end }}
 {{- end }}
-{{- if .Values.openshift.enabled }}
+
+{{- if and .Values.openshift.enabled .Values.openshift.route.cluster.enabled }}
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
@@ -55,9 +56,12 @@ spec:
   port:
     targetPort: cluster
   tls:
-    termination: {{ .Values.openshift.route.cluster.tls.termination }}
+    # passthrough is hardcoded — the cluster port carries Boundary's own mTLS over raw TCP.
+    # edge/reencrypt would break worker-controller communication.
+    termination: passthrough
 {{- end }}
-{{- if .Values.openshift.enabled }}
+
+{{- if and .Values.openshift.enabled .Values.openshift.route.ops.enabled }}
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
