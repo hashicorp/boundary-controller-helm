@@ -295,7 +295,7 @@ openshift:
       enabled: true
       host: ""
       tls:
-        termination: edge
+        termination: reencrypt
         insecureEdgeTerminationPolicy: Redirect
         destinationCACertificate: ""
       annotations: {}

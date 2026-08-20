@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 tls:
-  disabled: true
+  disabled: false
 
 controller:
   replicas: 2
@@ -49,7 +49,7 @@ openshift:
       enabled: false
       host: ""
       tls:
-        termination: edge
+        termination: reencrypt
         insecureEdgeTerminationPolicy: Redirect
         destinationCACertificate: ""
       annotations: {}
@@ -61,7 +61,7 @@ openshift:
       enabled: false
       host: ""
       tls:
-        termination: edge
+        termination: reencrypt
         insecureEdgeTerminationPolicy: Redirect
         destinationCACertificate: ""
       annotations: {}

@@ -330,7 +330,7 @@ tests:
           path: spec.port.targetPort
           value: ops
 
-  - it: ops route has default edge TLS termination and Redirect policy
+  - it: ops route has default reencrypt TLS termination and Redirect policy
     set:
       openshift:
         enabled: true
@@ -338,7 +338,7 @@ tests:
     asserts:
       - equal:
           path: spec.tls.termination
-          value: edge
+          value: reencrypt
       - equal:
           path: spec.tls.insecureEdgeTerminationPolicy
           value: Redirect

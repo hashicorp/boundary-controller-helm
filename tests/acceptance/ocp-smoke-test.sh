@@ -196,7 +196,8 @@ trap 'kill "${PF_OPS_PID}" 2>/dev/null || true' EXIT
 
 OPS_STATUS=""
 for i in $(seq 1 20); do
-    if curl -sf --max-time 1 http://localhost:19203/health >/dev/null 2>&1; then
+    if curl -sf --max-time 1 http://localhost:19203/health >/dev/null 2>&1 || \
+       curl -sfk --max-time 1 https://localhost:19203/health >/dev/null 2>&1; then
         OPS_STATUS="ok"
         break
     fi
