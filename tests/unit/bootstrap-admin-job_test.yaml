@@ -46,7 +46,7 @@ tests:
           path: spec.template.spec.containers[0].env
           content:
             name: BOUNDARY_ADDR
-            value: http://boundary-controller-api:9200
+            value: https://boundary-controller-api:9200
       - equal:
           path: spec.template.spec.volumes[0].configMap.name
           value: boundary-controller-bootstrap-hook-config
@@ -134,33 +134,37 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
-  - it: renders HTTPS boundary address and cacert when TLS is enabled
+  - it: renders HTTPS boundary address without a CA dependency when TLS is enabled
     set:
       tls:
-        disabled: false
+        api:
+          disabled: false
     asserts:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
             name: BOUNDARY_ADDR
             value: https://boundary-controller-api:9200
-      - contains:
+      - notContains:
           path: spec.template.spec.containers[0].env
           content:
             name: BOUNDARY_CACERT
-            value: /etc/boundary/tls/tls.crt
-  - it: renders custom TLS mountPath in bootstrap job when TLS is enabled
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tls-certs
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: tls-certs
+  - it: does not mount TLS certificates in bootstrap job when TLS is enabled
     set:
       tls:
-        disabled: false
+        api:
+          disabled: false
         mountPath: /custom/tls
     asserts:
-      - contains:
-          path: spec.template.spec.containers[0].env
-          content:
-            name: BOUNDARY_CACERT
-            value: /custom/tls/tls.crt
-      - contains:
+      - notContains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
             name: tls-certs

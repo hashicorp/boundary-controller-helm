@@ -12,7 +12,10 @@ tests:
   - it: passes validation when TLS is enabled and config paths match tls.mountPath
     set:
       tls:
-        disabled: false
+        api:
+          disabled: false
+        ops:
+          disabled: false
         mountPath: /custom/tls
       controller:
         config: |
@@ -25,9 +28,47 @@ tests:
             tls_cert_file = "/custom/tls/tls.crt"
             tls_key_file  = "/custom/tls/tls.key"
           }
+
+          listener "tcp" {
+            address = "0.0.0.0:9203"
+            purpose = "ops"
+            tls_disable   = false
+            tls_cert_file = "/custom/tls/tls.crt"
+            tls_key_file  = "/custom/tls/tls.key"
+          }
     asserts:
       - hasDocuments:
           count: 0
+  - it: fails when controller.config has no api listener block regardless of TLS settings
+    set:
+      tls:
+        api:
+          disabled: true
+        ops:
+          disabled: true
+      controller:
+        config: |
+          disable_mlock = true
+    asserts:
+      - failedTemplate:
+          errorPattern: "missing an api listener block"
+  - it: fails when tls.ops.disabled=false but no ops listener block in config
+    set:
+      tls:
+        api:
+          disabled: true
+        ops:
+          disabled: false
+      controller:
+        config: |
+          listener "tcp" {
+            address = "0.0.0.0:9200"
+            purpose = "api"
+            tls_disable = true
+          }
+    asserts:
+      - failedTemplate:
+          errorPattern: "no ops listener block"
   - it: fails when secretRefs.validateExisting is true and referenced secret does not exist
     set:
       secretRefs:
@@ -63,7 +104,10 @@ tests:
   - it: fails when TLS is enabled but cert path does not match tls.mountPath
     set:
       tls:
-        disabled: false
+        api:
+          disabled: false
+        ops:
+          disabled: true
       controller:
         config: |
           disable_mlock = true
@@ -81,7 +125,10 @@ tests:
   - it: fails when TLS is enabled but key path does not match tls.mountPath
     set:
       tls:
-        disabled: false
+        api:
+          disabled: false
+        ops:
+          disabled: true
       controller:
         config: |
           disable_mlock = true
@@ -99,11 +146,19 @@ tests:
   - it: passes when secretRefs.secretName is set and all env refs use correct var names
     set:
       tls:
-        disabled: true
+        api:
+          disabled: true
+        ops:
+          disabled: true
       secretRefs:
         secretName: "my-secrets"
       controller:
         config: |
+          listener "tcp" {
+            address = "0.0.0.0:9200"
+            purpose = "api"
+            tls_disable = true
+          }
           database {
             url = "env://BOUNDARY_PG_URL"
           }
@@ -153,7 +208,10 @@ tests:
   - it: passes when secretRefs.secretName is set and custom env var is covered by extraEnv
     set:
       tls:
-        disabled: true
+        api:
+          disabled: true
+        ops:
+          disabled: true
       secretRefs:
         secretName: "my-secrets"
       extraEnv:
@@ -161,6 +219,11 @@ tests:
           value: "postgres://user:pass@host/db"
       controller:
         config: |
+          listener "tcp" {
+            address = "0.0.0.0:9200"
+            purpose = "api"
+            tls_disable = true
+          }
           database {
             url = "env://MY_CUSTOM_DB_URL"
           }
@@ -170,11 +233,19 @@ tests:
   - it: skips env ref validation when secretRefs.secretName is not set
     set:
       tls:
-        disabled: true
+        api:
+          disabled: true
+        ops:
+          disabled: true
       secretRefs:
         secretName: ""
       controller:
         config: |
+          listener "tcp" {
+            address = "0.0.0.0:9200"
+            purpose = "api"
+            tls_disable = true
+          }
           database {
             url = "env://WRONG_ENV_VAR"
           }

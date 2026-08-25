@@ -119,21 +119,20 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
-  - it: renders custom TLS secret in migrate job when TLS is enabled
+  - it: does not mount TLS certificates in migrate job when TLS is enabled
     set:
       database:
         migrate:
           enabled: true
       tls:
-        disabled: false
+        api:
+          disabled: false
         secretName: custom-tls-secret
     asserts:
-      - contains:
+      - notContains:
           path: spec.template.spec.volumes
           content:
             name: tls-certs
-            secret:
-              secretName: custom-tls-secret
   - it: renders migration URL env var when controller config uses env migration URL
     set:
       database:

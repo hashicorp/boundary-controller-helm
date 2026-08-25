@@ -97,12 +97,10 @@ tests:
   - it: renders TLS secret volume and HTTPS probes when TLS is enabled
     set:
       tls:
-        disabled: false
-      controller:
-        livenessProbe:
-          scheme: HTTPS
-        readinessProbe:
-          scheme: HTTPS
+        api:
+          disabled: false
+        ops:
+          disabled: false
     asserts:
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
@@ -126,45 +124,13 @@ tests:
             secret:
               secretName: boundary-controller-tls
         template: templates/deployment.yaml
-  - it: auto derives HTTPS probe scheme when TLS is enabled and probe schemes are empty
+  - it: auto derives HTTP probe scheme when tls.ops.disabled is true and probe schemes are empty
     set:
       tls:
-        disabled: false
-      controller:
-        livenessProbe:
-          scheme: ""
-        readinessProbe:
-          scheme: ""
-        config: |
-          listener "tcp" {
-            address = "0.0.0.0:9203"
-            purpose = "ops"
-            tls_disable = false
-          }
-    asserts:
-      - equal:
-          path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
-          value: HTTPS
-        template: templates/deployment.yaml
-      - equal:
-          path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
-          value: HTTPS
-        template: templates/deployment.yaml
-  - it: uses HTTP probe when ops listener has tls_disable=true and global tls.disabled=false
-    set:
-      tls:
-        disabled: false
-      controller:
-        livenessProbe:
-          scheme: ""
-        readinessProbe:
-          scheme: ""
-        config: |
-          listener "tcp" {
-            address = "0.0.0.0:9203"
-            purpose = "ops"
-            tls_disable = true
-          }
+        api:
+          disabled: false
+        ops:
+          disabled: true
     asserts:
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
@@ -174,44 +140,13 @@ tests:
           path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
           value: HTTP
         template: templates/deployment.yaml
-  - it: uses HTTPS probe when ops listener has tls_disable=false regardless of global tls.disabled
+  - it: auto derives HTTPS probe scheme when tls.ops.disabled is false and probe schemes are empty
     set:
       tls:
-        disabled: true
-      controller:
-        livenessProbe:
-          scheme: ""
-        readinessProbe:
-          scheme: ""
-        config: |
-          listener "tcp" {
-            address = "0.0.0.0:9203"
-            purpose = "ops"
-            tls_disable = false
-          }
-    asserts:
-      - equal:
-          path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
-          value: HTTPS
-        template: templates/deployment.yaml
-      - equal:
-          path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
-          value: HTTPS
-        template: templates/deployment.yaml
-  - it: uses HTTPS probe when ops listener has no tls_disable param regardless of global tls.disabled
-    set:
-      tls:
-        disabled: false
-      controller:
-        livenessProbe:
-          scheme: ""
-        readinessProbe:
-          scheme: ""
-        config: |
-          listener "tcp" {
-            address = "0.0.0.0:9203"
-            purpose = "ops"
-          }
+        api:
+          disabled: false
+        ops:
+          disabled: false
     asserts:
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
@@ -224,7 +159,10 @@ tests:
   - it: renders custom TLS mountPath and secretName when TLS is enabled
     set:
       tls:
-        disabled: false
+        api:
+          disabled: false
+        ops:
+          disabled: false
         mountPath: /custom/tls
         secretName: custom-tls-secret
     asserts:
@@ -418,15 +356,16 @@ tests:
         template: templates/deployment.yaml
   - it: renders custom liveness and readiness probe timings
     set:
+      tls:
+        ops:
+          disabled: true
       controller:
         livenessProbe:
-          scheme: HTTP
           initialDelaySeconds: 11
           periodSeconds: 12
           failureThreshold: 13
           timeoutSeconds: 14
         readinessProbe:
-          scheme: HTTP
           initialDelaySeconds: 21
           periodSeconds: 22
           failureThreshold: 23
@@ -582,10 +521,13 @@ tests:
           path: spec.template.spec.containers[0].resources.requests.memory
           value: 700Mi
         template: templates/deployment.yaml
-  - it: does not render TLS secret volume or mount when TLS is disabled
+  - it: does not render TLS secret volume or mount when both listeners have TLS disabled
     set:
       tls:
-        disabled: true
+        api:
+          disabled: true
+        ops:
+          disabled: true
     asserts:
       - notContains:
           path: spec.template.spec.containers[0].volumeMounts
@@ -596,6 +538,66 @@ tests:
           path: spec.template.spec.volumes
           content:
             name: tls-certs
+        template: templates/deployment.yaml
+  - it: mounts TLS certs and uses HTTP probe when api=HTTPS ops=HTTP
+    set:
+      tls:
+        api:
+          disabled: false
+        ops:
+          disabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
+          value: HTTP
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
+          value: HTTP
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tls-certs
+            mountPath: /etc/boundary/tls
+            readOnly: true
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tls-certs
+            secret:
+              secretName: boundary-controller-tls
+        template: templates/deployment.yaml
+  - it: mounts TLS certs and uses HTTPS probe when api=HTTP ops=HTTPS
+    set:
+      tls:
+        api:
+          disabled: true
+        ops:
+          disabled: false
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
+          value: HTTPS
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
+          value: HTTPS
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tls-certs
+            mountPath: /etc/boundary/tls
+            readOnly: true
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tls-certs
+            secret:
+              secretName: boundary-controller-tls
         template: templates/deployment.yaml
   - it: uses openshift podSecurityContext and omits runAsUser when openshift.enabled is true
     set:

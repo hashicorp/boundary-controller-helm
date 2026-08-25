@@ -144,7 +144,7 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
-  - it: renders custom TLS secret in repair job when TLS is enabled
+  - it: does not mount TLS certificates in repair job when TLS is enabled
     set:
       database:
         migrate:
@@ -152,15 +152,14 @@ tests:
         repair:
           version: "2024-01-01-01"
       tls:
-        disabled: false
+        api:
+          disabled: false
         secretName: custom-tls-secret
     asserts:
-      - contains:
+      - notContains:
           path: spec.template.spec.volumes
           content:
             name: tls-certs
-            secret:
-              secretName: custom-tls-secret
   - it: renders AEAD env vars when config uses env based AEAD keys in repair job
     set:
       database:

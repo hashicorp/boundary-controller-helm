@@ -11,11 +11,15 @@ tls:
 openshift:
   route:
     api:
+      enabled: true
       tls:
         termination: edge
     ops:
+      enabled: true
       tls:
         termination: edge
+    cluster:
+      enabled: true
 
 controller:
   replicas: 2

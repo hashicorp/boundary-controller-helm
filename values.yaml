@@ -23,10 +23,11 @@ imagePullSecrets: []
 # ---------------------------------------------------------------------------
 
 tls:
-  # When false, the TLS Secret is mounted for listeners that reference tls_cert_file/tls_key_file.
-  # When true, no Secret is required.
-  # Probe scheme (HTTP/HTTPS) is derived from the ops listener's tls_disable param, not this flag.
-  disabled: false
+  # Per-listener TLS toggle. Set independently for mixed configs (e.g. api=HTTPS, ops=HTTP).
+  api:
+    disabled: false
+  ops:
+    disabled: false
   secretName: "boundary-controller-tls"
   mountPath: "/etc/boundary/tls"
 # ---------------------------------------------------------------------------
@@ -60,7 +61,7 @@ controller:
     listener "tcp" {
       address = "0.0.0.0:9200"
       purpose = "api"
-      tls_disable   = "{{ .Values.tls.disabled}}"
+      tls_disable   = "{{ .Values.tls.api.disabled }}"
       tls_cert_file = "{{ .Values.tls.mountPath }}/tls.crt"
       tls_key_file  = "{{ .Values.tls.mountPath }}/tls.key"
     }
@@ -73,7 +74,7 @@ controller:
     listener "tcp" {
       address = "0.0.0.0:9203"
       purpose = "ops"
-      tls_disable   = "{{ .Values.tls.disabled}}"
+      tls_disable   = "{{ .Values.tls.ops.disabled }}"
       tls_cert_file = "{{ .Values.tls.mountPath }}/tls.crt"
       tls_key_file  = "{{ .Values.tls.mountPath }}/tls.key"
     }
@@ -128,18 +129,12 @@ controller:
     }
 
   livenessProbe:
-    # Probe scheme for /health on the ops listener. Auto-derived from the ops
-    # listener's tls_disable param (HTTPS unless tls_disable=true). Override only if needed.
-    scheme: ""
     initialDelaySeconds: 60
     periodSeconds: 10
     failureThreshold: 3
     timeoutSeconds: 5
 
   readinessProbe:
-    # Probe scheme for /health on the ops listener. Auto-derived from the ops
-    # listener's tls_disable param (HTTPS unless tls_disable=true). Override only if needed.
-    scheme: ""
     initialDelaySeconds: 15
     periodSeconds: 10
     failureThreshold: 3
@@ -245,7 +240,7 @@ extraEnv: []
 # ServiceAccount
 # ---------------------------------------------------------------------------
 
-# The chart does not create a ServiceAccount. 
+# The chart does not create a ServiceAccount.
 # Use a dedicated ServiceAccount in production instead of the default.
 serviceAccount:
   name: "default"

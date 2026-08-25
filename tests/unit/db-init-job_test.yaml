@@ -116,21 +116,20 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
-  - it: renders custom TLS mountPath in init job when TLS is enabled
+  - it: does not mount TLS certificates in init job when TLS is enabled
     set:
       database:
         init:
           enabled: true
       tls:
-        disabled: false
+        api:
+          disabled: false
         mountPath: /custom/tls
     asserts:
-      - contains:
+      - notContains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
             name: tls-certs
-            mountPath: /custom/tls
-            readOnly: true
   - it: renders secretRefs key remapping for database URL and license in init job
     set:
       controller:

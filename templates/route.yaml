@@ -26,7 +26,7 @@ spec:
   tls:
     termination: {{ .Values.openshift.route.api.tls.termination }}
     insecureEdgeTerminationPolicy: {{ .Values.openshift.route.api.tls.insecureEdgeTerminationPolicy }}
-    {{- if and (not .Values.tls.disabled) (eq .Values.openshift.route.api.tls.termination "reencrypt") .Values.openshift.route.api.tls.destinationCACertificate }}
+    {{- if and (not .Values.tls.api.disabled) (eq .Values.openshift.route.api.tls.termination "reencrypt") .Values.openshift.route.api.tls.destinationCACertificate }}
     destinationCACertificate: |
       {{- .Values.openshift.route.api.tls.destinationCACertificate | nindent 6 }}
     {{- end }}
@@ -87,7 +87,7 @@ spec:
   tls:
     termination: {{ .Values.openshift.route.ops.tls.termination }}
     insecureEdgeTerminationPolicy: {{ .Values.openshift.route.ops.tls.insecureEdgeTerminationPolicy }}
-    {{- if and (not .Values.tls.disabled) (eq .Values.openshift.route.ops.tls.termination "reencrypt") .Values.openshift.route.ops.tls.destinationCACertificate }}
+    {{- if and (not .Values.tls.ops.disabled) (eq .Values.openshift.route.ops.tls.termination "reencrypt") .Values.openshift.route.ops.tls.destinationCACertificate }}
     destinationCACertificate: |
       {{- .Values.openshift.route.ops.tls.destinationCACertificate | nindent 6 }}
     {{- end }}

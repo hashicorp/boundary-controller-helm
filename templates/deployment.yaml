@@ -126,7 +126,7 @@ spec:
             - name: config
               mountPath: /etc/boundary
               readOnly: true
-            {{- if not .Values.tls.disabled }}
+            {{- if not (and .Values.tls.api.disabled .Values.tls.ops.disabled) }}
             - name: tls-certs
               mountPath: {{ .Values.tls.mountPath }}
               readOnly: true
@@ -139,7 +139,7 @@ spec:
         - name: config
           configMap:
             name: {{ include "boundary.controller.configMapName" . }}
-        {{- if not .Values.tls.disabled }}
+        {{- if not (and .Values.tls.api.disabled .Values.tls.ops.disabled) }}
         - name: tls-certs
           secret:
             secretName: {{ .Values.tls.secretName }}

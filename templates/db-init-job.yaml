@@ -92,11 +92,6 @@ spec:
             - name: config
               mountPath: /etc/boundary
               readOnly: true
-            {{- if not .Values.tls.disabled  }}
-            - name: tls-certs
-              mountPath: {{ .Values.tls.mountPath }}
-              readOnly: true
-            {{- end }}
             - name: tmp
               mountPath: /tmp
             - name: boundary-data
@@ -105,11 +100,6 @@ spec:
         - name: config
           configMap:
             name: {{ include "boundary.controller.serviceName" . }}-hook-config
-        {{- if not .Values.tls.disabled }}
-        - name: tls-certs
-          secret:
-            secretName: {{ .Values.tls.secretName }}
-        {{- end }}
         - name: tmp
           emptyDir: {}
         - name: boundary-data

@@ -120,7 +120,8 @@ tests:
   - it: api route renders destinationCACertificate when reencrypt and tls enabled
     set:
       tls:
-        disabled: false
+        api:
+          disabled: false
       openshift:
         enabled: true
         route:
@@ -134,10 +135,11 @@ tests:
           path: spec.tls.destinationCACertificate
           pattern: "BEGIN CERTIFICATE"
 
-  - it: api route does not render destinationCACertificate when tls.disabled is true
+  - it: api route does not render destinationCACertificate when tls.api.disabled is true
     set:
       tls:
-        disabled: true
+        api:
+          disabled: true
       openshift:
         enabled: true
         route:
@@ -153,7 +155,8 @@ tests:
   - it: api route does not render destinationCACertificate when termination is edge
     set:
       tls:
-        disabled: false
+        api:
+          disabled: false
       openshift:
         enabled: true
         route:
@@ -169,7 +172,8 @@ tests:
   - it: api route does not render destinationCACertificate when value is empty
     set:
       tls:
-        disabled: false
+        api:
+          disabled: false
       openshift:
         enabled: true
         route:
@@ -346,7 +350,8 @@ tests:
   - it: ops route renders destinationCACertificate when reencrypt and tls enabled
     set:
       tls:
-        disabled: false
+        ops:
+          disabled: false
       openshift:
         enabled: true
         route:
@@ -360,10 +365,11 @@ tests:
           path: spec.tls.destinationCACertificate
           pattern: "BEGIN CERTIFICATE"
 
-  - it: ops route does not render destinationCACertificate when tls.disabled is true
+  - it: ops route does not render destinationCACertificate when tls.ops.disabled is true
     set:
       tls:
-        disabled: true
+        ops:
+          disabled: true
       openshift:
         enabled: true
         route:

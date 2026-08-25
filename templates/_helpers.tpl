@@ -173,47 +173,19 @@ Tag resolution:
 {{- end }}
 
 {{/*
-Determines whether the ops listener has TLS disabled, by inspecting the ops
-listener block in controller.config directly.
-
-Rules:
-  - Absent ops block                 → true  (no listener, probe scheme is moot; default HTTP)
-  - ops block with tls_disable=true  → true  (explicit opt-out)
-  - ops block with tls_disable=false → false (explicit TLS on)
-  - ops block, tls_disable absent    → false (Boundary HCL default: tls_disable=false)
-The global tls.disabled value is intentionally not used here; the probe scheme
-must reflect what the ops port actually serves, not the chart-level TLS toggle.
-*/}}
-{{- define "boundary.controller.opsListenerTlsDisabled" -}}
-{{- $configNoComments := regexReplaceAll "(?m)^\\s*#.*$" .Values.controller.config "" -}}
-{{- $opsBlock := regexFind "(?s)listener\\s+\"tcp\"\\s*\\{[^}]*purpose\\s*=\\s*\"ops\"[^}]*\\}" $configNoComments -}}
-{{- if or (eq $opsBlock "") (regexMatch "tls_disable\\s*=\\s*true" $opsBlock) -}}
-true
-{{- else -}}
-false
-{{- end -}}
-{{- end }}
-
-{{/*
 Resolves the HTTP probe scheme (HTTP or HTTPS) for liveness and readiness probes.
 
 Priority order:
   1. controller.livenessProbe.scheme / controller.readinessProbe.scheme is set
      explicitly to "HTTP" or "HTTPS" → use that value as-is.
-  2. Otherwise, delegate to boundary.controller.opsListenerTlsDisabled, which
-     reads tls_disable directly from the ops listener block in controller.config.
-
-Examples:
-  - ops: tls_disable=false          → HTTPS
-  - ops: tls_disable=true           → HTTP
-  - ops: no tls_disable param        → HTTPS (Boundary default: tls_disable=false)
+  2. Otherwise, derived from tls.ops.disabled: true → HTTP, false → HTTPS.
 */}}
 {{- define "boundary.controller.probeScheme" -}}
 {{- $root := .root -}}
 {{- $explicit := upper (trim (default "" .explicitScheme)) -}}
 {{- if or (eq $explicit "HTTP") (eq $explicit "HTTPS") -}}
 {{- $explicit -}}
-{{- else if eq (include "boundary.controller.opsListenerTlsDisabled" $root | trim) "true" -}}
+{{- else if $root.Values.tls.ops.disabled -}}
 HTTP
 {{- else -}}
 HTTPS
@@ -385,15 +357,51 @@ Validate controller config patterns that Boundary cannot resolve safely at runti
 {{- if regexMatch "key\\s*=\\s*\"env://BOUNDARY_KMS_(ROOT|WORKER_AUTH|RECOVERY)\"" $configNoComments }}
 {{- fail "controller.config uses env://BOUNDARY_KMS_* inside AEAD kms blocks. Boundary AEAD keys do not support env:// indirection. Use an external KMS stanza (recommended for production) or inline AEAD keys only for dev/testing." }}
 {{- end }}
-{{- if not .Values.tls.disabled }}
+{{- $apiBlock := regexFind "(?s)listener\\s+\"tcp\"\\s*\\{[^}]*purpose\\s*=\\s*\"api\"[^}]*\\}" $configNoComments -}}
+{{- $opsBlock := regexFind "(?s)listener\\s+\"tcp\"\\s*\\{[^}]*purpose\\s*=\\s*\"ops\"[^}]*\\}" $configNoComments -}}
+{{- if eq $apiBlock "" }}
+{{- fail "controller.config is missing an api listener block. A listener with purpose=\"api\" is required." }}
+{{- end }}
+{{- if and (not .Values.tls.ops.disabled) (eq $opsBlock "") }}
+{{- fail "tls.ops.disabled=false but controller.config has no ops listener block. Add a listener with purpose=\"ops\" or set tls.ops.disabled=true." }}
+{{- end }}
+{{- if not .Values.tls.api.disabled }}
 {{- $expectedCertPath := regexQuoteMeta (printf "%s/tls.crt" .Values.tls.mountPath) -}}
 {{- $expectedKeyPath := regexQuoteMeta (printf "%s/tls.key" .Values.tls.mountPath) -}}
-{{- if not (regexMatch (printf "tls_cert_file\\s*=\\s*[\"']%s[\"']" $expectedCertPath) $configNoComments) }}
-{{- fail (printf "tls.disabled=false but controller.config is missing expected cert path %q. Keep listener tls_cert_file aligned with tls.mountPath." (printf "%s/tls.crt" .Values.tls.mountPath)) }}
+{{- if not (regexMatch (printf "tls_cert_file\\s*=\\s*[\"']%s[\"']" $expectedCertPath) $apiBlock) }}
+{{- fail (printf "tls.api.disabled=false but the api listener in controller.config is missing expected cert path %q. Keep tls_cert_file aligned with tls.mountPath." (printf "%s/tls.crt" .Values.tls.mountPath)) }}
 {{- end }}
-{{- if not (regexMatch (printf "tls_key_file\\s*=\\s*[\"']%s[\"']" $expectedKeyPath) $configNoComments) }}
-{{- fail (printf "tls.disabled=false but controller.config is missing expected key path %q. Keep listener tls_key_file aligned with tls.mountPath." (printf "%s/tls.key" .Values.tls.mountPath)) }}
+{{- if not (regexMatch (printf "tls_key_file\\s*=\\s*[\"']%s[\"']" $expectedKeyPath) $apiBlock) }}
+{{- fail (printf "tls.api.disabled=false but the api listener in controller.config is missing expected key path %q. Keep tls_key_file aligned with tls.mountPath." (printf "%s/tls.key" .Values.tls.mountPath)) }}
 {{- end }}
+{{- end }}
+{{- if not .Values.tls.ops.disabled }}
+{{- $expectedCertPath := regexQuoteMeta (printf "%s/tls.crt" .Values.tls.mountPath) -}}
+{{- $expectedKeyPath := regexQuoteMeta (printf "%s/tls.key" .Values.tls.mountPath) -}}
+{{- if not (regexMatch (printf "tls_cert_file\\s*=\\s*[\"']%s[\"']" $expectedCertPath) $opsBlock) }}
+{{- fail (printf "tls.ops.disabled=false but the ops listener in controller.config is missing expected cert path %q. Keep tls_cert_file aligned with tls.mountPath." (printf "%s/tls.crt" .Values.tls.mountPath)) }}
+{{- end }}
+{{- if not (regexMatch (printf "tls_key_file\\s*=\\s*[\"']%s[\"']" $expectedKeyPath) $opsBlock) }}
+{{- fail (printf "tls.ops.disabled=false but the ops listener in controller.config is missing expected key path %q. Keep tls_key_file aligned with tls.mountPath." (printf "%s/tls.key" .Values.tls.mountPath)) }}
+{{- end }}
+{{- end }}
+{{- if and .Values.tls.api.disabled (not (regexMatch "tls_disable\\s*=\\s*[\"']?true[\"']?" $apiBlock)) }}
+{{- fail "tls.api.disabled=true but the api listener in controller.config is missing tls_disable=true. Add tls_disable=true to the api listener." }}
+{{- end }}
+{{- if and (regexMatch "tls_disable\\s*=\\s*[\"']?true[\"']?" $apiBlock) (not .Values.tls.api.disabled) }}
+{{- fail "controller.config api listener has tls_disable=true but tls.api.disabled=false. Set tls.api.disabled=true or remove tls_disable from the api listener." }}
+{{- end }}
+{{- if and (regexMatch "tls_disable\\s*=\\s*[\"']?false[\"']?" $apiBlock) .Values.tls.api.disabled }}
+{{- fail "controller.config api listener has tls_disable=false but tls.api.disabled=true. Set tls.api.disabled=false or set tls_disable=true in the api listener." }}
+{{- end }}
+{{- if and (ne $opsBlock "") .Values.tls.ops.disabled (not (regexMatch "tls_disable\\s*=\\s*[\"']?true[\"']?" $opsBlock)) }}
+{{- fail "tls.ops.disabled=true but the ops listener in controller.config is missing tls_disable=true. Add tls_disable=true to the ops listener." }}
+{{- end }}
+{{- if and (ne $opsBlock "") (regexMatch "tls_disable\\s*=\\s*[\"']?true[\"']?" $opsBlock) (not .Values.tls.ops.disabled) }}
+{{- fail "controller.config ops listener has tls_disable=true but tls.ops.disabled=false. Set tls.ops.disabled=true or remove tls_disable from the ops listener." }}
+{{- end }}
+{{- if and (ne $opsBlock "") (regexMatch "tls_disable\\s*=\\s*[\"']?false[\"']?" $opsBlock) .Values.tls.ops.disabled }}
+{{- fail "controller.config ops listener has tls_disable=false but tls.ops.disabled=true. Set tls.ops.disabled=false or set tls_disable=true in the ops listener." }}
 {{- end }}
 {{- end }}
 
