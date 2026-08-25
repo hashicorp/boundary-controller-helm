@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: MPL-2.0
 
 tls:
-  disabled: false
+  api:
+    disabled: false
+  ops:
+    disabled: false
 
 controller:
   replicas: 2
