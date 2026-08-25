@@ -10,7 +10,7 @@ Controller:
 - API Service:      {{ include "boundary.controller.apiServiceName" . }} (port {{ .Values.controller.service.api.port }})
 - Cluster Service:  {{ include "boundary.controller.clusterServiceName" . }} (port {{ .Values.controller.service.cluster.port }})
 - Ops Service:      {{ include "boundary.controller.opsServiceName" . }} (port {{ .Values.controller.service.ops.port }})
-- TLS:              {{ if .Values.tls.disabled }}disabled{{ else }}enabled (cert from Secret "{{ .Values.tls.secretName }}"){{ end }}
+- TLS:              {{ if and .Values.tls.api.disabled .Values.tls.ops.disabled }}disabled{{ else }}enabled (cert from Secret "{{ .Values.tls.secretName }}"){{ end }}
 
 Secret:
 - Name:          {{ include "boundary.controller.secretName" . }}
@@ -79,7 +79,7 @@ Next steps:
 
 3. To access the Boundary UI using the API Service external address:
 
-   {{ if .Values.tls.disabled }}http{{ else }}https{{ end }}://<EXTERNAL_ADDRESS>:{{ .Values.controller.service.api.port }}
+   {{ if .Values.tls.api.disabled }}http{{ else }}https{{ end }}://<EXTERNAL_ADDRESS>:{{ .Values.controller.service.api.port }}
 {{- end }}
 
 For more information, visit https://www.boundaryproject.io/

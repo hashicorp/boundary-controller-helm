@@ -313,7 +313,11 @@ resource "helm_release" "boundary_controller" {
     },
     # TLS
     {
-      name  = "tls.disabled"
+      name  = "tls.api.disabled"
+      value = var.tls_disabled
+    },
+    {
+      name  = "tls.ops.disabled"
       value = var.tls_disabled
     },
     # Secret reference (the K8s secret we created above)

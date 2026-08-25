@@ -48,7 +48,7 @@ spec:
         - -ec
       args:
         - |
-          SCHEME="{{ if .Values.tls.disabled }}http{{ else }}https{{ end }}"
+          SCHEME="{{ if .Values.tls.ops.disabled }}http{{ else }}https{{ end }}"
           URL="${SCHEME}://{{ include "boundary.controller.opsServiceName" . }}.{{ include "boundary.namespace" . }}.svc.cluster.local:{{ .Values.controller.service.ops.port }}/health"
 
           echo "Waiting for ops health endpoint ${URL} (up to 60s)..."
