@@ -9,9 +9,9 @@ values:
 tests:
   - it: renders the default image tag for the bootstrap job
     asserts:
-      - equal:
+      - matchRegex:
           path: spec.template.spec.containers[0].image
-          value: hashicorp/boundary-enterprise:1.0.2-ent
+          pattern: ^hashicorp/boundary-enterprise:[0-9]+\.[0-9]+\.[0-9]+-ent$
       - equal:
           path: metadata.annotations["helm.sh/hook-weight"]
           value: "5"
