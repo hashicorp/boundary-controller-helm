@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft-07/schema#",
   "title": "HashiCorp Boundary Controller Helm Chart Values Schema",
   "type": "object",
+  "additionalProperties": false,
   "properties": {
     "nameOverride": {
       "type": "string"
@@ -14,6 +15,7 @@
     },
     "image": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "repository": {
           "type": "string"
@@ -23,29 +25,289 @@
         },
         "pullPolicy": {
           "type": "string",
-          "enum": ["Always", "IfNotPresent", "Never"]
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
         }
-      },
-      "additionalProperties": false
+      }
     },
     "imagePullSecrets": {
       "type": "array",
       "items": {
         "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
         "properties": {
           "name": {
             "type": "string",
             "minLength": 1
           }
+        }
+      }
+    },
+    "tls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "api",
+        "ops",
+        "secretName",
+        "mountPath"
+      ],
+      "properties": {
+        "api": {
+          "$ref": "#/definitions/tlsListener"
         },
-        "required": ["name"],
-        "additionalProperties": false
+        "ops": {
+          "$ref": "#/definitions/tlsListener"
+        },
+        "secretName": {
+          "type": "string"
+        },
+        "mountPath": {
+          "type": "string"
+        }
+      }
+    },
+    "secretRefs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "secretName",
+        "validateExisting",
+        "keys"
+      ],
+      "properties": {
+        "secretName": {
+          "type": "string"
+        },
+        "validateExisting": {
+          "type": "boolean"
+        },
+        "keys": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "databaseUrl",
+            "migrationUrl",
+            "license",
+            "adminUsername",
+            "adminPassword"
+          ],
+          "properties": {
+            "databaseUrl": {
+              "type": "string"
+            },
+            "migrationUrl": {
+              "type": "string"
+            },
+            "license": {
+              "type": "string"
+            },
+            "adminUsername": {
+              "type": "string"
+            },
+            "adminPassword": {
+              "type": "string"
+            },
+            "kmsRoot": {
+              "type": "string"
+            },
+            "kmsWorkerAuth": {
+              "type": "string"
+            },
+            "kmsRecovery": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "controller": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "replicas",
+        "rollingUpdate",
+        "config",
+        "livenessProbe",
+        "readinessProbe",
+        "resources",
+        "service"
+      ],
+      "properties": {
+        "replicas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rollingUpdate": {
+          "$ref": "#/definitions/rollingUpdate"
+        },
+        "config": {
+          "type": "string"
+        },
+        "livenessProbe": {
+          "$ref": "#/definitions/probe"
+        },
+        "readinessProbe": {
+          "$ref": "#/definitions/probe"
+        },
+        "resources": {
+          "$ref": "#/definitions/resourceRequirements"
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "api",
+            "cluster",
+            "ops"
+          ],
+          "properties": {
+            "api": {
+              "$ref": "#/definitions/service"
+            },
+            "cluster": {
+              "$ref": "#/definitions/service"
+            },
+            "ops": {
+              "$ref": "#/definitions/service"
+            }
+          }
+        }
+      }
+    },
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "init",
+        "migrate",
+        "resources",
+        "repair"
+      ],
+      "properties": {
+        "init": {
+          "$ref": "#/definitions/enabled"
+        },
+        "migrate": {
+          "$ref": "#/definitions/enabled"
+        },
+        "resources": {
+          "$ref": "#/definitions/resourceRequirements"
+        },
+        "repair": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "version"
+          ],
+          "properties": {
+            "version": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "bootstrapAdmin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "runOnUpgrade",
+        "waitTimeoutSeconds",
+        "authMethodName",
+        "userResourceName",
+        "accountResourceName",
+        "roleName",
+        "resources"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "runOnUpgrade": {
+          "type": "boolean"
+        },
+        "waitTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "authMethodName": {
+          "type": "string"
+        },
+        "userResourceName": {
+          "type": "string"
+        },
+        "accountResourceName": {
+          "type": "string"
+        },
+        "roleName": {
+          "type": "string"
+        },
+        "resources": {
+          "$ref": "#/definitions/resourceRequirements"
+        }
+      }
+    },
+    "podSecurityContext": {
+      "$ref": "#/definitions/securityContext"
+    },
+    "containerSecurityContext": {
+      "$ref": "#/definitions/securityContext"
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "automountServiceAccountToken"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "automountServiceAccountToken": {
+          "type": "boolean"
+        }
+      }
+    },
+    "podAnnotations": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "nodeSelector": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "affinity": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "tolerations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
       }
     },
     "extraEnv": {
       "type": "array",
       "items": {
         "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": true,
         "properties": {
           "name": {
             "type": "string",
@@ -55,27 +317,214 @@
             "type": "string"
           },
           "valueFrom": {
-            "type": "object"
+            "type": "object",
+            "additionalProperties": true
           }
-        },
-        "required": ["name"],
-        "additionalProperties": true
+        }
       }
     },
-    "serviceAccount": {
+    "podDisruptionBudget": {
       "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled"
+      ],
       "properties": {
-        "name": {
-          "type": "string"
+        "enabled": {
+          "type": "boolean"
         },
-        "automountServiceAccountToken": {
+        "minAvailable": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "maxUnavailable": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    "terminationGracePeriodSeconds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "openshift": {
+      "$ref": "#/definitions/openshift"
+    }
+  },
+  "definitions": {
+    "tlsListener": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "disabled"
+      ],
+      "properties": {
+        "disabled": {
           "type": "boolean"
         }
-      },
-      "additionalProperties": true
+      }
     },
-    "podSecurityContext": {
+    "rollingUpdate": {
       "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxUnavailable",
+        "maxSurge"
+      ],
+      "properties": {
+        "maxUnavailable": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "maxSurge": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "initialDelaySeconds",
+        "periodSeconds",
+        "failureThreshold",
+        "timeoutSeconds"
+      ],
+      "properties": {
+        "initialDelaySeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "periodSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "failureThreshold": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "scheme": {
+          "type": "string",
+          "enum": [
+            "HTTP",
+            "HTTPS"
+          ]
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "port",
+        "targetPort",
+        "annotations"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "ClusterIP",
+            "NodePort",
+            "LoadBalancer",
+            "ExternalName"
+          ]
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "targetPort": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ]
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "enabled": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "resourceRequirements": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "limits": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number"
+            ]
+          }
+        },
+        "requests": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number"
+            ]
+          }
+        }
+      }
+    },
+    "securityContext": {
+      "type": "object",
+      "additionalProperties": true,
       "properties": {
         "runAsNonRoot": {
           "type": "boolean"
@@ -94,37 +543,10 @@
         },
         "fsGroupChangePolicy": {
           "type": "string",
-          "enum": ["Always", "OnRootMismatch"]
-        },
-        "seccompProfile": {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": ["RuntimeDefault", "Localhost", "Unconfined"]
-            },
-            "localhostProfile": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": true
-        }
-      },
-      "additionalProperties": true
-    },
-    "containerSecurityContext": {
-      "type": "object",
-      "properties": {
-        "runAsNonRoot": {
-          "type": "boolean"
-        },
-        "runAsUser": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "runAsGroup": {
-          "type": "integer",
-          "minimum": 1
+          "enum": [
+            "Always",
+            "OnRootMismatch"
+          ]
         },
         "allowPrivilegeEscalation": {
           "type": "boolean"
@@ -134,253 +556,136 @@
         },
         "capabilities": {
           "type": "object",
-          "properties": {
-            "add": {
-              "type": "array",
-              "items": { "type": "string" }
-            },
-            "drop": {
-              "type": "array",
-              "items": { "type": "string" }
-            }
-          },
           "additionalProperties": true
         },
         "seccompProfile": {
           "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": ["RuntimeDefault", "Localhost", "Unconfined"]
-            },
-            "localhostProfile": {
-              "type": "string"
-            }
-          },
           "additionalProperties": true
         }
-      },
-      "additionalProperties": true
-    },
-    "podAnnotations": {
-      "type": "object"
-    },
-    "nodeSelector": {
-      "type": "object"
-    },
-    "tolerations": {
-      "type": "array"
-    },
-    "affinity": {
-      "type": "object"
-    },
-    "podDisruptionBudget": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "minAvailable": {
-          "oneOf": [
-            { "type": "integer" },
-            { "type": "string" }
-          ]
-        },
-        "maxUnavailable": {
-          "oneOf": [
-            { "type": "integer" },
-            { "type": "string" }
-          ]
-        }
-      },
-      "additionalProperties": true
-    },
-    "tls": {
-      "type": "object",
-      "properties": {
-        "api": {
-          "type": "object",
-          "properties": {
-            "disabled": { "type": "boolean" }
-          },
-          "additionalProperties": false
-        },
-        "ops": {
-          "type": "object",
-          "properties": {
-            "disabled": { "type": "boolean" }
-          },
-          "additionalProperties": false
-        },
-        "secretName": {
-          "type": "string"
-        },
-        "mountPath": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": false
-    },
-    "secretRefs": {
-      "type": "object",
-      "properties": {
-        "secretName": {
-          "type": "string"
-        },
-        "validateExisting": {
-          "type": "boolean"
-        },
-        "keys": {
-          "type": "object",
-          "properties": {
-            "databaseUrl": { "type": "string" },
-            "migrationUrl": { "type": "string" },
-            "license": { "type": "string" },
-            "adminUsername": { "type": "string" },
-            "adminPassword": { "type": "string" },
-            "kmsRoot": { "type": "string" },
-            "kmsWorkerAuth": { "type": "string" },
-            "kmsRecovery": { "type": "string" }
-          },
-          "additionalProperties": true
-        }
-      },
-      "additionalProperties": true
-    },
-    "controller": {
-      "type": "object",
-      "properties": {
-        "replicas": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "rollingUpdate": {
-          "type": "object",
-          "properties": {
-            "maxUnavailable": {},
-            "maxSurge": {}
-          },
-          "additionalProperties": true
-        },
-        "livenessProbe": {
-          "type": "object",
-          "properties": {},
-          "additionalProperties": true
-        },
-        "readinessProbe": {
-          "type": "object",
-          "properties": {},
-          "additionalProperties": true
-        },
-        "resources": {
-          "type": "object"
-        },
-        "service": {
-          "type": "object",
-          "additionalProperties": true
-        }
-      },
-      "additionalProperties": true
-    },
-    "database": {
-      "type": "object",
-      "properties": {
-        "init": {
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean"
-            }
-          },
-          "additionalProperties": true
-        },
-        "migrate": {
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean"
-            }
-          },
-          "additionalProperties": true
-        },
-        "repair": {
-          "type": "object",
-          "properties": {
-            "version": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": true
-        }
-      },
-      "additionalProperties": true
-    },
-    "bootstrapAdmin": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "runOnUpgrade": {
-          "type": "boolean"
-        },
-        "waitTimeoutSeconds": {
-          "type": "integer",
-          "minimum": 1
-        }
-      },
-      "additionalProperties": true
-    },
-    "terminationGracePeriodSeconds": {
-      "type": "integer",
-      "minimum": 1
+      }
     },
     "openshift": {
       "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "podSecurityContext",
+        "containerSecurityContext",
+        "route"
+      ],
       "properties": {
         "enabled": {
           "type": "boolean"
         },
         "podSecurityContext": {
-          "type": "object"
+          "type": "object",
+          "additionalProperties": true
         },
         "containerSecurityContext": {
-          "type": "object"
+          "type": "object",
+          "additionalProperties": true
         },
         "route": {
           "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "api",
+            "cluster",
+            "ops"
+          ],
           "properties": {
             "api": {
-              "type": "object",
-              "properties": {
-                "enabled": {
-                  "type": "boolean"
-                },
-                "host": {
-                  "type": "string"
-                },
-                "tls": {
-                  "type": "object",
-                  "properties": {
-                    "termination": {
-                      "type": "string",
-                      "enum": ["edge", "reencrypt", "passthrough"]
-                    },
-                    "insecureEdgeTerminationPolicy": {
-                      "type": "string",
-                      "enum": ["Allow", "Redirect", "None"]
-                    }
-                  }
-                },
-                "annotations": {
-                  "type": "object"
-                }
-              }
+              "$ref": "#/definitions/apiOpsRoute"
+            },
+            "cluster": {
+              "$ref": "#/definitions/clusterRoute"
+            },
+            "ops": {
+              "$ref": "#/definitions/apiOpsRoute"
             }
           }
         }
       }
+    },
+    "apiOpsRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "host",
+        "tls",
+        "annotations"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "host": {
+          "type": "string"
+        },
+        "tls": {
+          "$ref": "#/definitions/routeTls"
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "clusterRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "host",
+        "annotations"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "host": {
+          "type": "string"
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "routeTls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "termination",
+        "insecureEdgeTerminationPolicy",
+        "destinationCACertificate"
+      ],
+      "properties": {
+        "termination": {
+          "type": "string",
+          "enum": [
+            "edge",
+            "reencrypt",
+            "passthrough"
+          ]
+        },
+        "insecureEdgeTerminationPolicy": {
+          "type": "string",
+          "enum": [
+            "Allow",
+            "Redirect",
+            "None"
+          ]
+        },
+        "destinationCACertificate": {
+          "type": "string"
+        }
+      }
     }
-  },
-  "additionalProperties": true
+  }
 }
