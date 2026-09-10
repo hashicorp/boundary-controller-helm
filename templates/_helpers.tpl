@@ -131,13 +131,6 @@ Get the OpenShift Route name for the controller ops port
 {{- end }}
 
 {{/*
-Get the service account name for the controller
-*/}}
-{{- define "boundary.controller.serviceAccountName" -}}
-{{- default "default" .Values.serviceAccount.name }}
-{{- end }}
-
-{{/*
 Build the controller image reference.
 
 Repository resolution order (first non-empty wins):

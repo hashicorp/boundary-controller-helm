@@ -31,7 +31,9 @@ spec:
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       securityContext:
         {{- include "boundary.controller.podSecurityContext" . | nindent 8 }}
-      serviceAccountName: {{ include "boundary.controller.serviceAccountName" . }}
+      {{- if .Values.serviceAccount.name }}
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- end }}
       restartPolicy: Never
       containers:
         - name: migrate-db

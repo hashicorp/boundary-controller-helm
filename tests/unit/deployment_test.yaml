@@ -12,15 +12,14 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: hashicorp/boundary-enterprise:1.0.1-ent
+          value: hashicorp/boundary-enterprise:1.0.2-ent
         template: templates/deployment.yaml
       - equal:
           path: spec.template.spec.automountServiceAccountToken
           value: false
         template: templates/deployment.yaml
-      - equal:
+      - notExists:
           path: spec.template.spec.serviceAccountName
-          value: default
         template: templates/deployment.yaml
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme

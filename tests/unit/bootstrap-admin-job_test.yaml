@@ -11,7 +11,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: hashicorp/boundary-enterprise:1.0.1-ent
+          value: hashicorp/boundary-enterprise:1.0.2-ent
       - equal:
           path: metadata.annotations["helm.sh/hook-weight"]
           value: "5"
@@ -27,9 +27,8 @@ tests:
       - equal:
           path: spec.template.spec.automountServiceAccountToken
           value: false
-      - equal:
+      - notExists:
           path: spec.template.spec.serviceAccountName
-          value: default
       - equal:
           path: spec.template.spec.securityContext.runAsUser
           value: 100

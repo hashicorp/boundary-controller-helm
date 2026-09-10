@@ -30,6 +30,7 @@ tls:
     disabled: false
   secretName: "boundary-controller-tls"
   mountPath: "/etc/boundary/tls"
+
 # ---------------------------------------------------------------------------
 # Secret References
 # ---------------------------------------------------------------------------
@@ -209,6 +210,9 @@ bootstrapAdmin:
       cpu: 100m
       memory: 128Mi
 
+# ---------------------------------------------------------------------------
+# Security Context
+# ---------------------------------------------------------------------------
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 100
@@ -230,21 +234,25 @@ containerSecurityContext:
   seccompProfile:
     type: RuntimeDefault
 
-podAnnotations: {}
-nodeSelector: {}
-tolerations: []
-affinity: {}
-extraEnv: []
-
 # ---------------------------------------------------------------------------
 # ServiceAccount
 # ---------------------------------------------------------------------------
 
 # The chart does not create a ServiceAccount.
-# Use a dedicated ServiceAccount in production instead of the default.
+# Leave name empty to let Kubernetes assign the namespace's default account.
 serviceAccount:
-  name: "default"
+  name: ""
   automountServiceAccountToken: false
+
+# ---------------------------------------------------------------------------
+# Optional Configurations
+# ---------------------------------------------------------------------------
+
+podAnnotations: {}
+nodeSelector: {}
+affinity: {}
+tolerations: []
+extraEnv: []
 
 podDisruptionBudget:
   enabled: true

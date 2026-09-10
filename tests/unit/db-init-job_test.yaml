@@ -35,9 +35,8 @@ tests:
       - equal:
           path: spec.template.spec.automountServiceAccountToken
           value: false
-      - equal:
+      - notExists:
           path: spec.template.spec.serviceAccountName
-          value: default
       - equal:
           path: spec.template.spec.securityContext.runAsUser
           value: 100
