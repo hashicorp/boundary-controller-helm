@@ -25,3 +25,16 @@ sources:
 maintainers:
   - name: HashiCorp
     url: https://github.com/hashicorp/boundary-controller-helm
+annotations:
+  artifacthub.io/prerelease: "true"
+  artifacthub.io/changes: |
+    - kind: added
+      description: Added OpenShift support with SCC-compatible security contexts, ClusterIP services, and Routes for API, cluster, and ops listeners.
+    - kind: added
+      description: Added per-listener API and ops TLS disable flags with render-time validation.
+    - kind: added
+      description: Added automatic Red Hat UBI image selection when OpenShift mode is enabled.
+    - kind: changed
+      description: Updated the chart to Boundary Enterprise 1.0.2-ent.
+    - kind: changed
+      description: Replaced the tls.disabled setting with tls.api.disabled and tls.ops.disabled.
