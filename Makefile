@@ -77,7 +77,7 @@ help:
 	@echo ""
 	@echo "MicroShift (OpenShift CI) targets:"
 	@echo "  make microshift-setup    - Start MicroShift AIO cluster in Docker (no external cluster needed)"
-	@echo "  make microshift-helm     - Deploy PostgreSQL + install controller chart with values.openshift.yaml"
+	@echo "  make microshift-helm     - Deploy PostgreSQL + install controller chart with OpenShift test values"
 	@echo "  make microshift-test     - Run OpenShift acceptance smoke test against MicroShift"
 	@echo "  make microshift-full     - Full MicroShift workflow (setup + helm + test)"
 	@echo "  make microshift-cleanup  - Remove MicroShift container and clean up"
@@ -1198,7 +1198,7 @@ microshift-helm:
 	@helm upgrade --install boundary-controller . \
 		--namespace boundary \
 		--create-namespace \
-		-f values.openshift.yaml \
+		-f tests/acceptance/values.openshift.yaml \
 		-f tests/acceptance/test-values.yaml \
 		--set controller.replicas=1 \
 		--set database.init.enabled=false \

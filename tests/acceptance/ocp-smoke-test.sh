@@ -9,9 +9,9 @@
 # Prerequisites:
 #   - crc running: crc start
 #   - oc configured: eval $(crc oc-env) && oc login -u kubeadmin https://api.crc.testing:6443
-#   - boundary-controller installed with values.openshift.yaml:
+#   - boundary-controller installed with the OpenShift acceptance values:
 #       helm install boundary-controller . -n boundary \
-#         -f values.openshift.yaml -f tests/acceptance/test-values.yaml \
+#         -f tests/acceptance/values.openshift.yaml -f tests/acceptance/test-values.yaml \
 #         --set controller.replicas=1 --set bootstrapAdmin.enabled=true
 #
 # Usage:

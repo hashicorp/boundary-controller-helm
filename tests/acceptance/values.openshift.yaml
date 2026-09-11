@@ -1,6 +1,8 @@
 # Copyright IBM Corp. 2026
 # SPDX-License-Identifier: MPL-2.0
 
+# Base OpenShift values for acceptance tests.
+
 tls:
   api:
     disabled: false

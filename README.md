@@ -2,6 +2,8 @@
 
 This chart deploys HashiCorp Boundary's controller — the control-plane component responsible for authentication, authorization, session management, and worker registration — on Kubernetes.
 
+For detailed installation and configuration guidance, see the [Boundary Helm chart documentation](https://developer.hashicorp.com/boundary/docs/deploy/helm-chart).
+
 ## What The Chart Deploys
 
 A default install creates:

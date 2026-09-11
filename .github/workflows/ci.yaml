@@ -1,4 +1,4 @@
-name: CI Validation and Test Pipeline
+name: Helm Chart CI
 on:
   pull_request:
     branches: [main]
