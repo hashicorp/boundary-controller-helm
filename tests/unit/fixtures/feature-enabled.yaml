@@ -12,4 +12,7 @@ database:
     enabled: true
 
 tls:
-  disabled: true
+  api:
+    disabled: false
+  ops:
+    disabled: false

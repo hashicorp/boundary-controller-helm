@@ -1,0 +1,72 @@
+# Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
+
+# Base OpenShift values for acceptance tests.
+
+tls:
+  api:
+    disabled: false
+  ops:
+    disabled: false
+
+controller:
+  replicas: 2
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 1
+  service:
+    api:
+      type: ClusterIP
+      port: 9200
+      targetPort: 9200
+      annotations: {}
+    cluster:
+      type: ClusterIP
+      port: 9201
+      targetPort: 9201
+      annotations: {}
+    ops:
+      type: ClusterIP
+      port: 9203
+      targetPort: 9203
+      annotations: {}
+
+# ---------------------------------------------------------------------------
+# OpenShift
+# ---------------------------------------------------------------------------
+openshift:
+  enabled: true
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault
+  route:
+    api:
+      enabled: false
+      host: ""
+      tls:
+        termination: reencrypt
+        insecureEdgeTerminationPolicy: Redirect
+        destinationCACertificate: ""
+      annotations: {}
+    cluster:
+      enabled: false
+      host: ""
+      annotations: {}
+    ops:
+      enabled: false
+      host: ""
+      tls:
+        termination: reencrypt
+        insecureEdgeTerminationPolicy: Redirect
+        destinationCACertificate: ""
+      annotations: {}

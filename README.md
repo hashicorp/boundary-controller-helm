@@ -2,7 +2,7 @@
 
 This chart deploys HashiCorp Boundary's controller — the control-plane component responsible for authentication, authorization, session management, and worker registration — on Kubernetes.
 
-Boundary controller state lives in PostgreSQL, so the deployment is stateless and horizontally scalable.
+For detailed installation and configuration guidance, see the [Boundary Helm chart documentation](https://developer.hashicorp.com/boundary/docs/deploy/helm-chart).
 
 ## What The Chart Deploys
 
@@ -35,12 +35,12 @@ Have these ready before running `helm install`:
 - **PostgreSQL database** — an existing instance with a Boundary database provisioned
 - **KMS configuration** — [KMS](https://developer.hashicorp.com/boundary/docs/configuration/kms) stanzas in `controller.config`
 - **Boundary license** — required for enterprise builds
-- **TLS certificate** — required for the API listener on port 9200
+- **TLS certificate** — required for the API listener
 - **Bootstrap admin credentials** — required when `bootstrapAdmin.enabled=true`
 
 ## Step 1 — Provision Secrets
 
-The chart reads sensitive values from a Kubernetes Secret referenced by `secretRefs.secretName` (default: `boundary-controller-secrets`). The Secret can be created with `kubectl`, the Vault Secrets Operator, or the External Secrets Operator etc.
+The chart reads sensitive values from a Kubernetes Secret referenced by `secretRefs.secretName` (default: `boundary-controller-secrets`). The Secret can be created with [kubectl](https://kubernetes.io/docs/concepts/configuration/secret/), [Vault Secrets Operator](https://developer.hashicorp.com/vault/docs/deploy/kubernetes/vso), or the [External Secrets Operator](https://external-secrets.io/latest/).
 
 The Secret must contain the following keys (key names are configurable via `secretRefs.keys.*`):
 
@@ -52,23 +52,14 @@ The Secret must contain the following keys (key names are configurable via `secr
 | `admin-username` | Bootstrap admin username | When `bootstrapAdmin.enabled=true` |
 | `admin-password` | Bootstrap admin password | When `bootstrapAdmin.enabled=true` |
 
-> **Note**
-> When `secretRefs.secretName` is set, the chart validates that `controller.config` uses the correct `env://` variable names for any secret-backed fields. Using a different variable name causes the chart to fail during rendering before installation completes. The required names are:
+> **Note:** When `secretRefs.secretName` is set, `controller.config` must reference secret-backed fields using these exact `env://` names — or declare them in `extraEnv`:
+> - `env://BOUNDARY_PG_URL` → `database { url }`
+> - `env://BOUNDARY_PG_MIGRATION_URL` → `database { migration_url }`
+> - `env://BOUNDARY_LICENSE` → `controller { license }`
 >
-> - `env://BOUNDARY_PG_URL` for `database { url }`
-> - `env://BOUNDARY_PG_MIGRATION_URL` for `database { migration_url }`
-> - `env://BOUNDARY_LICENSE` for `controller { license }`
->
-> If you use a different variable name and it is not declared in `extraEnv`, the chart fails during rendering with an error message that identifies the field and the expected variable name.
+> Any mismatch fails at render time with a clear error.
 
-A Kubernetes TLS Secret containing `tls.crt` and `tls.key` is also required when `tls.disabled=false` (the default). Set `tls.secretName` to match the Secret name.
-
-> **Note**
-> The TLS certificate must include the following SAN (adjust if `nameOverride` or `fullnameOverride` is set):
->
-> - `DNS:<fullname>-api` (for example, `boundary-controller-api`)
->
-> The bootstrap admin Job verifies the certificate against this name — the Job will time out if it is missing.
+A Kubernetes [TLS Secret](https://kubernetes.io/docs/concepts/configuration/secret/#tls-secrets) containing `tls.crt` and `tls.key` is required when either `tls.api.disabled` or `tls.ops.disabled` is `false` (both default to `false`). Set `tls.secretName` to match the Secret name.
 
 ## Step 2 — Install the Chart
 
@@ -83,28 +74,13 @@ Install the chart with your values file. At minimum, `controller.config` must in
 
 ```bash
 helm install boundary-controller hashicorp/boundary-controller \
-  --version 0.1.0 \
   --namespace boundary \
   --create-namespace \
   --values my-values.yaml \
   --wait
 ```
 
-## Step 3 — Verify the Deployment
-
-```bash
-kubectl get pods -n boundary
-kubectl get svc -n boundary
-kubectl get jobs -n boundary
-```
-
-If using a LoadBalancer for the API Service, retrieve the external address:
-
-```bash
-kubectl get svc boundary-controller-api -n boundary
-```
-
-> **Note:** Workers connect to the controller using `public_cluster_addr` in `controller.config`. If your workers run outside the cluster network (e.g. on-prem, other VPCs, or remote sites), make sure this address is externally reachable from those workers. If you expose the cluster listener via a LoadBalancer, update `public_cluster_addr` to the provisioned LoadBalancer address before running `helm upgrade`.
+> **Note:** Set `public_cluster_addr` in `controller.config` to an address reachable by all workers, especially those outside the cluster network.
 
 ## Upgrading
 
@@ -164,9 +140,7 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
 
 > **`--rollback-on-failure`** rolls back the Helm release state only. Database schema changes applied by a partially completed migration are **not** reversed.
 
-**Step 4 — Restore controllers** and clear the one-time migration flags:
-
-Set `controller.replicas` to the count you need for your deployment. The example below uses `2` because it is the chart default.
+**Step 4 — Restore controllers** and clear the one-time migration flags.
 
 ```bash
 helm upgrade boundary-controller hashicorp/boundary-controller \
@@ -178,13 +152,15 @@ helm upgrade boundary-controller hashicorp/boundary-controller \
   --wait
 ```
 
+`--reset-values --values my-values.yaml` can also be used to wipe out all custom values, `--set` flags, and files used in your previous deployments.
+
 ## Uninstall
 
 ```bash
 helm uninstall boundary-controller -n boundary
 ```
 
-This removes all chart-managed resources (Deployment, Services, ConfigMap, PDB). Hook Jobs are not immediately deleted — they clean up automatically 10 minutes after completion. The PostgreSQL database is not affected.
+Removes all chart-managed resources. Hook Jobs expire after 10 minutes regardless of install or uninstall. The PostgreSQL database is not affected.
 
 ----
 

@@ -30,24 +30,22 @@ spec:
       {{- end }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      serviceAccountName: {{ include "boundary.controller.serviceAccountName" . }}
+        {{- include "boundary.controller.podSecurityContext" . | nindent 8 }}
+      {{- if .Values.serviceAccount.name }}
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- end }}
       restartPolicy: Never
       containers:
         - name: bootstrap-admin
           image: "{{ include "boundary.controller.image" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
-            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+            {{- include "boundary.controller.containerSecurityContext" . | nindent 12 }}
           env:
             - name: SKIP_SETCAP
               value: "1"
             - name: BOUNDARY_ADDR
-              value: "{{ if not .Values.tls.disabled }}https{{ else }}http{{ end }}://{{ include "boundary.controller.apiServiceName" . }}:{{ .Values.controller.service.api.port }}"
-            {{- if not .Values.tls.disabled }}
-            - name: BOUNDARY_CACERT
-              value: "{{ .Values.tls.mountPath }}/tls.crt"
-            {{- end }}
+              value: "{{ if not .Values.tls.api.disabled }}https{{ else }}http{{ end }}://{{ include "boundary.controller.apiServiceName" . }}:{{ .Values.controller.service.api.port }}"
             - name: BOUNDARY_ADMIN_USERNAME
               valueFrom:
                 secretKeyRef:
@@ -80,11 +78,6 @@ spec:
             - name: config
               mountPath: /etc/boundary
               readOnly: true
-            {{- if not .Values.tls.disabled }}
-            - name: tls-certs
-              mountPath: {{ .Values.tls.mountPath }}
-              readOnly: true
-            {{- end }}
             - name: tmp
               mountPath: /tmp
             - name: boundary-data
@@ -93,11 +86,6 @@ spec:
         - name: config
           configMap:
             name: {{ include "boundary.controller.serviceName" . }}-bootstrap-hook-config
-        {{- if not .Values.tls.disabled }}
-        - name: tls-certs
-          secret:
-            secretName: {{ .Values.tls.secretName }}
-        {{- end }}
         - name: tmp
           emptyDir: {}
         - name: boundary-data

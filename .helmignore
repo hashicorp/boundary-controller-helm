@@ -1,6 +1,9 @@
 # Ignore VCS and CI metadata
 .git/
 .github/
+.act/
+.gitignore
+.trivyignore
 
 # Ignore local/editor artifacts
 .DS_Store
@@ -15,6 +18,16 @@
 
 # Ignore local project-only files not needed in chart packages
 Makefile
+CONTRIBUTING.md
+CHANGELOG.md
+docs/
 kubescape-exceptions.json
 /tests/
 example-config/
+local-values.yaml
+my-values.yaml
+
+# Ignore generated validation and security scan output
+rendered.yaml
+kubescape-output.json
+trivy-output.txt

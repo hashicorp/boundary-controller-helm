@@ -35,9 +35,8 @@ tests:
       - equal:
           path: spec.template.spec.automountServiceAccountToken
           value: false
-      - equal:
+      - notExists:
           path: spec.template.spec.serviceAccountName
-          value: default
       - equal:
           path: spec.template.spec.securityContext.runAsUser
           value: 100
@@ -116,21 +115,20 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
-  - it: renders custom TLS mountPath in init job when TLS is enabled
+  - it: does not mount TLS certificates in init job when TLS is enabled
     set:
       database:
         init:
           enabled: true
       tls:
-        disabled: false
+        api:
+          disabled: false
         mountPath: /custom/tls
     asserts:
-      - contains:
+      - notContains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
             name: tls-certs
-            mountPath: /custom/tls
-            readOnly: true
   - it: renders secretRefs key remapping for database URL and license in init job
     set:
       controller:
@@ -250,3 +248,36 @@ tests:
       - equal:
           path: metadata.namespace
           value: boundary
+  - it: uses openshift podSecurityContext and omits runAsUser in init job when openshift.enabled is true
+    set:
+      openshift:
+        enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - notExists:
+          path: spec.template.spec.securityContext.runAsUser
+      - notExists:
+          path: spec.template.spec.securityContext.fsGroup
+  - it: uses openshift containerSecurityContext in init job when openshift.enabled is true
+    set:
+      openshift:
+        enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext.runAsGroup
+  - it: uses default podSecurityContext with runAsUser in init job when openshift.enabled is false
+    set:
+      openshift:
+        enabled: false
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 100

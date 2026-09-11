@@ -173,7 +173,11 @@ resource "helm_release" "boundary_controller" {
       value = var.controller_replicas
     },
     {
-      name  = "tls.disabled"
+      name  = "tls.api.disabled"
+      value = var.tls_disabled
+    },
+    {
+      name  = "tls.ops.disabled"
       value = var.tls_disabled
     },
     {
