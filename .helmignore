@@ -19,6 +19,7 @@
 # Ignore local project-only files not needed in chart packages
 Makefile
 CONTRIBUTING.md
+CHANGELOG.md
 docs/
 kubescape-exceptions.json
 /tests/

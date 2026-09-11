@@ -2,7 +2,7 @@
 
 All notable changes to the Boundary Controller Helm Chart will be documented in this file.
 
-## [0.2.0] - 2026-09-11
+## [0.2.0-beta] - 2026-09-15
 
 ### Added
 
@@ -13,7 +13,7 @@ All notable changes to the Boundary Controller Helm Chart will be documented in 
 ### Changed
 
 
-- Updated the chart version to 0.2.0 and the default Boundary Enterprise version to 1.0.2-ent.
+- Updated the chart version to 0.2.0-beta and the default Boundary Enterprise version to 1.0.2-ent.
  - **Breaking:** `tls.disabled` removed — replace `--set tls.disabled=<bool>` with `--set tls.api.disabled=<bool> --set tls.ops.disabled=<bool>`.
 - Default `controller.config` now uses `tpl`-rendered references (`env://BOUNDARY_PG_URL`, `env://BOUNDARY_LICENSE`, etc.) instead of hardcoded placeholders.
 - `database.init.enabled` and `bootstrapAdmin.enabled` default to `true`.
