@@ -399,6 +399,58 @@ Validate controller config patterns that Boundary cannot resolve safely at runti
 {{- end }}
 
 {{/*
+Validate OpenShift Route TLS termination against tls.api.disabled / tls.ops.disabled.
+Only runs when openshift.enabled=true and the respective route is enabled.
+
+  - termination=edge requires the backend to serve plaintext HTTP (tls.*.disabled=true),
+    because edge routes terminate TLS at the router and forward plaintext to the backend.
+  - termination=reencrypt/passthrough requires the backend to serve TLS (tls.*.disabled=false),
+    because the router connects to the backend over TLS.
+*/}}
+{{- define "boundary.controller.validateOpenshiftRoutes" -}}
+{{- if .Values.openshift.enabled }}
+{{- if .Values.openshift.route.api.enabled }}
+{{- $termination := .Values.openshift.route.api.tls.termination }}
+{{- if and (eq $termination "edge") (not .Values.tls.api.disabled) }}
+{{- fail "openshift.route.api.tls.termination=edge requires tls.api.disabled=true (edge routes forward plaintext HTTP to the backend). Set tls.api.disabled=true or change termination to reencrypt/passthrough." }}
+{{- end }}
+{{- if and (ne $termination "edge") .Values.tls.api.disabled }}
+{{- fail (printf "openshift.route.api.tls.termination=%s requires tls.api.disabled=false (the router connects to the backend over TLS). Set tls.api.disabled=false or change termination to edge." $termination) }}
+{{- end }}
+{{- end }}
+{{- if .Values.openshift.route.ops.enabled }}
+{{- $termination := .Values.openshift.route.ops.tls.termination }}
+{{- if and (eq $termination "edge") (not .Values.tls.ops.disabled) }}
+{{- fail "openshift.route.ops.tls.termination=edge requires tls.ops.disabled=true (edge routes forward plaintext HTTP to the backend). Set tls.ops.disabled=true or change termination to reencrypt/passthrough." }}
+{{- end }}
+{{- if and (ne $termination "edge") .Values.tls.ops.disabled }}
+{{- fail (printf "openshift.route.ops.tls.termination=%s requires tls.ops.disabled=false (the router connects to the backend over TLS). Set tls.ops.disabled=false or change termination to edge." $termination) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Resolves the controller's public_cluster_addr advertised to workers for reconnects.
+
+Priority order:
+  1. .Values.controller.publicClusterAddr — explicit operator override, used as-is.
+  2. openshift.enabled=true, openshift.route.cluster.enabled=true, and a host is set
+     → "<route host>:443", since OpenShift Routes always terminate external
+       traffic on the router's standard HTTPS port regardless of the Service port.
+  3. default → "<clusterServiceName>:9201", the in-cluster Service DNS name.
+*/}}
+{{- define "boundary.controller.publicClusterAddr" -}}
+{{- if .Values.controller.publicClusterAddr -}}
+{{- .Values.controller.publicClusterAddr -}}
+{{- else if and .Values.openshift.enabled .Values.openshift.route.cluster.enabled .Values.openshift.route.cluster.host -}}
+{{- printf "%s:443" .Values.openshift.route.cluster.host -}}
+{{- else -}}
+{{- printf "%s:9201" (include "boundary.controller.clusterServiceName" .) -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Resolve the pod-level security context.
 Uses OpenShift overrides when openshift.enabled=true, otherwise the standard podSecurityContext.
 */}}
