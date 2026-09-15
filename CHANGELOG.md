@@ -2,6 +2,25 @@
 
 All notable changes to the Boundary Controller Helm Chart will be documented in this file.
 
+## [0.2.0-beta] - 2026-09-15
+
+### Added
+
+- OpenShift support via `openshift.enabled`: SCC-compatible security contexts, all services forced to `ClusterIP`, and `Route` objects for API, cluster, and ops listeners.
+- Per-listener TLS flags `tls.api.disabled` / `tls.ops.disabled` replacing the single `tls.disabled`. Render-time validation enforces alignment with `tls_disable` in each listener block.
+- Image auto-selection for OpenShift: uses Red Hat registry (`registry.connect.redhat.com/hashicorp/boundary-enterprise`) with `-ubi` tag when `openshift.enabled=true` and no explicit `image.repository` is set.
+
+### Changed
+
+
+- Updated the chart version to 0.2.0-beta and the default Boundary Enterprise version to 1.0.2-ent.
+ - **Breaking:** `tls.disabled` removed — replace `--set tls.disabled=<bool>` with `--set tls.api.disabled=<bool> --set tls.ops.disabled=<bool>`.
+- Default `controller.config` now uses `tpl`-rendered references (`env://BOUNDARY_PG_URL`, `env://BOUNDARY_LICENSE`, etc.) instead of hardcoded placeholders.
+- `database.init.enabled` and `bootstrapAdmin.enabled` default to `true`.
+
+
+---
+
 ## [0.1.1] - 2026-07-30
 
 ### Changed

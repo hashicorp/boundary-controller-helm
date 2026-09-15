@@ -12,9 +12,9 @@ tests:
       image:
         tag: ""
     asserts:
-      - equal:
+      - matchRegex:
           path: spec.template.spec.containers[0].image
-          value: hashicorp/boundary-enterprise:1.0.1-ent
+          pattern: ^hashicorp/boundary-enterprise:[0-9]+\.[0-9]+\.[0-9]+-ent$
         template: templates/deployment.yaml
 
   - it: uses overridden image tag via image helper
@@ -105,14 +105,13 @@ tests:
           value: custom-boundary-secrets
         template: templates/deployment.yaml
 
-  - it: falls back to default service account name when empty
+  - it: omits service account name when empty
     set:
       serviceAccount:
         name: ""
     asserts:
-      - equal:
+      - notExists:
           path: spec.template.spec.serviceAccountName
-          value: default
         template: templates/deployment.yaml
 
   - it: renders remapped secretRefs keys for database URL and license

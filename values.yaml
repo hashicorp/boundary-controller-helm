@@ -4,6 +4,7 @@
 nameOverride: ""
 fullnameOverride: ""
 # Overrides the namespace for all resources. Leave empty to use the Helm release namespace.
+# Set only for GitOps tools (e.g. ArgoCD) that track the release in a separate namespace.
 namespace: ""
 
 # ---------------------------------------------------------------------------
@@ -11,8 +12,7 @@ namespace: ""
 # ---------------------------------------------------------------------------
 
 image:
-  repository: hashicorp/boundary-enterprise
-  # Defaults to Chart.appVersion when empty.
+  repository: ""
   tag: ""
   pullPolicy: IfNotPresent
 
@@ -23,15 +23,13 @@ imagePullSecrets: []
 # ---------------------------------------------------------------------------
 
 tls:
-  # When false, the TLS Secret is mounted for listeners that reference tls_cert_file/tls_key_file.
-  # When true, no Secret is required.
-  # Probe scheme (HTTP/HTTPS) is derived from the ops listener's tls_disable param, not this flag.
-  disabled: false
+  # Per-listener TLS toggle. Set independently for mixed configs (e.g. api=HTTPS, ops=HTTP).
+  api:
+    disabled: false
+  ops:
+    disabled: false
   secretName: "boundary-controller-tls"
   mountPath: "/etc/boundary/tls"
-  # The TLS certificate must include the following SAN (adjust if nameOverride/fullnameOverride is set):
-  #   DNS:<fullname>-api  (e.g. boundary-controller-api)
-  # The bootstrap-admin job verifies the cert against this name — the job will time out if it is missing.
 
 # ---------------------------------------------------------------------------
 # Secret References
@@ -40,11 +38,9 @@ tls:
 secretRefs:
   secretName: "boundary-controller-secrets"
   # When true, validates the Secret exists with all required keys at render time.
-  # Set to false for offline rendering (helm template without cluster access).
   validateExisting: false
   keys:
     databaseUrl: "database-url"
-    # Required only when env://BOUNDARY_PG_MIGRATION_URL is referenced in controller.config.
     migrationUrl: "migration-url"
     license: "license"
     adminUsername: "admin-username"
@@ -66,9 +62,9 @@ controller:
     listener "tcp" {
       address = "0.0.0.0:9200"
       purpose = "api"
-      tls_disable   = false
-      tls_cert_file = "/etc/boundary/tls/tls.crt"
-      tls_key_file  = "/etc/boundary/tls/tls.key"
+      tls_disable   = "{{ .Values.tls.api.disabled }}"
+      tls_cert_file = "{{ .Values.tls.mountPath }}/tls.crt"
+      tls_key_file  = "{{ .Values.tls.mountPath }}/tls.key"
     }
 
     listener "tcp" {
@@ -79,20 +75,22 @@ controller:
     listener "tcp" {
       address = "0.0.0.0:9203"
       purpose = "ops"
-      tls_disable   = false
-      tls_cert_file = "/etc/boundary/tls/tls.crt"
-      tls_key_file  = "/etc/boundary/tls/tls.key"
+      tls_disable   = "{{ .Values.tls.ops.disabled }}"
+      tls_cert_file = "{{ .Values.tls.mountPath }}/tls.crt"
+      tls_key_file  = "{{ .Values.tls.mountPath }}/tls.key"
     }
 
+    # https://developer.hashicorp.com/boundary/docs/configuration/controller
     controller {
       name = "boundary-controller"
-      description = "Boundary controller running in Kubernetes"
-      public_cluster_addr = "boundary-controller-cluster.boundary.svc.cluster.local:9201"
-      license = "<your-license-here>"
+      public_cluster_addr = "{{ (printf "%s:9201" (include "boundary.controller.clusterServiceName" .)) }}"
+      license = "env://BOUNDARY_LICENSE"
 
       database {
-        url = "postgres://<user>:<password>@<host>:5432/<dbname>?sslmode=require"
+        url = "env://BOUNDARY_PG_URL"
       }
+
+      graceful_shutdown_wait_duration = "10s"
     }
 
     # AEAD is for development and testing only — keys are stored in plaintext.
@@ -132,18 +130,12 @@ controller:
     }
 
   livenessProbe:
-    # Probe scheme for /health on the ops listener. Auto-derived from the ops
-    # listener's tls_disable param (HTTPS unless tls_disable=true). Override only if needed.
-    scheme: ""
     initialDelaySeconds: 60
     periodSeconds: 10
     failureThreshold: 3
     timeoutSeconds: 5
 
   readinessProbe:
-    # Probe scheme for /health on the ops listener. Auto-derived from the ops
-    # listener's tls_disable param (HTTPS unless tls_disable=true). Override only if needed.
-    scheme: ""
     initialDelaySeconds: 15
     periodSeconds: 10
     failureThreshold: 3
@@ -164,14 +156,13 @@ controller:
       port: 9200
       targetPort: 9200
       annotations: {}
-    # Cluster listener — internal worker registration. Use LoadBalancer only
-    # if workers run outside the cluster network.
+    # Cluster listener — internal worker registration.
     cluster:
       type: ClusterIP
       port: 9201
       targetPort: 9201
       annotations: {}
-    # Ops listener — health checks and metrics. Not exposed externally.
+    # Ops listener — health checks and metrics.
     ops:
       type: ClusterIP
       port: 9203
@@ -184,8 +175,7 @@ controller:
 
 database:
   init:
-    # Enable on first install only.
-    enabled: false
+    enabled: true
   migrate:
     # Enable as a one-time flag during upgrades.
     enabled: false
@@ -205,7 +195,7 @@ database:
 # ---------------------------------------------------------------------------
 
 bootstrapAdmin:
-  enabled: false
+  enabled: true
   runOnUpgrade: false
   waitTimeoutSeconds: 120
   authMethodName: "bootstrap-auth-method"
@@ -220,6 +210,9 @@ bootstrapAdmin:
       cpu: 100m
       memory: 128Mi
 
+# ---------------------------------------------------------------------------
+# Security Context
+# ---------------------------------------------------------------------------
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 100
@@ -241,21 +234,25 @@ containerSecurityContext:
   seccompProfile:
     type: RuntimeDefault
 
-podAnnotations: {}
-nodeSelector: {}
-tolerations: []
-affinity: {}
-extraEnv: []
-
 # ---------------------------------------------------------------------------
 # ServiceAccount
 # ---------------------------------------------------------------------------
 
-# The chart does not create a ServiceAccount. Reference an existing one.
+# The chart does not create a ServiceAccount.
+# Leave name empty to let Kubernetes assign the namespace's default account.
 serviceAccount:
-  # Use a dedicated ServiceAccount in production instead of the default.
-  name: "default"
+  name: ""
   automountServiceAccountToken: false
+
+# ---------------------------------------------------------------------------
+# Optional Configurations
+# ---------------------------------------------------------------------------
+
+podAnnotations: {}
+nodeSelector: {}
+affinity: {}
+tolerations: []
+extraEnv: []
 
 podDisruptionBudget:
   enabled: true
@@ -264,3 +261,44 @@ podDisruptionBudget:
 
 # Must exceed graceful_shutdown_wait_duration in controller.config (default 10s).
 terminationGracePeriodSeconds: 15
+
+# ---------------------------------------------------------------------------
+# OpenShift
+# ---------------------------------------------------------------------------
+
+openshift:
+  enabled: false
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault
+  route:
+    api:
+      enabled: true
+      host: ""
+      tls:
+        termination: reencrypt
+        insecureEdgeTerminationPolicy: Redirect
+        destinationCACertificate: ""
+      annotations: {}
+    cluster:
+      enabled: true
+      host: ""
+      annotations: {}
+    ops:
+      enabled: true
+      host: ""
+      tls:
+        termination: reencrypt
+        insecureEdgeTerminationPolicy: Redirect
+        destinationCACertificate: ""
+      annotations: {}

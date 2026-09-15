@@ -7,7 +7,7 @@ on:
       - 'v*.*.*-*'    # prerelease tags (for example: v1.2.3-beta)
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   update-helm-charts-index:
@@ -46,3 +46,30 @@ jobs:
             --ref main \
             -f SOURCE_TAG="${{ github.ref_name }}" \
             -f SOURCE_REPO="${{ github.repository }}"
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: update-helm-charts-index
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Extract changelog entry
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk "/^## \[${VERSION}\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md \
+            | sed '/^[[:space:]]*$/d;/^---/d' \
+            > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "No CHANGELOG.md entry found for ${VERSION}"
+            exit 1
+          fi
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            ${{ contains(github.ref_name, '-') && '--prerelease' || '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

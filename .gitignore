@@ -44,3 +44,9 @@ tests/integration/terraform/azure/.terraform/
 tests/integration/terraform/azure/.terraform.lock.hcl
 tests/integration/terraform/azure/terraform.tfstate
 tests/integration/terraform/azure/terraform.tfstate.backup
+kubescape-output.json
+trivy-output.txt
+rendered.yaml
+
+# Local GitHub Actions tests
+.act/

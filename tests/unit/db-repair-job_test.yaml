@@ -36,9 +36,8 @@ tests:
       - equal:
           path: spec.template.spec.automountServiceAccountToken
           value: false
-      - equal:
+      - notExists:
           path: spec.template.spec.serviceAccountName
-          value: default
       - equal:
           path: spec.template.spec.securityContext.runAsUser
           value: 100
@@ -144,7 +143,7 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
-  - it: renders custom TLS secret in repair job when TLS is enabled
+  - it: does not mount TLS certificates in repair job when TLS is enabled
     set:
       database:
         migrate:
@@ -152,15 +151,14 @@ tests:
         repair:
           version: "2024-01-01-01"
       tls:
-        disabled: false
+        api:
+          disabled: false
         secretName: custom-tls-secret
     asserts:
-      - contains:
+      - notContains:
           path: spec.template.spec.volumes
           content:
             name: tls-certs
-            secret:
-              secretName: custom-tls-secret
   - it: renders AEAD env vars when config uses env based AEAD keys in repair job
     set:
       database:
@@ -251,3 +249,51 @@ tests:
       - equal:
           path: metadata.namespace
           value: boundary
+  - it: uses openshift podSecurityContext and omits runAsUser in repair job when openshift.enabled is true
+    set:
+      database:
+        migrate:
+          enabled: true
+        repair:
+          version: "2024-01-01-01"
+      openshift:
+        enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - notExists:
+          path: spec.template.spec.securityContext.runAsUser
+      - notExists:
+          path: spec.template.spec.securityContext.fsGroup
+  - it: uses openshift containerSecurityContext in repair job when openshift.enabled is true
+    set:
+      database:
+        migrate:
+          enabled: true
+        repair:
+          version: "2024-01-01-01"
+      openshift:
+        enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext.runAsGroup
+  - it: uses default podSecurityContext with runAsUser in repair job when openshift.enabled is false
+    set:
+      database:
+        migrate:
+          enabled: true
+        repair:
+          version: "2024-01-01-01"
+      openshift:
+        enabled: false
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 100

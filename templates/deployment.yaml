@@ -35,16 +35,18 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
-      serviceAccountName: {{ include "boundary.controller.serviceAccountName" . }}
+      {{- if .Values.serviceAccount.name }}
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- end }}
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        {{- include "boundary.controller.podSecurityContext" . | nindent 8 }}
       containers:
         - name: controller
           image: "{{ include "boundary.controller.image" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
-            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+            {{- include "boundary.controller.containerSecurityContext" . | nindent 12 }}
           env:
             - name: SKIP_SETCAP
               value: "1"
@@ -126,7 +128,7 @@ spec:
             - name: config
               mountPath: /etc/boundary
               readOnly: true
-            {{- if not .Values.tls.disabled }}
+            {{- if not (and .Values.tls.api.disabled .Values.tls.ops.disabled) }}
             - name: tls-certs
               mountPath: {{ .Values.tls.mountPath }}
               readOnly: true
@@ -139,7 +141,7 @@ spec:
         - name: config
           configMap:
             name: {{ include "boundary.controller.configMapName" . }}
-        {{- if not .Values.tls.disabled }}
+        {{- if not (and .Values.tls.api.disabled .Values.tls.ops.disabled) }}
         - name: tls-certs
           secret:
             secretName: {{ .Values.tls.secretName }}

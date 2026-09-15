@@ -1,0 +1,396 @@
+# Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
+
+suite: OpenShift Route
+templates:
+  - templates/route.yaml
+tests:
+  # -----------------------------------------------------------------------
+  # Disabled cases
+  # -----------------------------------------------------------------------
+  - it: does not render any routes when openshift.enabled is false
+    set:
+      openshift:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # -----------------------------------------------------------------------
+  # Document count
+  # -----------------------------------------------------------------------
+  - it: renders 3 routes when openshift.enabled is true
+    set:
+      openshift:
+        enabled: true
+    asserts:
+      - hasDocuments:
+          count: 3
+
+  # -----------------------------------------------------------------------
+  # API Route (documentIndex: 0)
+  # -----------------------------------------------------------------------
+  - it: api route has correct name and namespace
+    set:
+      openshift:
+        enabled: true
+    documentIndex: 0
+    asserts:
+      - isKind:
+          of: Route
+      - equal:
+          path: apiVersion
+          value: route.openshift.io/v1
+      - equal:
+          path: metadata.name
+          value: boundary-controller-api-route
+      - equal:
+          path: metadata.namespace
+          value: NAMESPACE
+
+  - it: api route name uses nameOverride
+    set:
+      openshift:
+        enabled: true
+      nameOverride: custom
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.name
+          value: custom-boundary-controller-api-route
+
+  - it: api route namespace override
+    set:
+      openshift:
+        enabled: true
+      namespace: boundary
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: boundary
+
+  - it: api route targets the api service on the api port
+    set:
+      openshift:
+        enabled: true
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.to.kind
+          value: Service
+      - equal:
+          path: spec.to.name
+          value: boundary-controller-api
+      - equal:
+          path: spec.port.targetPort
+          value: api
+
+  - it: api route has default reencrypt TLS termination and Redirect policy
+    set:
+      openshift:
+        enabled: true
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.tls.termination
+          value: reencrypt
+      - equal:
+          path: spec.tls.insecureEdgeTerminationPolicy
+          value: Redirect
+
+  - it: api route allows custom TLS termination
+    set:
+      openshift:
+        enabled: true
+        route:
+          api:
+            tls:
+              termination: reencrypt
+              insecureEdgeTerminationPolicy: None
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.tls.termination
+          value: reencrypt
+      - equal:
+          path: spec.tls.insecureEdgeTerminationPolicy
+          value: None
+
+  - it: api route renders destinationCACertificate when reencrypt and tls enabled
+    set:
+      tls:
+        api:
+          disabled: false
+      openshift:
+        enabled: true
+        route:
+          api:
+            tls:
+              termination: reencrypt
+              destinationCACertificate: "-----BEGIN CERTIFICATE-----\nMIIFake\n-----END CERTIFICATE-----\n"
+    documentIndex: 0
+    asserts:
+      - matchRegex:
+          path: spec.tls.destinationCACertificate
+          pattern: "BEGIN CERTIFICATE"
+
+  - it: api route does not render destinationCACertificate when tls.api.disabled is true
+    set:
+      tls:
+        api:
+          disabled: true
+      openshift:
+        enabled: true
+        route:
+          api:
+            tls:
+              termination: reencrypt
+              destinationCACertificate: "-----BEGIN CERTIFICATE-----\nMIIFake\n-----END CERTIFICATE-----\n"
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: spec.tls.destinationCACertificate
+
+  - it: api route does not render destinationCACertificate when termination is edge
+    set:
+      tls:
+        api:
+          disabled: false
+      openshift:
+        enabled: true
+        route:
+          api:
+            tls:
+              termination: edge
+              destinationCACertificate: "-----BEGIN CERTIFICATE-----\nMIIFake\n-----END CERTIFICATE-----\n"
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: spec.tls.destinationCACertificate
+
+  - it: api route does not render destinationCACertificate when value is empty
+    set:
+      tls:
+        api:
+          disabled: false
+      openshift:
+        enabled: true
+        route:
+          api:
+            tls:
+              termination: reencrypt
+              destinationCACertificate: ""
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: spec.tls.destinationCACertificate
+
+  - it: api route renders spec.host when set
+    set:
+      openshift:
+        enabled: true
+        route:
+          api:
+            host: boundary.example.com
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.host
+          value: boundary.example.com
+
+  - it: api route does not render spec.host when empty
+    set:
+      openshift:
+        enabled: true
+        route:
+          api:
+            host: ""
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: spec.host
+
+  - it: api route renders custom annotations
+    set:
+      openshift:
+        enabled: true
+        route:
+          api:
+            annotations:
+              haproxy.router.openshift.io/timeout: 60s
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.annotations["haproxy.router.openshift.io/timeout"]
+          value: 60s
+
+  # -----------------------------------------------------------------------
+  # Cluster Route (documentIndex: 1)
+  # -----------------------------------------------------------------------
+  - it: cluster route has correct name and namespace
+    set:
+      openshift:
+        enabled: true
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: Route
+      - equal:
+          path: apiVersion
+          value: route.openshift.io/v1
+      - equal:
+          path: metadata.name
+          value: boundary-controller-cluster-route
+      - equal:
+          path: metadata.namespace
+          value: NAMESPACE
+
+  - it: cluster route targets the cluster service on the cluster port
+    set:
+      openshift:
+        enabled: true
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.to.kind
+          value: Service
+      - equal:
+          path: spec.to.name
+          value: boundary-controller-cluster
+      - equal:
+          path: spec.port.targetPort
+          value: cluster
+
+  - it: cluster route has passthrough TLS by default
+    set:
+      openshift:
+        enabled: true
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.tls.termination
+          value: passthrough
+
+  - it: cluster route does not render spec.host when empty
+    set:
+      openshift:
+        enabled: true
+        route:
+          cluster:
+            host: ""
+    documentIndex: 1
+    asserts:
+      - notExists:
+          path: spec.host
+
+  - it: cluster route renders spec.host when set
+    set:
+      openshift:
+        enabled: true
+        route:
+          cluster:
+            host: cluster.example.com
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.host
+          value: cluster.example.com
+
+  # -----------------------------------------------------------------------
+  # Ops Route (documentIndex: 2)
+  # -----------------------------------------------------------------------
+  - it: ops route has correct name and namespace
+    set:
+      openshift:
+        enabled: true
+    documentIndex: 2
+    asserts:
+      - isKind:
+          of: Route
+      - equal:
+          path: apiVersion
+          value: route.openshift.io/v1
+      - equal:
+          path: metadata.name
+          value: boundary-controller-ops-route
+      - equal:
+          path: metadata.namespace
+          value: NAMESPACE
+
+  - it: ops route targets the ops service on the ops port
+    set:
+      openshift:
+        enabled: true
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.to.kind
+          value: Service
+      - equal:
+          path: spec.to.name
+          value: boundary-controller-ops
+      - equal:
+          path: spec.port.targetPort
+          value: ops
+
+  - it: ops route has default reencrypt TLS termination and Redirect policy
+    set:
+      openshift:
+        enabled: true
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.tls.termination
+          value: reencrypt
+      - equal:
+          path: spec.tls.insecureEdgeTerminationPolicy
+          value: Redirect
+
+  - it: ops route renders destinationCACertificate when reencrypt and tls enabled
+    set:
+      tls:
+        ops:
+          disabled: false
+      openshift:
+        enabled: true
+        route:
+          ops:
+            tls:
+              termination: reencrypt
+              destinationCACertificate: "-----BEGIN CERTIFICATE-----\nMIIFake\n-----END CERTIFICATE-----\n"
+    documentIndex: 2
+    asserts:
+      - matchRegex:
+          path: spec.tls.destinationCACertificate
+          pattern: "BEGIN CERTIFICATE"
+
+  - it: ops route does not render destinationCACertificate when tls.ops.disabled is true
+    set:
+      tls:
+        ops:
+          disabled: true
+      openshift:
+        enabled: true
+        route:
+          ops:
+            tls:
+              termination: reencrypt
+              destinationCACertificate: "-----BEGIN CERTIFICATE-----\nMIIFake\n-----END CERTIFICATE-----\n"
+    documentIndex: 2
+    asserts:
+      - notExists:
+          path: spec.tls.destinationCACertificate
+
+  - it: ops route renders spec.host when set
+    set:
+      openshift:
+        enabled: true
+        route:
+          ops:
+            host: ops.example.com
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.host
+          value: ops.example.com
