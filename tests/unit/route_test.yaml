@@ -225,6 +225,23 @@ tests:
           path: metadata.annotations["haproxy.router.openshift.io/timeout"]
           value: 60s
 
+  - it: api route merges custom labels
+    set:
+      openshift:
+        enabled: true
+        route:
+          api:
+            labels:
+              route-shard: private
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.labels["route-shard"]
+          value: private
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: controller
+
   # -----------------------------------------------------------------------
   # Cluster Route (documentIndex: 1)
   # -----------------------------------------------------------------------
@@ -296,6 +313,23 @@ tests:
       - equal:
           path: spec.host
           value: cluster.example.com
+
+  - it: cluster route merges custom labels
+    set:
+      openshift:
+        enabled: true
+        route:
+          cluster:
+            labels:
+              route-shard: private
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: metadata.labels["route-shard"]
+          value: private
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: controller
 
   # -----------------------------------------------------------------------
   # Ops Route (documentIndex: 2)
@@ -394,3 +428,20 @@ tests:
       - equal:
           path: spec.host
           value: ops.example.com
+
+  - it: ops route merges custom labels
+    set:
+      openshift:
+        enabled: true
+        route:
+          ops:
+            labels:
+              route-shard: private
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: metadata.labels["route-shard"]
+          value: private
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: controller
