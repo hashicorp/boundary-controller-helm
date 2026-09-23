@@ -10,6 +10,9 @@ metadata:
   labels:
     {{- include "boundary.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller
+    {{- with .Values.openshift.route.api.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   {{- with .Values.openshift.route.api.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -42,6 +45,9 @@ metadata:
   labels:
     {{- include "boundary.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller
+    {{- with .Values.openshift.route.cluster.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   {{- with .Values.openshift.route.cluster.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -71,6 +77,9 @@ metadata:
   labels:
     {{- include "boundary.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller
+    {{- with .Values.openshift.route.ops.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   {{- with .Values.openshift.route.ops.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
