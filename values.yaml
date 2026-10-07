@@ -51,9 +51,9 @@ secretRefs:
 # ---------------------------------------------------------------------------
 
 controller:
-  replicas: 1
+  replicas: 2
   rollingUpdate:
-    maxUnavailable: 0
+    maxUnavailable: 1
     maxSurge: 1
 
   config: |
