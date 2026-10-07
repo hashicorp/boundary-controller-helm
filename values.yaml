@@ -290,10 +290,12 @@ openshift:
         insecureEdgeTerminationPolicy: Redirect
         destinationCACertificate: ""
       annotations: {}
+      labels: {}
     cluster:
       enabled: true
       host: ""
       annotations: {}
+      labels: {}
     ops:
       enabled: true
       host: ""
@@ -302,3 +304,4 @@ openshift:
         insecureEdgeTerminationPolicy: Redirect
         destinationCACertificate: ""
       annotations: {}
+      labels: {}
