@@ -21,7 +21,6 @@ All notable changes to the Boundary Controller Helm Chart will be documented in 
 - **Breaking:** Removed `tls.disabled`. Use `tls.api.disabled` and `tls.ops.disabled` instead.
 - Default `controller.config` now uses `tpl`-rendered references such as `env://BOUNDARY_PG_URL` and `env://BOUNDARY_LICENSE` instead of hardcoded placeholders.
 - `database.init.enabled` and `bootstrapAdmin.enabled` now default to `true`.
-- The default controller replica count is now `1`, with `maxUnavailable` set to `0`.
 
 ### Fixed
 
