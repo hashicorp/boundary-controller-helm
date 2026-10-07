@@ -28,6 +28,13 @@ A default install creates:
 | Helm | v3 and above |
 | PostgreSQL | 15 and above |
 
+### Container Images
+
+- Kubernetes deployments use the [Boundary Enterprise image on Docker Hub](https://hub.docker.com/r/hashicorp/boundary-enterprise) by default.
+- OpenShift deployments use the [Red Hat certified Boundary Enterprise image](https://catalog.redhat.com/en/software/containers/hashicorp/boundary-enterprise/6a71b25353c2732d648bbc19) from `registry.connect.redhat.com` by default.
+
+Pulling the image from `registry.connect.redhat.com` requires Red Hat registry credentials. Configure those credentials in the OpenShift cluster pull secret or create a registry pull Secret and reference it with `imagePullSecrets`. An explicit `image.repository` override takes precedence over the platform default.
+
 ### Required Before Installing
 
 Have these ready before running `helm install`:

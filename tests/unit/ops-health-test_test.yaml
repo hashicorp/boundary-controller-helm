@@ -1,0 +1,36 @@
+# Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
+
+suite: Ops health Helm test
+templates:
+  - templates/tests/ops-health-test.yaml
+tests:
+  - it: skips certificate verification for the internal HTTPS endpoint
+    set:
+      secretRefs:
+        validateExisting: false
+    asserts:
+      - matchRegex:
+          path: spec.containers[0].args[0]
+          pattern: 'SCHEME="https"'
+      - matchRegex:
+          path: spec.containers[0].args[0]
+          pattern: 'wget --no-check-certificate -q'
+
+  - it: uses plain wget for the HTTP endpoint
+    set:
+      secretRefs:
+        validateExisting: false
+      tls:
+        ops:
+          disabled: true
+    asserts:
+      - matchRegex:
+          path: spec.containers[0].args[0]
+          pattern: 'SCHEME="http"'
+      - matchRegex:
+          path: spec.containers[0].args[0]
+          pattern: 'wget -q'
+      - notMatchRegex:
+          path: spec.containers[0].args[0]
+          pattern: 'no-check-certificate'

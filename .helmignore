@@ -26,6 +26,7 @@ kubescape-exceptions.json
 example-config/
 local-values.yaml
 my-values.yaml
+my-values.*.yaml
 
 # Ignore generated validation and security scan output
 rendered.yaml

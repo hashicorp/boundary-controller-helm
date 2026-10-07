@@ -2,6 +2,34 @@
 
 All notable changes to the Boundary Controller Helm Chart will be documented in this file.
 
+## [0.2.0] - 2026-10-07
+
+### Added
+
+- OpenShift support via `openshift.enabled`, including SCC-compatible security contexts, `ClusterIP` Services, and Routes for API, cluster, and ops listeners.
+- Per-listener TLS settings through `tls.api.disabled` and `tls.ops.disabled`, with render-time validation against the corresponding listener configuration.
+- Automatic Red Hat UBI image selection when OpenShift mode is enabled and `image.repository` is not explicitly set.
+- Client-facing OpenShift Route TLS fields: `key`, `certificate`, and `caCertificate`. Re-encrypt Routes continue to support `destinationCACertificate` for backend verification.
+- Validation that OpenShift Route termination matches the API or ops listener TLS mode.
+- Native Kubernetes `topologySpreadConstraints` passthrough for controller pod scheduling.
+- `extraVolumes` and `extraVolumeMounts` passthrough for the controller pod.
+- `extraManifests` support for additional Kubernetes objects and templated YAML managed with the release.
+
+### Changed
+
+- Updated the default Boundary Enterprise version to `1.0.2-ent`.
+- **Breaking:** Removed `tls.disabled`. Use `tls.api.disabled` and `tls.ops.disabled` instead.
+- Default `controller.config` now uses `tpl`-rendered references such as `env://BOUNDARY_PG_URL` and `env://BOUNDARY_LICENSE` instead of hardcoded placeholders.
+- `database.init.enabled` and `bootstrapAdmin.enabled` now default to `true`.
+
+### Fixed
+
+- Prevented an unchanged first upgrade from restarting controller pods by hashing only the rendered controller configuration instead of lifecycle-specific hook ConfigMaps.
+- Updated the Helm ops health test to skip certificate verification when checking the internal Kubernetes Service hostname, allowing certificates issued for public hostnames.
+- Removed the obsolete public cluster address helper and tightened OpenShift Route TLS validation.
+
+---
+
 ## [0.2.0-beta] - 2026-09-15
 
 ### Added
@@ -12,20 +40,10 @@ All notable changes to the Boundary Controller Helm Chart will be documented in 
 
 ### Changed
 
-
 - Updated the chart version to 0.2.0-beta and the default Boundary Enterprise version to 1.0.2-ent.
- - **Breaking:** `tls.disabled` removed — replace `--set tls.disabled=<bool>` with `--set tls.api.disabled=<bool> --set tls.ops.disabled=<bool>`.
+- **Breaking:** `tls.disabled` removed — replace `--set tls.disabled=<bool>` with `--set tls.api.disabled=<bool> --set tls.ops.disabled=<bool>`.
 - Default `controller.config` now uses `tpl`-rendered references (`env://BOUNDARY_PG_URL`, `env://BOUNDARY_LICENSE`, etc.) instead of hardcoded placeholders.
 - `database.init.enabled` and `bootstrapAdmin.enabled` default to `true`.
-
-
----
-
-## [0.1.1] - 2026-07-30
-
-### Changed
-
-- Default controller image updated to `hashicorp/boundary-enterprise:1.0.1-ent`.
 
 ---
 

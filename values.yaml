@@ -251,8 +251,12 @@ serviceAccount:
 podAnnotations: {}
 nodeSelector: {}
 affinity: {}
+topologySpreadConstraints: []
 tolerations: []
 extraEnv: []
+extraVolumes: []
+extraVolumeMounts: []
+extraManifests: []
 
 podDisruptionBudget:
   enabled: true
@@ -288,6 +292,9 @@ openshift:
       tls:
         termination: reencrypt
         insecureEdgeTerminationPolicy: Redirect
+        key: ""
+        certificate: ""
+        caCertificate: ""
         destinationCACertificate: ""
       annotations: {}
       labels: {}
@@ -302,6 +309,9 @@ openshift:
       tls:
         termination: reencrypt
         insecureEdgeTerminationPolicy: Redirect
+        key: ""
+        certificate: ""
+        caCertificate: ""
         destinationCACertificate: ""
       annotations: {}
       labels: {}
