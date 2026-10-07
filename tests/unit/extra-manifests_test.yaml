@@ -1,0 +1,45 @@
+# Copyright IBM Corp. 2026
+# SPDX-License-Identifier: MPL-2.0
+
+suite: Extra manifests
+templates:
+  - templates/extra-manifests.yaml
+tests:
+  - it: renders no resources by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders map and string entries through tpl
+    release:
+      name: example
+      namespace: boundary
+    set:
+      extraManifests:
+        first:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: '{{ .Release.Name }}-map'
+            namespace: '{{ .Release.Namespace }}'
+        second: |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: {{ .Release.Name }}-string
+            namespace: {{ .Release.Namespace }}
+    asserts:
+      - hasDocuments:
+          count: 2
+      - matchRegex:
+          path: metadata.name
+          pattern: '^example-(map|string)$'
+        documentIndex: 0
+      - equal:
+          path: metadata.namespace
+          value: boundary
+        documentIndex: 0
+      - matchRegex:
+          path: metadata.name
+          pattern: '^example-(map|string)$'
+        documentIndex: 1

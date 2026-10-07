@@ -8,6 +8,22 @@ templates:
 values:
   - fixtures/feature-enabled.yaml
 tests:
+  - it: renders a stable config checksum on install
+    release:
+      upgrade: false
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: 47192596230a3ff5c674c060ccef64843bc304912fb97be77687cccc75298a83
+        template: templates/deployment.yaml
+  - it: renders the same config checksum on upgrade
+    release:
+      upgrade: true
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: 47192596230a3ff5c674c060ccef64843bc304912fb97be77687cccc75298a83
+        template: templates/deployment.yaml
   - it: renders the default tag and hardened pod settings
     asserts:
       - matchRegex:
@@ -330,6 +346,54 @@ tests:
           path: spec.strategy.rollingUpdate.maxSurge
           value: 2
         template: templates/deployment.yaml
+  - it: omits topology spreading by default
+    set:
+      controller:
+        replicas: 3
+    asserts:
+      - notExists:
+          path: spec.template.spec.topologySpreadConstraints
+        template: templates/deployment.yaml
+  - it: renders strict topology spreading
+    set:
+      controller:
+        replicas: 3
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: controller
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].whenUnsatisfiable
+          value: DoNotSchedule
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels["app.kubernetes.io/component"]
+          value: controller
+        template: templates/deployment.yaml
+  - it: renders multiple native topology spread constraints
+    set:
+      controller:
+        replicas: 3
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].topologyKey
+          value: kubernetes.io/hostname
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[1].topologyKey
+          value: topology.kubernetes.io/zone
+        template: templates/deployment.yaml
   - it: maps deployment container ports from controller service targetPort overrides
     set:
       controller:
@@ -597,6 +661,51 @@ tests:
             name: tls-certs
             secret:
               secretName: boundary-controller-tls
+        template: templates/deployment.yaml
+  - it: appends extra volumes and volume mounts
+    set:
+      extraVolumes:
+        - name: custom-ca
+          configMap:
+            name: organization-ca
+        - name: kms-credentials
+          secret:
+            secretName: boundary-kms-credentials
+      extraVolumeMounts:
+        - name: custom-ca
+          mountPath: /etc/ssl/custom-ca
+          readOnly: true
+        - name: kms-credentials
+          mountPath: /etc/boundary/kms
+          readOnly: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: custom-ca
+            mountPath: /etc/ssl/custom-ca
+            readOnly: true
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: kms-credentials
+            mountPath: /etc/boundary/kms
+            readOnly: true
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: custom-ca
+            configMap:
+              name: organization-ca
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: kms-credentials
+            secret:
+              secretName: boundary-kms-credentials
         template: templates/deployment.yaml
   - it: uses openshift podSecurityContext and omits runAsUser when openshift.enabled is true
     set:

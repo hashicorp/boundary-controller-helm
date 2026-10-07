@@ -51,9 +51,9 @@ secretRefs:
 # ---------------------------------------------------------------------------
 
 controller:
-  replicas: 2
+  replicas: 1
   rollingUpdate:
-    maxUnavailable: 1
+    maxUnavailable: 0
     maxSurge: 1
 
   config: |
@@ -251,8 +251,12 @@ serviceAccount:
 podAnnotations: {}
 nodeSelector: {}
 affinity: {}
+topologySpreadConstraints: []
 tolerations: []
 extraEnv: []
+extraVolumes: []
+extraVolumeMounts: []
+extraManifests: []
 
 podDisruptionBudget:
   enabled: true
@@ -288,6 +292,9 @@ openshift:
       tls:
         termination: reencrypt
         insecureEdgeTerminationPolicy: Redirect
+        key: ""
+        certificate: ""
+        caCertificate: ""
         destinationCACertificate: ""
       annotations: {}
       labels: {}
@@ -302,6 +309,9 @@ openshift:
       tls:
         termination: reencrypt
         insecureEdgeTerminationPolicy: Redirect
+        key: ""
+        certificate: ""
+        caCertificate: ""
         destinationCACertificate: ""
       annotations: {}
       labels: {}

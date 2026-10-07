@@ -293,6 +293,13 @@
       "type": "object",
       "additionalProperties": true
     },
+    "topologySpreadConstraints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
     "tolerations": {
       "type": "array",
       "items": {
@@ -321,6 +328,28 @@
             "additionalProperties": true
           }
         }
+      }
+    },
+    "extraManifests": {
+      "description": "Additional Kubernetes objects or templated YAML strings managed by the release.",
+      "type": [
+        "array",
+        "object",
+        "null"
+      ]
+    },
+    "extraVolumes": {
+      "description": "Additional Kubernetes volumes added to the controller pod.",
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "extraVolumeMounts": {
+      "description": "Additional Kubernetes volume mounts added to the controller container.",
+      "type": "array",
+      "items": {
+        "type": "object"
       }
     },
     "podDisruptionBudget": {
@@ -677,6 +706,9 @@
       "required": [
         "termination",
         "insecureEdgeTerminationPolicy",
+        "key",
+        "certificate",
+        "caCertificate",
         "destinationCACertificate"
       ],
       "properties": {
@@ -695,6 +727,15 @@
             "Redirect",
             "None"
           ]
+        },
+        "key": {
+          "type": "string"
+        },
+        "certificate": {
+          "type": "string"
+        },
+        "caCertificate": {
+          "type": "string"
         },
         "destinationCACertificate": {
           "type": "string"
