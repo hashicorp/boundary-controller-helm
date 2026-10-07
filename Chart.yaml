@@ -5,7 +5,7 @@ apiVersion: v2
 name: boundary-controller
 description: Official HashiCorp Boundary Controller Chart
 type: application
-version: 0.2.0-beta
+version: 0.2.0
 appVersion: "1.0.2-ent"
 keywords:
   - boundary
@@ -26,15 +26,23 @@ maintainers:
   - name: HashiCorp
     url: https://github.com/hashicorp/boundary-controller-helm
 annotations:
-  artifacthub.io/prerelease: "true"
+  artifacthub.io/prerelease: "false"
   artifacthub.io/changes: |
     - kind: added
       description: Added OpenShift support with SCC-compatible security contexts, ClusterIP services, and Routes for API, cluster, and ops listeners.
     - kind: added
-      description: Added per-listener API and ops TLS disable flags with render-time validation.
+      description: Added per-listener API and ops TLS settings with render-time validation.
     - kind: added
       description: Added automatic Red Hat UBI image selection when OpenShift mode is enabled.
+    - kind: added
+      description: Added client-facing certificate fields for OpenShift API and ops Routes.
+    - kind: added
+      description: Added topology spread constraints, extra volumes, extra volume mounts, and extra manifests passthrough support.
+    - kind: added
+      description: Added validation between OpenShift Route termination and controller listener TLS settings.
+    - kind: fixed
+      description: Prevented unchanged upgrades from restarting controller pods because of lifecycle-specific ConfigMaps in the rollout checksum.
+    - kind: fixed
+      description: Allowed the Helm ops health test to work with certificates issued for public hostnames.
     - kind: changed
-      description: Updated the chart to Boundary Enterprise 1.0.2-ent.
-    - kind: changed
-      description: Replaced the tls.disabled setting with tls.api.disabled and tls.ops.disabled.
+      description: Updated the chart to Boundary Enterprise 1.0.2-ent and replaced tls.disabled with tls.api.disabled and tls.ops.disabled.

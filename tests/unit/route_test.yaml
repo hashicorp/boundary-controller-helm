@@ -135,6 +135,72 @@ tests:
           path: spec.tls.destinationCACertificate
           pattern: "BEGIN CERTIFICATE"
 
+  - it: api route renders client-facing certificates for reencrypt termination
+    set:
+      openshift:
+        enabled: true
+        route:
+          api:
+            tls:
+              termination: reencrypt
+              certificate: "-----BEGIN CERTIFICATE-----\nAPI certificate\n-----END CERTIFICATE-----\n"
+              key: "-----BEGIN PRIVATE KEY-----\nAPI key\n-----END PRIVATE KEY-----\n"
+              caCertificate: "-----BEGIN CERTIFICATE-----\nAPI CA\n-----END CERTIFICATE-----\n"
+    documentIndex: 0
+    asserts:
+      - matchRegex:
+          path: spec.tls.certificate
+          pattern: "API certificate"
+      - matchRegex:
+          path: spec.tls.key
+          pattern: "API key"
+      - matchRegex:
+          path: spec.tls.caCertificate
+          pattern: "API CA"
+
+  - it: api route renders client-facing certificates for edge termination
+    set:
+      openshift:
+        enabled: true
+        route:
+          api:
+            tls:
+              termination: edge
+              certificate: "-----BEGIN CERTIFICATE-----\nEdge certificate\n-----END CERTIFICATE-----\n"
+              key: "-----BEGIN PRIVATE KEY-----\nEdge key\n-----END PRIVATE KEY-----\n"
+              caCertificate: "-----BEGIN CERTIFICATE-----\nEdge CA\n-----END CERTIFICATE-----\n"
+    documentIndex: 0
+    asserts:
+      - matchRegex:
+          path: spec.tls.certificate
+          pattern: "Edge certificate"
+      - matchRegex:
+          path: spec.tls.key
+          pattern: "Edge key"
+      - matchRegex:
+          path: spec.tls.caCertificate
+          pattern: "Edge CA"
+
+  - it: api route omits client-facing certificates for passthrough termination
+    set:
+      openshift:
+        enabled: true
+        route:
+          api:
+            tls:
+              termination: passthrough
+              certificate: "certificate"
+              key: "key"
+              caCertificate: "CA certificate"
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: spec.tls.certificate
+      - notExists:
+          path: spec.tls.key
+      - notExists:
+          path: spec.tls.caCertificate
+
   - it: api route does not render destinationCACertificate when tls.api.disabled is true
     set:
       tls:
@@ -364,6 +430,29 @@ tests:
       - matchRegex:
           path: spec.tls.destinationCACertificate
           pattern: "BEGIN CERTIFICATE"
+
+  - it: ops route renders client-facing certificates for reencrypt termination
+    set:
+      openshift:
+        enabled: true
+        route:
+          ops:
+            tls:
+              termination: reencrypt
+              certificate: "-----BEGIN CERTIFICATE-----\nOps certificate\n-----END CERTIFICATE-----\n"
+              key: "-----BEGIN PRIVATE KEY-----\nOps key\n-----END PRIVATE KEY-----\n"
+              caCertificate: "-----BEGIN CERTIFICATE-----\nOps CA\n-----END CERTIFICATE-----\n"
+    documentIndex: 2
+    asserts:
+      - matchRegex:
+          path: spec.tls.certificate
+          pattern: "Ops certificate"
+      - matchRegex:
+          path: spec.tls.key
+          pattern: "Ops key"
+      - matchRegex:
+          path: spec.tls.caCertificate
+          pattern: "Ops CA"
 
   - it: ops route does not render destinationCACertificate when tls.ops.disabled is true
     set:

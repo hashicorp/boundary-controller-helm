@@ -54,7 +54,7 @@ spec:
           echo "Waiting for ops health endpoint ${URL} (up to 60s)..."
           i=0
           while [ $i -lt 30 ]; do
-            if wget -q -O /tmp/health.out "${URL}" 2>/dev/null; then
+            if wget {{ if not .Values.tls.ops.disabled }}--no-check-certificate {{ end }}-q -O /tmp/health.out "${URL}" 2>/dev/null; then
               echo "Health endpoint check passed"
               exit 0
             fi

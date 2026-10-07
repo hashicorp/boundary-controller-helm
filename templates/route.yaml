@@ -26,6 +26,20 @@ spec:
   tls:
     termination: {{ .Values.openshift.route.api.tls.termination }}
     insecureEdgeTerminationPolicy: {{ .Values.openshift.route.api.tls.insecureEdgeTerminationPolicy }}
+    {{- if ne .Values.openshift.route.api.tls.termination "passthrough" }}
+    {{- with .Values.openshift.route.api.tls.key }}
+    key: |
+      {{- . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.openshift.route.api.tls.certificate }}
+    certificate: |
+      {{- . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.openshift.route.api.tls.caCertificate }}
+    caCertificate: |
+      {{- . | nindent 6 }}
+    {{- end }}
+    {{- end }}
     {{- if and (not .Values.tls.api.disabled) (eq .Values.openshift.route.api.tls.termination "reencrypt") .Values.openshift.route.api.tls.destinationCACertificate }}
     destinationCACertificate: |
       {{- .Values.openshift.route.api.tls.destinationCACertificate | nindent 6 }}
@@ -87,6 +101,20 @@ spec:
   tls:
     termination: {{ .Values.openshift.route.ops.tls.termination }}
     insecureEdgeTerminationPolicy: {{ .Values.openshift.route.ops.tls.insecureEdgeTerminationPolicy }}
+    {{- if ne .Values.openshift.route.ops.tls.termination "passthrough" }}
+    {{- with .Values.openshift.route.ops.tls.key }}
+    key: |
+      {{- . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.openshift.route.ops.tls.certificate }}
+    certificate: |
+      {{- . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.openshift.route.ops.tls.caCertificate }}
+    caCertificate: |
+      {{- . | nindent 6 }}
+    {{- end }}
+    {{- end }}
     {{- if and (not .Values.tls.ops.disabled) (eq .Values.openshift.route.ops.tls.termination "reencrypt") .Values.openshift.route.ops.tls.destinationCACertificate }}
     destinationCACertificate: |
       {{- .Values.openshift.route.ops.tls.destinationCACertificate | nindent 6 }}
