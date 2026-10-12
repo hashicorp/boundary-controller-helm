@@ -1,3 +1,5 @@
+# Copyright IBM Corp. 2026
+
 {{- /* Normalize extraManifests to a list for consistent rendering. */ -}}
 {{- $extraManifests := .Values.extraManifests | default (list) -}}
 {{- if kindIs "map" $extraManifests -}}
