@@ -2,6 +2,14 @@
 
 All notable changes to the Boundary Controller Helm Chart will be documented in this file.
 
+## [0.2.1] - 2026-11-11
+
+### Changed
+
+- Updated the chart version to `0.2.1` and the default Boundary Enterprise version to `1.1.1-ent`.
+
+---
+
 ## [0.2.0] - 2026-10-07
 
 ### Added
