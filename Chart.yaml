@@ -5,8 +5,8 @@ apiVersion: v2
 name: boundary-controller
 description: Official HashiCorp Boundary Controller Chart
 type: application
-version: 0.2.0
-appVersion: "1.0.2-ent"
+version: 0.2.1
+appVersion: "1.1.1-ent"
 keywords:
   - boundary
   - hashicorp
@@ -46,3 +46,5 @@ annotations:
       description: Allowed the Helm ops health test to work with certificates issued for public hostnames.
     - kind: changed
       description: Updated the chart to Boundary Enterprise 1.0.2-ent and replaced tls.disabled with tls.api.disabled and tls.ops.disabled.
+    - kind: changed
+      description: Updated the default Boundary Enterprise version to 1.1.1-ent.
